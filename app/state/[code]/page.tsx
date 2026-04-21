@@ -8,6 +8,7 @@ import {
   getRecentStateBills,
   getStateDelegationFinance,
   getStateEvents,
+  getStateBrief,
 } from "@/lib/queries";
 import { MemberCard } from "@/components/member-card";
 import { PartyBar } from "@/components/party-bar";
@@ -38,13 +39,14 @@ export default async function StatePage({ params }: Props) {
   const state = await getStateByCode(code);
   if (!state) notFound();
 
-  const [membersList, committeeCoverage, recentBills, financeData, stateEvents] =
+  const [membersList, committeeCoverage, recentBills, financeData, stateEvents, brief] =
     await Promise.all([
       getMembersByState(code),
       getStateCommitteeCoverage(code),
       getRecentStateBills(code, 10),
       getStateDelegationFinance(code),
       getStateEvents(code, 12),
+      getStateBrief(code),
     ]);
 
   const senators = membersList.filter((m) => m.chamber === "senate");
@@ -131,6 +133,25 @@ export default async function StatePage({ params }: Props) {
           />
         </div>
       </div>
+
+      {/* Delegation Brief */}
+      {brief && (
+        <div className="mb-10 border-l-2 border-neutral-200 pl-4 dark:border-neutral-700">
+          <p className="text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">
+            {brief.summary}
+          </p>
+          <p className="mt-2 font-mono text-[10px] text-neutral-300 dark:text-neutral-600">
+            Generated{" "}
+            {new Date(brief.generatedAt).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            })}
+            {" / "}
+            {brief.periodStart} – {brief.periodEnd}
+          </p>
+        </div>
+      )}
 
       {/* Two-column layout: delegation + sidebar */}
       <div className="grid gap-10 lg:grid-cols-3">

@@ -12,6 +12,7 @@ import {
   votes,
   votePositions,
   events,
+  delegationBriefs,
   syncLog,
 } from "./schema";
 import { eq, and, desc, sql, count, sum } from "drizzle-orm";
@@ -387,6 +388,18 @@ export async function getRecentEvents(limit = 20) {
     .from(events)
     .orderBy(desc(events.eventDate))
     .limit(limit);
+}
+
+// ─── Brief queries ───────────────────────────────────────────────────────────
+
+export async function getStateBrief(stateCode: string) {
+  const [brief] = await db
+    .select()
+    .from(delegationBriefs)
+    .where(eq(delegationBriefs.stateCode, stateCode.toUpperCase()))
+    .orderBy(desc(delegationBriefs.generatedAt))
+    .limit(1);
+  return brief || null;
 }
 
 // ─── Sync queries ────────────────────────────────────────────────────────────

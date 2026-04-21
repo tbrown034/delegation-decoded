@@ -399,6 +399,31 @@ export const events = pgTable(
 );
 
 // =============================================================================
+// Delegation Briefs
+// =============================================================================
+
+export const delegationBriefs = pgTable(
+  "delegation_briefs",
+  {
+    id: serial("id").primaryKey(),
+    stateCode: char("state_code", { length: 2 })
+      .notNull()
+      .references(() => states.code),
+    generatedAt: timestamp("generated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    periodStart: date("period_start").notNull(),
+    periodEnd: date("period_end").notNull(),
+    summary: text("summary").notNull(),
+    stats: text("stats"), // JSON string of key metrics
+  },
+  (table) => [
+    index("idx_briefs_state").on(table.stateCode),
+    index("idx_briefs_date").on(table.generatedAt),
+  ]
+);
+
+// =============================================================================
 // Sync Log
 // =============================================================================
 
