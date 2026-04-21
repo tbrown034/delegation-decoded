@@ -14,6 +14,7 @@ import {
   getMemberRecentVotes,
 } from "@/lib/queries";
 import { STATE_BY_CODE } from "@/lib/states";
+import { effectiveTotal, fmt } from "@/lib/finance";
 
 type Props = {
   params: Promise<{ bioguideId: string }>;
@@ -28,13 +29,6 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     title: `${member.fullName} — ${stateName}`,
     description: `${member.fullName}, ${member.party} ${member.chamber === "senate" ? "Senator" : "Representative"} from ${stateName}. Committees, legislation, and campaign finance.`,
   };
-}
-
-function fmt(amount: number | null): string {
-  if (!amount) return "$0";
-  if (amount >= 1_000_000) return `$${(amount / 1_000_000).toFixed(1)}M`;
-  if (amount >= 1_000) return `$${(amount / 1_000).toFixed(0)}K`;
-  return `$${amount.toLocaleString()}`;
 }
 
 const partyRing: Record<string, string> = {
@@ -146,7 +140,7 @@ export default async function MemberPage({ params }: Props) {
             {latestFinance && (
               <span>
                 <span className="font-medium text-neutral-700 dark:text-neutral-300">
-                  {fmt(latestFinance.totalReceipts)}
+                  {fmt(effectiveTotal(latestFinance))}
                 </span>{" "}
                 raised
               </span>
@@ -331,11 +325,11 @@ export default async function MemberPage({ params }: Props) {
           </h2>
           <div className="space-y-4">
             {finance.map((f) => {
-              const total = f.totalReceipts || 0;
+              const total = effectiveTotal(f);
               const indAmt = f.totalIndividual || 0;
               const pacAmt = f.totalPac || 0;
               const smallAmt = f.smallIndividual || 0;
-              const largeAmt = indAmt - smallAmt;
+              const largeAmt = Math.max(0, indAmt - smallAmt);
 
               const smallPct = total > 0 ? (smallAmt / total) * 100 : 0;
               const largePct = total > 0 ? (largeAmt / total) * 100 : 0;
@@ -351,7 +345,7 @@ export default async function MemberPage({ params }: Props) {
                       {f.electionCycle} cycle
                     </span>
                     <span className="font-mono text-lg font-semibold text-neutral-900 dark:text-neutral-100">
-                      {fmt(f.totalReceipts)}
+                      {fmt(total)}
                     </span>
                   </div>
 

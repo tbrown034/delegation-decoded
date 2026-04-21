@@ -402,6 +402,98 @@ export async function getStateBrief(stateCode: string) {
   return brief || null;
 }
 
+// ─── Compare queries ────────────────────────────────────────────────────────
+
+export async function getVotingAgreement(idA: string, idB: string) {
+  const result = await db.execute(sql`
+    SELECT
+      COUNT(*)::text AS shared_votes,
+      SUM(CASE WHEN a.position = b.position THEN 1 ELSE 0 END)::text AS agreed
+    FROM vote_positions a
+    JOIN vote_positions b ON a.vote_id = b.vote_id
+    WHERE a.bioguide_id = ${idA}
+      AND b.bioguide_id = ${idB}
+      AND a.position IN ('yea', 'nay')
+      AND b.position IN ('yea', 'nay')
+  `);
+  const row = result.rows[0] as
+    | { shared_votes: string; agreed: string }
+    | undefined;
+  const shared = parseInt(row?.shared_votes || "0", 10);
+  const agreed = parseInt(row?.agreed || "0", 10);
+  return {
+    sharedVotes: shared,
+    agreed,
+    agreementPct: shared > 0 ? Math.round((agreed / shared) * 100) : 0,
+  };
+}
+
+export async function getAllMembersForPicker() {
+  return db
+    .select({
+      bioguideId: members.bioguideId,
+      fullName: members.fullName,
+      party: members.party,
+      stateCode: members.stateCode,
+      chamber: members.chamber,
+      district: members.district,
+    })
+    .from(members)
+    .where(eq(members.inOffice, true))
+    .orderBy(members.stateCode, members.lastName);
+}
+
+export async function getDelegationBillCount(stateCode: string) {
+  const [result] = await db
+    .select({ count: count() })
+    .from(billSponsorships)
+    .innerJoin(members, eq(billSponsorships.bioguideId, members.bioguideId))
+    .where(
+      and(
+        eq(members.stateCode, stateCode.toUpperCase()),
+        eq(members.inOffice, true),
+        eq(billSponsorships.role, "sponsor")
+      )
+    );
+  return result?.count || 0;
+}
+
+export async function getDelegationBillCounts(stateCode: string) {
+  return db
+    .select({
+      bioguideId: members.bioguideId,
+      role: billSponsorships.role,
+      count: count(),
+    })
+    .from(billSponsorships)
+    .innerJoin(members, eq(billSponsorships.bioguideId, members.bioguideId))
+    .where(
+      and(
+        eq(members.stateCode, stateCode.toUpperCase()),
+        eq(members.inOffice, true)
+      )
+    )
+    .groupBy(members.bioguideId, billSponsorships.role);
+}
+
+export async function getDelegationVoteSummaries(stateCode: string) {
+  return db
+    .select({
+      bioguideId: members.bioguideId,
+      position: votePositions.position,
+      count: count(),
+    })
+    .from(votePositions)
+    .innerJoin(members, eq(votePositions.bioguideId, members.bioguideId))
+    .where(
+      and(
+        eq(members.stateCode, stateCode.toUpperCase()),
+        eq(members.inOffice, true)
+      )
+    )
+    .groupBy(members.bioguideId, votePositions.position);
+}
+
 // ─── Sync queries ────────────────────────────────────────────────────────────
 
 export async function getLatestSync() {

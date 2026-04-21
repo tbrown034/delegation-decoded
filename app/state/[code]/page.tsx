@@ -12,6 +12,7 @@ import {
 } from "@/lib/queries";
 import { MemberCard } from "@/components/member-card";
 import { PartyBar } from "@/components/party-bar";
+import { effectiveTotal, fmt } from "@/lib/finance";
 
 type Props = {
   params: Promise<{ code: string }>;
@@ -25,13 +26,6 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     title: `${state.name} Delegation`,
     description: `${state.name}'s congressional delegation — senators, representatives, committees, legislation, and campaign finance.`,
   };
-}
-
-function fmt(amount: number | null): string {
-  if (!amount) return "$0";
-  if (amount >= 1_000_000) return `$${(amount / 1_000_000).toFixed(1)}M`;
-  if (amount >= 1_000) return `$${(amount / 1_000).toFixed(0)}K`;
-  return `$${amount.toLocaleString()}`;
 }
 
 export default async function StatePage({ params }: Props) {
@@ -85,7 +79,7 @@ export default async function StatePage({ params }: Props) {
     }
   }
   const financeList = Array.from(financeByMember.values()).sort(
-    (a, b) => (b.totalReceipts || 0) - (a.totalReceipts || 0)
+    (a, b) => effectiveTotal(b) - effectiveTotal(a)
   );
 
   const partyDot: Record<string, string> = {
@@ -294,8 +288,9 @@ export default async function StatePage({ params }: Props) {
               </h2>
               <div className="space-y-0">
                 {financeList.map((f) => {
-                  const maxRaised = financeList[0]?.totalReceipts || 1;
-                  const pct = ((f.totalReceipts || 0) / maxRaised) * 100;
+                  const raised = effectiveTotal(f);
+                  const maxRaised = effectiveTotal(financeList[0]) || 1;
+                  const pct = (raised / maxRaised) * 100;
                   const barColor =
                     f.party === "Democrat"
                       ? "bg-blue-600"
@@ -314,7 +309,7 @@ export default async function StatePage({ params }: Props) {
                           {f.fullName}
                         </span>
                         <span className="ml-2 shrink-0 font-mono text-xs font-medium text-neutral-900 dark:text-neutral-100">
-                          {fmt(f.totalReceipts)}
+                          {fmt(raised)}
                         </span>
                       </div>
                       <div className="mt-1 h-1.5 w-full overflow-hidden rounded-sm bg-neutral-100 dark:bg-neutral-800">

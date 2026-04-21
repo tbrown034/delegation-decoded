@@ -47,8 +47,8 @@ async function ingestHouseVotes(
 
   let votesIngested = 0;
 
-  // Ingest recent votes (last 100 for initial load)
-  const startRoll = Math.max(1, maxRoll - 99);
+  // Ingest all votes for the year
+  const startRoll = 1;
 
   for (let roll = maxRoll; roll >= startRoll; roll--) {
     const rollStr = String(roll).padStart(3, "0");
