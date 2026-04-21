@@ -5,14 +5,16 @@ import {
   getAllStatesWithCounts,
   getLatestSync,
   getTotalMemberCount,
+  getRecentEvents,
 } from "@/lib/queries";
 import { PartyBar } from "@/components/party-bar";
 
 export default async function Home() {
-  const [statesData, latestSync, totalMembers] = await Promise.all([
+  const [statesData, latestSync, totalMembers, recentEvents] = await Promise.all([
     getAllStatesWithCounts(),
     getLatestSync(),
     getTotalMemberCount(),
+    getRecentEvents(8),
   ]);
 
   // Split out territories from states for display
@@ -86,6 +88,51 @@ export default async function Home() {
           </Link>
         ))}
       </div>
+
+      {/* Recent Activity */}
+      {recentEvents.length > 0 && (
+        <div className="mt-10 border-t border-neutral-100 pt-8 dark:border-neutral-800">
+          <h2 className="mb-4 text-xs font-medium uppercase tracking-wide text-neutral-400">
+            Recent activity across all delegations
+          </h2>
+          <div className="grid gap-0 sm:grid-cols-2">
+            {recentEvents.map((e) => {
+              const icon =
+                e.eventType === "bill_introduced"
+                  ? "bg-blue-600"
+                  : e.eventType === "vote_cast"
+                    ? "bg-emerald-600"
+                    : "bg-neutral-400";
+              return (
+                <div
+                  key={e.id}
+                  className="flex items-start gap-2 border-b border-neutral-100 py-2 dark:border-neutral-800"
+                >
+                  <span
+                    className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${icon}`}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs text-neutral-600 dark:text-neutral-400">
+                      {e.stateCode && (
+                        <Link
+                          href={`/state/${e.stateCode}`}
+                          className="mr-1 font-mono font-medium text-neutral-900 no-underline hover:text-neutral-500 dark:text-neutral-100"
+                        >
+                          {e.stateCode}
+                        </Link>
+                      )}
+                      {e.title}
+                    </p>
+                  </div>
+                  <span className="shrink-0 font-mono text-[10px] text-neutral-300 dark:text-neutral-600">
+                    {e.eventDate}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Territories */}
       {territoryList.length > 0 && (
