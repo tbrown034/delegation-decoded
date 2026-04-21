@@ -1,65 +1,114 @@
-import Image from "next/image";
+export const dynamic = "force-dynamic";
 
-export default function Home() {
+import Link from "next/link";
+import {
+  getAllStatesWithCounts,
+  getLatestSync,
+  getTotalMemberCount,
+} from "@/lib/queries";
+import { PartyBar } from "@/components/party-bar";
+
+export default async function Home() {
+  const [statesData, latestSync, totalMembers] = await Promise.all([
+    getAllStatesWithCounts(),
+    getLatestSync(),
+    getTotalMemberCount(),
+  ]);
+
+  // Split out territories from states for display
+  const territories = new Set(["DC", "AS", "GU", "MP", "PR", "VI"]);
+  const fiftyStates = statesData.filter((s) => !territories.has(s.code));
+  const territoryList = statesData.filter((s) => territories.has(s.code));
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <div className="mx-auto max-w-5xl px-4 py-10">
+      {/* Headline */}
+      <div className="mb-10">
+        <h1 className="font-serif text-4xl font-semibold tracking-tight sm:text-5xl">
+          538 members. 50 delegations.
+        </h1>
+        <p className="mt-3 max-w-lg text-neutral-500">
+          Congressional accountability tracking, organized by state delegation.
+          Legislation, committees, and campaign finance — sourced from official
+          government records.
+        </p>
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-xs text-neutral-400">
+          <span>
+            {totalMembers} members tracked
+          </span>
+          <span className="text-neutral-200 dark:text-neutral-700">|</span>
+          <span>3 data sources</span>
+          {latestSync?.completedAt && (
+            <>
+              <span className="text-neutral-200 dark:text-neutral-700">|</span>
+              <span>
+                Updated{" "}
+                {new Date(latestSync.completedAt).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* 50 States Grid */}
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+        {fiftyStates.map((state) => (
+          <Link
+            key={state.code}
+            href={`/state/${state.code}`}
+            className="group flex items-center justify-between rounded px-3 py-2.5 no-underline transition-colors hover:bg-neutral-50 dark:hover:bg-neutral-900"
+          >
+            <div className="min-w-0">
+              <div className="flex items-baseline gap-1.5">
+                <span className="font-mono text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                  {state.code}
+                </span>
+                <span className="font-mono text-[10px] text-neutral-300 dark:text-neutral-600">
+                  {state.memberCount}
+                </span>
+              </div>
+              <p className="truncate text-xs text-neutral-400">
+                {state.name}
+              </p>
+            </div>
+            <div className="ml-3 w-12">
+              <PartyBar
+                democrat={state.parties.democrat}
+                republican={state.parties.republican}
+                independent={state.parties.independent}
+                height={3}
+              />
+            </div>
+          </Link>
+        ))}
+      </div>
+
+      {/* Territories */}
+      {territoryList.length > 0 && (
+        <div className="mt-8 border-t border-neutral-100 pt-6 dark:border-neutral-800">
+          <p className="mb-3 text-xs font-medium uppercase tracking-wide text-neutral-400">
+            Territories & DC
           </p>
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            {territoryList.map((t) => (
+              <Link
+                key={t.code}
+                href={`/state/${t.code}`}
+                className="font-mono text-xs text-neutral-500 no-underline hover:text-neutral-900 dark:hover:text-neutral-100"
+              >
+                {t.code}
+                <span className="ml-1 text-neutral-300 dark:text-neutral-600">
+                  {t.name}
+                </span>
+              </Link>
+            ))}
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+      )}
     </div>
   );
 }
