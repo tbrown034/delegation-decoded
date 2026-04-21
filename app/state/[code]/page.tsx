@@ -7,6 +7,7 @@ import {
   getStateCommitteeCoverage,
   getRecentStateBills,
   getStateDelegationFinance,
+  getStateEvents,
 } from "@/lib/queries";
 import { MemberCard } from "@/components/member-card";
 import { PartyBar } from "@/components/party-bar";
@@ -37,12 +38,13 @@ export default async function StatePage({ params }: Props) {
   const state = await getStateByCode(code);
   if (!state) notFound();
 
-  const [membersList, committeeCoverage, recentBills, financeData] =
+  const [membersList, committeeCoverage, recentBills, financeData, stateEvents] =
     await Promise.all([
       getMembersByState(code),
       getStateCommitteeCoverage(code),
       getRecentStateBills(code, 10),
       getStateDelegationFinance(code),
+      getStateEvents(code, 12),
     ]);
 
   const senators = membersList.filter((m) => m.chamber === "senate");
@@ -175,6 +177,48 @@ export default async function StatePage({ params }: Props) {
                     stateCode={m.stateCode}
                   />
                 ))}
+              </div>
+            </section>
+          )}
+
+          {/* Activity Feed */}
+          {stateEvents.length > 0 && (
+            <section className="mb-8">
+              <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-neutral-400">
+                Recent activity
+              </h2>
+              <div>
+                {stateEvents.map((e) => {
+                  const icon =
+                    e.eventType === "bill_introduced"
+                      ? "bg-blue-600"
+                      : e.eventType === "vote_cast"
+                        ? "bg-emerald-600"
+                        : "bg-neutral-400";
+                  return (
+                    <div
+                      key={e.id}
+                      className="flex items-start gap-2.5 border-b border-neutral-100 py-2 last:border-0 dark:border-neutral-800"
+                    >
+                      <span
+                        className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${icon}`}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm text-neutral-700 dark:text-neutral-300">
+                          {e.title}
+                        </p>
+                        {e.description && (
+                          <p className="mt-0.5 truncate text-[11px] text-neutral-400">
+                            {e.description}
+                          </p>
+                        )}
+                      </div>
+                      <span className="shrink-0 font-mono text-[10px] text-neutral-300 dark:text-neutral-600">
+                        {e.eventDate}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </section>
           )}

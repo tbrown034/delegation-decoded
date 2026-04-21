@@ -9,6 +9,9 @@ import {
   billSponsorships,
   campaignFinance,
   topContributors,
+  votes,
+  votePositions,
+  events,
   syncLog,
 } from "./schema";
 import { eq, and, desc, sql, count, sum } from "drizzle-orm";
@@ -288,6 +291,102 @@ export async function getStateDelegationFinance(stateCode: string) {
       )
     )
     .orderBy(desc(campaignFinance.totalReceipts));
+}
+
+// ─── Vote queries ────────────────────────────────────────────────────────────
+
+export async function getMemberVoteSummary(bioguideId: string) {
+  const rows = await db
+    .select({
+      position: votePositions.position,
+      count: count(),
+    })
+    .from(votePositions)
+    .where(eq(votePositions.bioguideId, bioguideId))
+    .groupBy(votePositions.position);
+
+  const summary = { yea: 0, nay: 0, present: 0, notVoting: 0, total: 0 };
+  for (const r of rows) {
+    if (r.position === "yea") summary.yea = r.count;
+    else if (r.position === "nay") summary.nay = r.count;
+    else if (r.position === "present") summary.present = r.count;
+    else summary.notVoting = r.count;
+    summary.total += r.count;
+  }
+  return summary;
+}
+
+export async function getMemberRecentVotes(bioguideId: string, limit = 15) {
+  return db
+    .select({
+      voteId: votes.voteId,
+      chamber: votes.chamber,
+      rollNumber: votes.rollNumber,
+      voteDate: votes.voteDate,
+      question: votes.question,
+      description: votes.description,
+      result: votes.result,
+      yeas: votes.yeas,
+      nays: votes.nays,
+      position: votePositions.position,
+    })
+    .from(votePositions)
+    .innerJoin(votes, eq(votePositions.voteId, votes.voteId))
+    .where(eq(votePositions.bioguideId, bioguideId))
+    .orderBy(desc(votes.voteDate))
+    .limit(limit);
+}
+
+export async function getStateRecentVotes(stateCode: string, limit = 10) {
+  // Get distinct recent votes where at least one state member voted
+  return db
+    .select({
+      voteId: votes.voteId,
+      chamber: votes.chamber,
+      voteDate: votes.voteDate,
+      question: votes.question,
+      description: votes.description,
+      result: votes.result,
+      yeas: votes.yeas,
+      nays: votes.nays,
+    })
+    .from(votes)
+    .where(
+      sql`${votes.voteId} IN (
+        SELECT DISTINCT vp.vote_id FROM vote_positions vp
+        JOIN members m ON vp.bioguide_id = m.bioguide_id
+        WHERE m.state_code = ${stateCode.toUpperCase()} AND m.in_office = true
+      )`
+    )
+    .orderBy(desc(votes.voteDate))
+    .limit(limit);
+}
+
+// ─── Event queries ───────────────────────────────────────────────────────────
+
+export async function getStateEvents(stateCode: string, limit = 15) {
+  return db
+    .select()
+    .from(events)
+    .where(eq(events.stateCode, stateCode.toUpperCase()))
+    .orderBy(desc(events.eventDate))
+    .limit(limit);
+}
+
+export async function getRecentEvents(limit = 20) {
+  return db
+    .select({
+      id: events.id,
+      eventType: events.eventType,
+      title: events.title,
+      description: events.description,
+      eventDate: events.eventDate,
+      stateCode: events.stateCode,
+      bioguideId: events.bioguideId,
+    })
+    .from(events)
+    .orderBy(desc(events.eventDate))
+    .limit(limit);
 }
 
 // ─── Sync queries ────────────────────────────────────────────────────────────

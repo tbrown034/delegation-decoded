@@ -10,6 +10,8 @@ import {
   getMemberBillCount,
   getMemberFinance,
   getMemberTopContributors,
+  getMemberVoteSummary,
+  getMemberRecentVotes,
 } from "@/lib/queries";
 import { STATE_BY_CODE } from "@/lib/states";
 
@@ -46,7 +48,7 @@ export default async function MemberPage({ params }: Props) {
   const member = await getMemberByBioguideId(bioguideId);
   if (!member) notFound();
 
-  const [memberTerms, memberCommittees, memberBills, billCounts, finance, contributors] =
+  const [memberTerms, memberCommittees, memberBills, billCounts, finance, contributors, voteSummary, recentVotes] =
     await Promise.all([
       getMemberTerms(bioguideId),
       getMemberCommittees(bioguideId),
@@ -54,6 +56,8 @@ export default async function MemberPage({ params }: Props) {
       getMemberBillCount(bioguideId),
       getMemberFinance(bioguideId),
       getMemberTopContributors(bioguideId),
+      getMemberVoteSummary(bioguideId),
+      getMemberRecentVotes(bioguideId, 15),
     ]);
 
   const stateName = STATE_BY_CODE[member.stateCode]?.name || member.stateCode;
@@ -147,6 +151,14 @@ export default async function MemberPage({ params }: Props) {
                 raised
               </span>
             )}
+            {voteSummary.total > 0 && (
+              <span>
+                <span className="font-medium text-neutral-700 dark:text-neutral-300">
+                  {voteSummary.total}
+                </span>{" "}
+                votes recorded
+              </span>
+            )}
           </div>
           <div className="mt-2 flex flex-wrap gap-x-3 text-xs text-neutral-400">
             {member.websiteUrl && (
@@ -215,6 +227,96 @@ export default async function MemberPage({ params }: Props) {
                     </span>
                   )}
                 </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Voting Record */}
+      {voteSummary.total > 0 && (
+        <section className="mb-10">
+          <h2 className="mb-3 font-serif text-lg font-semibold">
+            Voting Record
+          </h2>
+          {/* Summary bar */}
+          <div className="mb-4">
+            <div className="flex h-3 w-full overflow-hidden rounded-sm">
+              {voteSummary.yea > 0 && (
+                <div
+                  className="bg-emerald-600"
+                  style={{
+                    width: `${(voteSummary.yea / voteSummary.total) * 100}%`,
+                  }}
+                />
+              )}
+              {voteSummary.nay > 0 && (
+                <div
+                  className="bg-rose-600"
+                  style={{
+                    width: `${(voteSummary.nay / voteSummary.total) * 100}%`,
+                  }}
+                />
+              )}
+              {voteSummary.notVoting > 0 && (
+                <div
+                  className="bg-neutral-300 dark:bg-neutral-600"
+                  style={{
+                    width: `${(voteSummary.notVoting / voteSummary.total) * 100}%`,
+                  }}
+                />
+              )}
+            </div>
+            <div className="mt-1.5 flex gap-3 font-mono text-[10px] text-neutral-400">
+              <span>
+                <span className="mr-0.5 inline-block h-1.5 w-1.5 rounded-full bg-emerald-600" />
+                {voteSummary.yea} yea
+              </span>
+              <span>
+                <span className="mr-0.5 inline-block h-1.5 w-1.5 rounded-full bg-rose-600" />
+                {voteSummary.nay} nay
+              </span>
+              {voteSummary.notVoting > 0 && (
+                <span>
+                  <span className="mr-0.5 inline-block h-1.5 w-1.5 rounded-full bg-neutral-300 dark:bg-neutral-600" />
+                  {voteSummary.notVoting} missed
+                </span>
+              )}
+              {voteSummary.present > 0 && (
+                <span>{voteSummary.present} present</span>
+              )}
+            </div>
+          </div>
+          {/* Recent votes */}
+          <div>
+            {recentVotes.map((v) => (
+              <div
+                key={v.voteId}
+                className="flex items-center gap-2.5 border-b border-neutral-100 py-2 last:border-0 dark:border-neutral-800"
+              >
+                <span
+                  className={`h-2 w-2 shrink-0 rounded-full ${
+                    v.position === "yea"
+                      ? "bg-emerald-600"
+                      : v.position === "nay"
+                        ? "bg-rose-600"
+                        : "bg-neutral-300 dark:bg-neutral-600"
+                  }`}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm text-neutral-900 dark:text-neutral-100">
+                    {v.description || v.question}
+                  </p>
+                  <p className="text-[11px] text-neutral-400">
+                    {v.result} ({v.yeas}-{v.nays})
+                  </p>
+                </div>
+                <span className="shrink-0 font-mono text-[10px] uppercase text-neutral-400">
+                  {v.position}
+                </span>
+                <span className="shrink-0 font-mono text-[11px] text-neutral-300 dark:text-neutral-600">
+                  {v.voteDate}
+                </span>
               </div>
             ))}
           </div>

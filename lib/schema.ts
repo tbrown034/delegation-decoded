@@ -302,6 +302,103 @@ export const topContributors = pgTable(
 );
 
 // =============================================================================
+// Votes
+// =============================================================================
+
+export const votes = pgTable(
+  "votes",
+  {
+    voteId: text("vote_id").primaryKey(), // "house-119-2025-10" or "senate-119-2025-1"
+    chamber: varchar("chamber", { length: 10 }).notNull(),
+    congress: integer("congress").notNull(),
+    session: integer("session").notNull(),
+    rollNumber: integer("roll_number").notNull(),
+    voteDate: date("vote_date").notNull(),
+    question: text("question"),
+    description: text("description"),
+    result: text("result"),
+    billId: text("bill_id"), // optional link to our bills table
+    yeas: integer("yeas").notNull().default(0),
+    nays: integer("nays").notNull().default(0),
+    present: integer("present").notNull().default(0),
+    notVoting: integer("not_voting").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("idx_votes_chamber").on(table.chamber),
+    index("idx_votes_date").on(table.voteDate),
+  ]
+);
+
+export const votesRelations = relations(votes, ({ many }) => ({
+  positions: many(votePositions),
+}));
+
+export const votePositions = pgTable(
+  "vote_positions",
+  {
+    id: serial("id").primaryKey(),
+    voteId: text("vote_id")
+      .notNull()
+      .references(() => votes.voteId, { onDelete: "cascade" }),
+    bioguideId: varchar("bioguide_id", { length: 10 })
+      .notNull()
+      .references(() => members.bioguideId, { onDelete: "cascade" }),
+    position: varchar("position", { length: 15 }).notNull(), // "yea", "nay", "present", "not_voting"
+  },
+  (table) => [
+    unique("uq_vote_position").on(table.voteId, table.bioguideId),
+    index("idx_votepos_member").on(table.bioguideId),
+    index("idx_votepos_vote").on(table.voteId),
+  ]
+);
+
+export const votePositionsRelations = relations(votePositions, ({ one }) => ({
+  vote: one(votes, {
+    fields: [votePositions.voteId],
+    references: [votes.voteId],
+  }),
+  member: one(members, {
+    fields: [votePositions.bioguideId],
+    references: [members.bioguideId],
+  }),
+}));
+
+// =============================================================================
+// Events (change detection)
+// =============================================================================
+
+export const events = pgTable(
+  "events",
+  {
+    id: serial("id").primaryKey(),
+    eventType: varchar("event_type", { length: 30 }).notNull(), // "bill_introduced", "vote_cast", "finance_filed"
+    bioguideId: varchar("bioguide_id", { length: 10 }).references(
+      () => members.bioguideId,
+      { onDelete: "cascade" }
+    ),
+    stateCode: char("state_code", { length: 2 }).references(
+      () => states.code
+    ),
+    title: text("title").notNull(),
+    description: text("description"),
+    relatedId: text("related_id"), // bill_id, vote_id, etc.
+    eventDate: date("event_date").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("idx_events_state").on(table.stateCode),
+    index("idx_events_member").on(table.bioguideId),
+    index("idx_events_date").on(table.eventDate),
+    index("idx_events_type").on(table.eventType),
+  ]
+);
+
+// =============================================================================
 // Sync Log
 // =============================================================================
 
