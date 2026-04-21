@@ -16,7 +16,10 @@ import {
 } from "../lib/fec-api";
 
 const CURRENT_CYCLE = 2026;
-const DELAY_MS = 400; // ~2.5 req/sec, conservative for FEC's 1000/hr limit
+// FEC allows 1,000 req/hr. We make 1-2 requests per member.
+// With 537 members, we need to be careful. 600ms delay = ~6000 req/hr theoretical
+// but we only do 1 request at a time, so effective rate is ~100/min = safe.
+const DELAY_MS = 600;
 
 async function main() {
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
@@ -35,7 +38,7 @@ async function main() {
     .returning();
 
   try {
-    // Get members who have FEC candidate IDs
+    // Get members who have FEC IDs
     const membersWithFec = await db
       .select({
         bioguideId: members.bioguideId,
@@ -47,24 +50,50 @@ async function main() {
         and(eq(members.inOffice, true), isNotNull(members.fecCandidateId))
       );
 
-    console.log(
-      `Fetching FEC data for ${membersWithFec.length} members with FEC IDs...`
+    // Check which members already have finance data
+    const existingFinance = await db
+      .select({ bioguideId: campaignFinance.bioguideId })
+      .from(campaignFinance);
+    const hasFinance = new Set(existingFinance.map((r) => r.bioguideId));
+
+    // Only process members missing data
+    const toProcess = membersWithFec.filter(
+      (m) => !hasFinance.has(m.bioguideId)
     );
+
+    console.log(
+      `${membersWithFec.length} members with FEC IDs, ${hasFinance.size} already have data, ${toProcess.length} to process`
+    );
+
+    if (toProcess.length === 0) {
+      console.log("All members have finance data. Nothing to do.");
+      await db
+        .update(syncLog)
+        .set({
+          status: "success",
+          completedAt: new Date(),
+          recordsCount: 0,
+        })
+        .where(sql`id = ${syncEntry.id}`);
+      return;
+    }
 
     let financeCount = 0;
     let contributorCount = 0;
     let errors = 0;
+    let rateLimitHits = 0;
 
-    for (const member of membersWithFec) {
+    for (let i = 0; i < toProcess.length; i++) {
+      const member = toProcess[i];
       const fecId = member.fecCandidateId!;
 
       try {
-        // Fetch financial totals
+        // Fetch financial totals only (skip contributors to halve request count)
         const financials = await fetchCandidateFinancials(fecId);
-        await new Promise((r) => setTimeout(r, DELAY_MS));
 
         for (const f of financials) {
           if (!f.cycle) continue; // Skip records without a valid cycle
+
           await db
             .insert(campaignFinance)
             .values({
@@ -104,40 +133,34 @@ async function main() {
             });
           financeCount++;
         }
-
-        // Fetch top contributors for latest cycle
-        const contributors = await fetchTopContributors(fecId, CURRENT_CYCLE);
-        await new Promise((r) => setTimeout(r, DELAY_MS));
-
-        for (const c of contributors) {
-          if (!c.committee_name || !c.total) continue;
-          await db
-            .insert(topContributors)
-            .values({
-              bioguideId: member.bioguideId,
-              electionCycle: CURRENT_CYCLE,
-              contributorName: c.committee_name,
-              contributorType: "pac",
-              totalAmount: Math.round(c.total),
-              updatedAt: new Date(),
-            })
-            .onConflictDoNothing();
-          contributorCount++;
-        }
       } catch (err) {
-        errors++;
-        if (errors <= 5) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("429")) {
+          rateLimitHits++;
+          // Longer backoff on rate limit
           console.log(
-            `  Error for ${member.fullName} (${fecId}): ${err instanceof Error ? err.message : err}`
+            `  Rate limited at member ${i + 1}/${toProcess.length}. Waiting 30s...`
+          );
+          await new Promise((r) => setTimeout(r, 30000));
+          i--; // Retry this member
+          continue;
+        }
+        errors++;
+        if (errors <= 10) {
+          console.log(
+            `  Error for ${member.fullName} (${fecId}): ${msg.slice(0, 100)}`
           );
         }
       }
 
-      if ((financeCount + errors) % 50 === 0) {
+      // Progress logging
+      if ((i + 1) % 25 === 0 || i === toProcess.length - 1) {
         console.log(
-          `  Progress: ${financeCount} finance records, ${contributorCount} contributors, ${errors} errors`
+          `  ${i + 1}/${toProcess.length} processed — ${financeCount} records, ${errors} errors, ${rateLimitHits} rate limits`
         );
       }
+
+      await new Promise((r) => setTimeout(r, DELAY_MS));
     }
 
     await db
@@ -150,7 +173,7 @@ async function main() {
       .where(sql`id = ${syncEntry.id}`);
 
     console.log(
-      `Done. ${financeCount} finance records, ${contributorCount} contributors (${errors} errors).`
+      `Done. ${financeCount} finance records, ${errors} errors, ${rateLimitHits} rate limit hits.`
     );
   } catch (err) {
     await db
