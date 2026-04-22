@@ -8,6 +8,7 @@ import {
   getRecentEvents,
 } from "@/lib/queries";
 import { PartyBar } from "@/components/party-bar";
+import { StateMap } from "@/components/state-map";
 
 export default async function Home() {
   const [statesData, latestSync, totalMembers, recentEvents] = await Promise.all([
@@ -56,7 +57,34 @@ export default async function Home() {
         </div>
       </div>
 
-      {/* 50 States Grid */}
+      {/* Geographic Map */}
+      <div className="mb-10">
+        <StateMap states={fiftyStates} />
+        <div className="mt-3 flex items-center justify-center gap-4 text-[10px] text-neutral-400">
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-2 w-2 rounded-sm bg-blue-600" />
+            Strong D
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-2 w-2 rounded-sm bg-blue-400" />
+            Lean D
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-2 w-2 rounded-sm bg-purple-400" />
+            Split
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-2 w-2 rounded-sm bg-red-400" />
+            Lean R
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-2 w-2 rounded-sm bg-red-600" />
+            Strong R
+          </span>
+        </div>
+      </div>
+
+      {/* All States List */}
       <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         {fiftyStates.map((state) => (
           <Link
