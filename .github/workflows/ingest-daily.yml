@@ -1,0 +1,51 @@
+# Runs every day at 6 AM UTC (midnight CT / 1 AM ET)
+# Ingests bills and votes — the data that changes daily when Congress is in session.
+# Also regenerates the activity feed after ingestion.
+
+name: Daily data ingestion
+
+on:
+  schedule:
+    # Cron syntax: minute hour day-of-month month day-of-week
+    # "0 6 * * *" = every day at 6:00 AM UTC
+    - cron: "0 6 * * *"
+
+  # Lets you trigger it manually from the GitHub Actions tab
+  workflow_dispatch:
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # 1. Check out your code so the scripts are available
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      # 2. Set up Node.js (matches your local version)
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # 3. Install dependencies (your scripts import from lib/)
+      - name: Install dependencies
+        run: npm ci
+
+      # 4. Run the ingestion scripts in order
+      - name: Ingest bills
+        run: npx tsx scripts/ingest/bills.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          CONGRESS_API_KEY: ${{ secrets.CONGRESS_API_KEY }}
+
+      - name: Ingest votes
+        run: npx tsx scripts/ingest/votes.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Generate events feed
+        run: npx tsx scripts/ingest/generate-events.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
