@@ -15,10 +15,15 @@ import {
   getMemberPressReleases,
   getMemberPressReleaseCount,
   getMemberCoverage,
+  getMemberActivityData,
 } from "@/lib/queries";
 import { STATE_BY_CODE } from "@/lib/states";
 import { effectiveTotal, fmt } from "@/lib/finance";
 import { MemberCoverageBar } from "@/components/data-coverage";
+import {
+  buildActivityTimeline,
+  extractKeywords,
+} from "@/lib/press-analytics";
 
 type Props = {
   params: Promise<{ bioguideId: string }>;
@@ -46,7 +51,7 @@ export default async function MemberPage({ params }: Props) {
   const member = await getMemberByBioguideId(bioguideId);
   if (!member) notFound();
 
-  const [memberTerms, memberCommittees, memberBills, billCounts, finance, contributors, voteSummary, recentVotes, memberPressReleases, pressReleaseCount, coverage] =
+  const [memberTerms, memberCommittees, memberBills, billCounts, finance, contributors, voteSummary, recentVotes, memberPressReleases, pressReleaseCount, coverage, activityData] =
     await Promise.all([
       getMemberTerms(bioguideId),
       getMemberCommittees(bioguideId),
@@ -59,6 +64,7 @@ export default async function MemberPage({ params }: Props) {
       getMemberPressReleases(bioguideId, 10),
       getMemberPressReleaseCount(bioguideId),
       getMemberCoverage(bioguideId),
+      getMemberActivityData(bioguideId),
     ]);
 
   const stateName = STATE_BY_CODE[member.stateCode]?.name || member.stateCode;
@@ -532,6 +538,134 @@ export default async function MemberPage({ params }: Props) {
           </div>
         </section>
       )}
+
+      {/* Activity Timeline */}
+      {(() => {
+        const timeline = buildActivityTimeline(
+          activityData.pressReleases,
+          activityData.bills,
+          activityData.votes
+        ).slice(0, 30);
+
+        if (timeline.length === 0) return null;
+
+        const typeColor: Record<string, string> = {
+          press: "bg-sky-500",
+          bill: "bg-blue-600",
+          vote: "bg-emerald-600",
+        };
+        const typeLabel: Record<string, string> = {
+          press: "statement",
+          bill: "legislation",
+          vote: "vote",
+        };
+
+        return (
+          <section className="mb-10">
+            <h2 className="mb-3 font-serif text-lg font-semibold">
+              Activity Timeline
+            </h2>
+            <div className="mb-2 flex gap-3 text-[10px] text-neutral-400">
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-sky-500" />
+                Statements
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-blue-600" />
+                Legislation
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-600" />
+                Votes
+              </span>
+            </div>
+            <div>
+              {timeline.map((item, i) => (
+                <div
+                  key={`${item.type}-${item.date}-${i}`}
+                  className="flex items-start gap-2.5 border-b border-neutral-100 py-2 last:border-0 dark:border-neutral-800"
+                >
+                  <span
+                    className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${typeColor[item.type]}`}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-neutral-700 dark:text-neutral-300">
+                      {item.relatedUrl ? (
+                        <a
+                          href={item.relatedUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-neutral-700 underline decoration-neutral-200 underline-offset-2 hover:decoration-neutral-400 dark:text-neutral-300 dark:decoration-neutral-700"
+                        >
+                          {item.title}
+                        </a>
+                      ) : (
+                        item.title
+                      )}
+                    </p>
+                    {item.position && (
+                      <span
+                        className={`mt-0.5 inline-block font-mono text-[10px] uppercase ${
+                          item.position === "yea"
+                            ? "text-emerald-600"
+                            : item.position === "nay"
+                              ? "text-rose-600"
+                              : "text-neutral-400"
+                        }`}
+                      >
+                        {item.position}
+                      </span>
+                    )}
+                    {item.detail && !item.position && (
+                      <span className="mt-0.5 inline-block text-[10px] text-neutral-400">
+                        {item.detail}
+                      </span>
+                    )}
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <span className="font-mono text-[10px] text-neutral-300 dark:text-neutral-600">
+                      {item.date}
+                    </span>
+                    <p className="font-mono text-[9px] uppercase text-neutral-300 dark:text-neutral-600">
+                      {typeLabel[item.type]}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        );
+      })()}
+
+      {/* Messaging Topics */}
+      {(() => {
+        const titles = activityData.pressReleases.map((pr) => pr.title);
+        const keywords = extractKeywords(titles, 10);
+        if (keywords.length === 0) return null;
+        return (
+          <section className="mb-10">
+            <h2 className="mb-3 font-serif text-lg font-semibold">
+              Messaging Topics
+            </h2>
+            <div className="flex flex-wrap gap-1.5">
+              {keywords.map((kw) => (
+                <span
+                  key={kw.term}
+                  className="inline-flex items-center gap-1 rounded-full border border-neutral-200 px-2.5 py-1 text-xs text-neutral-600 dark:border-neutral-700 dark:text-neutral-400"
+                >
+                  {kw.term}
+                  <span className="font-mono text-[10px] text-neutral-300 dark:text-neutral-600">
+                    {kw.count}
+                  </span>
+                </span>
+              ))}
+            </div>
+            <p className="mt-2 text-[10px] italic text-neutral-400">
+              Extracted from {titles.length} press release titles
+            </p>
+          </section>
+        );
+      })()}
 
       {/* Service History */}
       <section>

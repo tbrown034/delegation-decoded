@@ -11,7 +11,10 @@ import {
   getStateBrief,
   getStatePressReleases,
   getStateCoverage,
+  getStatePressRankings,
+  getStatePressReleaseTitles,
 } from "@/lib/queries";
+import { extractKeywords } from "@/lib/press-analytics";
 import { MemberCard } from "@/components/member-card";
 import { PartyBar } from "@/components/party-bar";
 import { StateCoverageNote } from "@/components/data-coverage";
@@ -36,7 +39,7 @@ export default async function StatePage({ params }: Props) {
   const state = await getStateByCode(code);
   if (!state) notFound();
 
-  const [membersList, committeeCoverage, recentBills, financeData, stateEvents, brief, statePressReleases, coverageStats] =
+  const [membersList, committeeCoverage, recentBills, financeData, stateEvents, brief, statePressReleases, coverageStats, pressRankings, pressTitles] =
     await Promise.all([
       getMembersByState(code),
       getStateCommitteeCoverage(code),
@@ -46,6 +49,8 @@ export default async function StatePage({ params }: Props) {
       getStateBrief(code),
       getStatePressReleases(code, 8),
       getStateCoverage(code),
+      getStatePressRankings(code),
+      getStatePressReleaseTitles(code),
     ]);
 
   const senators = membersList.filter((m) => m.chamber === "senate");
@@ -92,6 +97,8 @@ export default async function StatePage({ params }: Props) {
     Republican: "bg-red-600",
     Independent: "bg-purple-500",
   };
+
+  const messagingKeywords = extractKeywords(pressTitles, 12);
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
@@ -321,6 +328,77 @@ export default async function StatePage({ params }: Props) {
                     </p>
                   </div>
                 ))}
+              </div>
+            </section>
+          )}
+
+          {/* Messaging Topics */}
+          {messagingKeywords.length > 0 && (
+            <section>
+              <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-neutral-400">
+                What they&apos;re talking about
+              </h2>
+              <div className="flex flex-wrap gap-1.5">
+                {messagingKeywords.map((kw) => (
+                  <span
+                    key={kw.term}
+                    className="inline-flex items-center gap-1 rounded-full border border-neutral-200 px-2.5 py-1 text-xs text-neutral-600 dark:border-neutral-700 dark:text-neutral-400"
+                  >
+                    {kw.term}
+                    <span className="font-mono text-[10px] text-neutral-300 dark:text-neutral-600">
+                      {kw.count}
+                    </span>
+                  </span>
+                ))}
+              </div>
+              <p className="mt-2 text-[10px] italic text-neutral-400">
+                Extracted from {pressTitles.length} press release titles via
+                RSS
+              </p>
+            </section>
+          )}
+
+          {/* Messaging Volume */}
+          {pressRankings.some((r) => r.releaseCount > 0) && (
+            <section>
+              <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-neutral-400">
+                Messaging volume
+              </h2>
+              <div>
+                {pressRankings.map((r) => {
+                  const maxCount = pressRankings[0]?.releaseCount || 1;
+                  const pct =
+                    maxCount > 0 ? (r.releaseCount / maxCount) * 100 : 0;
+                  const dotColor = partyDot[r.party] || "bg-neutral-400";
+
+                  return (
+                    <Link
+                      key={r.bioguideId}
+                      href={`/member/${r.bioguideId}`}
+                      className="group block border-b border-neutral-100 py-1.5 no-underline last:border-0 dark:border-neutral-800"
+                    >
+                      <div className="flex items-baseline justify-between">
+                        <span className="flex items-center gap-1 text-xs text-neutral-600 group-hover:text-neutral-900 dark:text-neutral-400">
+                          <span
+                            className={`inline-block h-1.5 w-1.5 rounded-full ${dotColor}`}
+                          />
+                          {r.fullName}
+                        </span>
+                        <span className="font-mono text-[11px] text-neutral-400">
+                          {r.releaseCount > 0 ? r.releaseCount : "—"}
+                        </span>
+                      </div>
+                      {r.releaseCount > 0 && (
+                        <div className="mt-0.5 h-1 w-full overflow-hidden rounded-sm bg-neutral-100 dark:bg-neutral-800">
+                          <div
+                            className="h-full rounded-sm bg-neutral-400"
+                            style={{ width: `${Math.max(pct, 3)}%` }}
+                          />
+                        </div>
+                      )}
+                    </Link>
+                  );
+                })}
               </div>
             </section>
           )}

@@ -470,21 +470,20 @@ export async function getStateCoverage(stateCode: string) {
   const ids = membersList.map((m) => m.bioguideId);
   if (ids.length === 0) return null;
 
-  const pressResult = await db.execute(
-    sql`SELECT count(DISTINCT bioguide_id)::int as c FROM press_releases WHERE bioguide_id = ANY(${ids})`
-  );
-  const financeResult = await db.execute(
-    sql`SELECT count(DISTINCT bioguide_id)::int as c FROM campaign_finance WHERE bioguide_id = ANY(${ids})`
-  );
+  const [pressRows] = await db
+    .select({ count: sql<number>`count(DISTINCT ${pressReleases.bioguideId})` })
+    .from(pressReleases)
+    .where(sql`${pressReleases.bioguideId} IN ${ids}`);
+
+  const [financeRows] = await db
+    .select({ count: sql<number>`count(DISTINCT ${campaignFinance.bioguideId})` })
+    .from(campaignFinance)
+    .where(sql`${campaignFinance.bioguideId} IN ${ids}`);
 
   return {
     totalMembers: ids.length,
-    membersWithPressReleases: Number(
-      (pressResult.rows[0] as { c: number })?.c || 0
-    ),
-    membersWithFinance: Number(
-      (financeResult.rows[0] as { c: number })?.c || 0
-    ),
+    membersWithPressReleases: Number(pressRows?.count || 0),
+    membersWithFinance: Number(financeRows?.count || 0),
   };
 }
 
@@ -528,6 +527,94 @@ export async function getStatePressReleases(stateCode: string, limit = 10) {
     )
     .orderBy(desc(pressReleases.publishedAt))
     .limit(limit);
+}
+
+// ─── Press analytics queries ─────────────────────────────────────────────────
+
+export async function getStatePressRankings(stateCode: string) {
+  return db
+    .select({
+      bioguideId: members.bioguideId,
+      fullName: members.fullName,
+      party: members.party,
+      chamber: members.chamber,
+      releaseCount: count(pressReleases.id),
+    })
+    .from(members)
+    .leftJoin(
+      pressReleases,
+      eq(members.bioguideId, pressReleases.bioguideId)
+    )
+    .where(
+      and(
+        eq(members.stateCode, stateCode.toUpperCase()),
+        eq(members.inOffice, true)
+      )
+    )
+    .groupBy(
+      members.bioguideId,
+      members.fullName,
+      members.party,
+      members.chamber
+    )
+    .orderBy(desc(count(pressReleases.id)));
+}
+
+export async function getStatePressReleaseTitles(stateCode: string) {
+  const rows = await db
+    .select({ title: pressReleases.title })
+    .from(pressReleases)
+    .innerJoin(members, eq(pressReleases.bioguideId, members.bioguideId))
+    .where(
+      and(
+        eq(members.stateCode, stateCode.toUpperCase()),
+        eq(members.inOffice, true)
+      )
+    );
+  return rows.map((r) => r.title);
+}
+
+export async function getMemberActivityData(bioguideId: string) {
+  const [prs, billData, voteData] = await Promise.all([
+    db
+      .select({
+        title: pressReleases.title,
+        publishedAt: pressReleases.publishedAt,
+        url: pressReleases.url,
+      })
+      .from(pressReleases)
+      .where(eq(pressReleases.bioguideId, bioguideId))
+      .orderBy(desc(pressReleases.publishedAt))
+      .limit(50),
+    db
+      .select({
+        title: bills.title,
+        introducedDate: bills.introducedDate,
+        billType: bills.billType,
+        billNumber: bills.billNumber,
+        role: billSponsorships.role,
+      })
+      .from(billSponsorships)
+      .innerJoin(bills, eq(billSponsorships.billId, bills.billId))
+      .where(eq(billSponsorships.bioguideId, bioguideId))
+      .orderBy(desc(bills.introducedDate))
+      .limit(30),
+    db
+      .select({
+        voteDate: votes.voteDate,
+        description: votes.description,
+        question: votes.question,
+        position: votePositions.position,
+        result: votes.result,
+      })
+      .from(votePositions)
+      .innerJoin(votes, eq(votePositions.voteId, votes.voteId))
+      .where(eq(votePositions.bioguideId, bioguideId))
+      .orderBy(desc(votes.voteDate))
+      .limit(30),
+  ]);
+
+  return { pressReleases: prs, bills: billData, votes: voteData };
 }
 
 // ─── Compare queries ────────────────────────────────────────────────────────
