@@ -6,16 +6,18 @@ import {
   getLatestSync,
   getTotalMemberCount,
   getRecentEvents,
+  getSyncSummary,
 } from "@/lib/queries";
 import { PartyBar } from "@/components/party-bar";
 import { StateMap } from "@/components/state-map";
 
 export default async function Home() {
-  const [statesData, latestSync, totalMembers, recentEvents] = await Promise.all([
+  const [statesData, latestSync, totalMembers, recentEvents, syncSummary] = await Promise.all([
     getAllStatesWithCounts(),
     getLatestSync(),
     getTotalMemberCount(),
     getRecentEvents(8),
+    getSyncSummary(),
   ]);
 
   // Split out territories from states for display
@@ -155,6 +157,84 @@ export default async function Home() {
                   <span className="shrink-0 font-mono text-[10px] text-neutral-300 dark:text-neutral-600">
                     {e.eventDate}
                   </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Data Freshness */}
+      {syncSummary.length > 0 && (
+        <div className="mt-10 border-t border-neutral-100 pt-8 dark:border-neutral-800">
+          <h2 className="mb-4 text-xs font-medium uppercase tracking-wide text-neutral-400">
+            Data sources & freshness
+          </h2>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 md:grid-cols-4">
+            {syncSummary.map((s) => {
+              const sourceLabels: Record<string, string> = {
+                unitedstates: "@unitedstates",
+                congress_gov: "Congress.gov",
+                fec: "FEC",
+                house_senate_xml: "House/Senate XML",
+                rss: "RSS Feeds",
+              };
+              const entityLabels: Record<string, string> = {
+                members: "Members",
+                committees: "Committees",
+                bills: "Bills",
+                campaign_finance: "Finance",
+                votes: "Votes",
+                press_releases: "Press Releases",
+              };
+              const label =
+                entityLabels[s.entity_type] || s.entity_type;
+              const source =
+                sourceLabels[s.source] || s.source;
+              const date = s.completed_at
+                ? new Date(s.completed_at)
+                : null;
+              const now = new Date();
+              const ageHours = date
+                ? Math.floor(
+                    (now.getTime() - date.getTime()) / (1000 * 60 * 60)
+                  )
+                : null;
+              const ageLabel =
+                ageHours !== null
+                  ? ageHours < 1
+                    ? "< 1 hour ago"
+                    : ageHours < 24
+                      ? `${ageHours}h ago`
+                      : `${Math.floor(ageHours / 24)}d ago`
+                  : "—";
+              const fresh = ageHours !== null && ageHours < 48;
+
+              return (
+                <div
+                  key={`${s.source}-${s.entity_type}`}
+                  className="flex items-start gap-2"
+                >
+                  <span
+                    className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${
+                      fresh
+                        ? "bg-emerald-500"
+                        : "bg-amber-400"
+                    }`}
+                  />
+                  <div>
+                    <p className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
+                      {label}
+                    </p>
+                    <p className="font-mono text-[10px] text-neutral-400">
+                      {(s.records_count || 0).toLocaleString()} records
+                      {" / "}
+                      {ageLabel}
+                    </p>
+                    <p className="text-[10px] text-neutral-300 dark:text-neutral-600">
+                      {source}
+                    </p>
+                  </div>
                 </div>
               );
             })}

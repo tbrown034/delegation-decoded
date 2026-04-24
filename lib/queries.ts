@@ -721,6 +721,23 @@ export async function getLatestSync() {
   return latest || null;
 }
 
+export async function getSyncSummary() {
+  // Get the most recent successful sync per source+entity_type
+  const rows = await db.execute(sql`
+    SELECT DISTINCT ON (source, entity_type)
+      source, entity_type, records_count, completed_at
+    FROM sync_log
+    WHERE status = 'success' AND records_count > 0
+    ORDER BY source, entity_type, completed_at DESC
+  `);
+  return rows.rows as {
+    source: string;
+    entity_type: string;
+    records_count: number;
+    completed_at: string;
+  }[];
+}
+
 export async function getTotalMemberCount() {
   const [result] = await db
     .select({ count: count(members.bioguideId) })
