@@ -38,14 +38,22 @@ async function main() {
       .where(eq(members.inOffice, true));
     const memberIds = new Set(currentMembers.map((m) => m.bioguideId));
 
+    // Get existing bill IDs to skip re-fetching details
+    const existingBills = await db
+      .select({ billId: bills.billId })
+      .from(bills)
+      .where(eq(bills.congress, CONGRESS));
+    const existingBillIds = new Set(existingBills.map((b) => b.billId));
+
     console.log(
-      `Fetching bills for ${CONGRESS}th Congress (${memberIds.size} members tracked)...`
+      `Fetching bills for ${CONGRESS}th Congress (${memberIds.size} members tracked, ${existingBillIds.size} already ingested)...`
     );
 
     let offset = 0;
     let totalProcessed = 0;
     let billsIngested = 0;
     let sponsorshipsIngested = 0;
+    let skipped = 0;
     let hasMore = true;
 
     while (hasMore) {
@@ -60,6 +68,13 @@ async function main() {
 
       for (const b of billList) {
         totalProcessed++;
+
+        // Skip bills we already have
+        const candidateId = `${b.type.toLowerCase()}-${b.number}-${CONGRESS}`;
+        if (existingBillIds.has(candidateId)) {
+          skipped++;
+          continue;
+        }
 
         // Fetch detail to get sponsor info
         let detail;
