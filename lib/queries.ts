@@ -409,6 +409,85 @@ export async function getStateBrief(stateCode: string) {
   return brief || null;
 }
 
+// ─── Data coverage queries ───────────────────────────────────────────────────
+
+export type CoverageStatus = "good" | "partial" | "none";
+
+export interface MemberCoverage {
+  bills: CoverageStatus;
+  finance: CoverageStatus;
+  votes: CoverageStatus;
+  pressReleases: CoverageStatus;
+  committees: CoverageStatus;
+}
+
+export async function getMemberCoverage(
+  bioguideId: string
+): Promise<MemberCoverage> {
+  const [[billRow], [financeRow], [voteRow], [pressRow], [committeeRow]] =
+    await Promise.all([
+      db
+        .select({ count: count() })
+        .from(billSponsorships)
+        .where(eq(billSponsorships.bioguideId, bioguideId)),
+      db
+        .select({ count: count() })
+        .from(campaignFinance)
+        .where(eq(campaignFinance.bioguideId, bioguideId)),
+      db
+        .select({ count: count() })
+        .from(votePositions)
+        .where(eq(votePositions.bioguideId, bioguideId)),
+      db
+        .select({ count: count() })
+        .from(pressReleases)
+        .where(eq(pressReleases.bioguideId, bioguideId)),
+      db
+        .select({ count: count() })
+        .from(committeeAssignments)
+        .where(eq(committeeAssignments.bioguideId, bioguideId)),
+    ]);
+
+  return {
+    bills: (billRow?.count || 0) > 0 ? "good" : "none",
+    finance: (financeRow?.count || 0) > 0 ? "good" : "none",
+    votes: (voteRow?.count || 0) > 0 ? "good" : "none",
+    pressReleases:
+      (pressRow?.count || 0) > 0
+        ? "good"
+        : "none", // "none" means no RSS feed found
+    committees: (committeeRow?.count || 0) > 0 ? "good" : "none",
+  };
+}
+
+export async function getStateCoverage(stateCode: string) {
+  const code = stateCode.toUpperCase();
+  const membersList = await db
+    .select({ bioguideId: members.bioguideId })
+    .from(members)
+    .where(and(eq(members.stateCode, code), eq(members.inOffice, true)));
+
+  const ids = membersList.map((m) => m.bioguideId);
+  if (ids.length === 0) return null;
+
+  const pressResult = await db.execute(
+    sql`SELECT count(DISTINCT bioguide_id)::int as c FROM press_releases WHERE bioguide_id = ANY(${ids})`
+  );
+  const financeResult = await db.execute(
+    sql`SELECT count(DISTINCT bioguide_id)::int as c FROM campaign_finance WHERE bioguide_id = ANY(${ids})`
+  );
+
+  return {
+    totalMembers: ids.length,
+    membersWithPressReleases: Number(
+      (pressResult.rows[0] as { c: number })?.c || 0
+    ),
+    membersWithFinance: Number(
+      (financeResult.rows[0] as { c: number })?.c || 0
+    ),
+  };
+}
+
 // ─── Press release queries ───────────────────────────────────────────────────
 
 export async function getMemberPressReleases(bioguideId: string, limit = 10) {

@@ -14,9 +14,11 @@ import {
   getMemberRecentVotes,
   getMemberPressReleases,
   getMemberPressReleaseCount,
+  getMemberCoverage,
 } from "@/lib/queries";
 import { STATE_BY_CODE } from "@/lib/states";
 import { effectiveTotal, fmt } from "@/lib/finance";
+import { MemberCoverageBar } from "@/components/data-coverage";
 
 type Props = {
   params: Promise<{ bioguideId: string }>;
@@ -44,7 +46,7 @@ export default async function MemberPage({ params }: Props) {
   const member = await getMemberByBioguideId(bioguideId);
   if (!member) notFound();
 
-  const [memberTerms, memberCommittees, memberBills, billCounts, finance, contributors, voteSummary, recentVotes, memberPressReleases, pressReleaseCount] =
+  const [memberTerms, memberCommittees, memberBills, billCounts, finance, contributors, voteSummary, recentVotes, memberPressReleases, pressReleaseCount, coverage] =
     await Promise.all([
       getMemberTerms(bioguideId),
       getMemberCommittees(bioguideId),
@@ -56,6 +58,7 @@ export default async function MemberPage({ params }: Props) {
       getMemberRecentVotes(bioguideId, 15),
       getMemberPressReleases(bioguideId, 10),
       getMemberPressReleaseCount(bioguideId),
+      getMemberCoverage(bioguideId),
     ]);
 
   const stateName = STATE_BY_CODE[member.stateCode]?.name || member.stateCode;
@@ -180,6 +183,9 @@ export default async function MemberPage({ params }: Props) {
               </a>
             )}
             {member.phone && <span>{member.phone}</span>}
+          </div>
+          <div className="mt-2">
+            <MemberCoverageBar coverage={coverage} />
           </div>
         </div>
       </div>
@@ -322,16 +328,34 @@ export default async function MemberPage({ params }: Props) {
       )}
 
       {/* Press Releases */}
-      {memberPressReleases.length > 0 && (
-        <section className="mb-10">
-          <h2 className="mb-3 font-serif text-lg font-semibold">
-            Press Releases
-            {pressReleaseCount > 0 && (
-              <span className="ml-2 font-mono text-xs font-normal text-neutral-400">
-                {pressReleaseCount} total
-              </span>
+      <section className="mb-10">
+        <h2 className="mb-3 font-serif text-lg font-semibold">
+          Press Releases
+          {pressReleaseCount > 0 && (
+            <span className="ml-2 font-mono text-xs font-normal text-neutral-400">
+              {pressReleaseCount} via RSS
+            </span>
+          )}
+        </h2>
+        {memberPressReleases.length === 0 ? (
+          <p className="text-xs italic text-neutral-400">
+            No RSS feed found for this office. Press releases may be available
+            on the{" "}
+            {member.websiteUrl ? (
+              <a
+                href={member.websiteUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-neutral-500 underline decoration-neutral-300 underline-offset-2"
+              >
+                member&apos;s official site
+              </a>
+            ) : (
+              "member's official site"
             )}
-          </h2>
+            .
+          </p>
+        ) : (
           <div>
             {memberPressReleases.map((pr) => (
               <div
@@ -358,8 +382,8 @@ export default async function MemberPage({ params }: Props) {
               </div>
             ))}
           </div>
-        </section>
-      )}
+        )}
+      </section>
 
       {/* Campaign Finance */}
       {finance.length > 0 && (

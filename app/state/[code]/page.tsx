@@ -10,9 +10,11 @@ import {
   getStateEvents,
   getStateBrief,
   getStatePressReleases,
+  getStateCoverage,
 } from "@/lib/queries";
 import { MemberCard } from "@/components/member-card";
 import { PartyBar } from "@/components/party-bar";
+import { StateCoverageNote } from "@/components/data-coverage";
 import { effectiveTotal, fmt } from "@/lib/finance";
 
 type Props = {
@@ -34,7 +36,7 @@ export default async function StatePage({ params }: Props) {
   const state = await getStateByCode(code);
   if (!state) notFound();
 
-  const [membersList, committeeCoverage, recentBills, financeData, stateEvents, brief, statePressReleases] =
+  const [membersList, committeeCoverage, recentBills, financeData, stateEvents, brief, statePressReleases, coverageStats] =
     await Promise.all([
       getMembersByState(code),
       getStateCommitteeCoverage(code),
@@ -43,6 +45,7 @@ export default async function StatePage({ params }: Props) {
       getStateEvents(code, 12),
       getStateBrief(code),
       getStatePressReleases(code, 8),
+      getStateCoverage(code),
     ]);
 
   const senators = membersList.filter((m) => m.chamber === "senate");
@@ -409,6 +412,15 @@ export default async function StatePage({ params }: Props) {
                 )}
               </div>
             </section>
+          )}
+
+          {/* Data Coverage */}
+          {coverageStats && (
+            <StateCoverageNote
+              totalMembers={coverageStats.totalMembers}
+              membersWithPressReleases={coverageStats.membersWithPressReleases}
+              membersWithFinance={coverageStats.membersWithFinance}
+            />
           )}
         </div>
       </div>
