@@ -9,6 +9,7 @@ import {
   getStateDelegationFinance,
   getStateEvents,
   getStateBrief,
+  getStatePressReleases,
 } from "@/lib/queries";
 import { MemberCard } from "@/components/member-card";
 import { PartyBar } from "@/components/party-bar";
@@ -33,7 +34,7 @@ export default async function StatePage({ params }: Props) {
   const state = await getStateByCode(code);
   if (!state) notFound();
 
-  const [membersList, committeeCoverage, recentBills, financeData, stateEvents, brief] =
+  const [membersList, committeeCoverage, recentBills, financeData, stateEvents, brief, statePressReleases] =
     await Promise.all([
       getMembersByState(code),
       getStateCommitteeCoverage(code),
@@ -41,6 +42,7 @@ export default async function StatePage({ params }: Props) {
       getStateDelegationFinance(code),
       getStateEvents(code, 12),
       getStateBrief(code),
+      getStatePressReleases(code, 8),
     ]);
 
   const senators = membersList.filter((m) => m.chamber === "senate");
@@ -280,6 +282,46 @@ export default async function StatePage({ params }: Props) {
 
         {/* Sidebar */}
         <div className="space-y-8">
+          {/* Press Releases */}
+          {statePressReleases.length > 0 && (
+            <section>
+              <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-neutral-400">
+                Statements & releases
+              </h2>
+              <div>
+                {statePressReleases.map((pr) => (
+                  <div
+                    key={pr.id}
+                    className="border-b border-neutral-100 py-2 last:border-0 dark:border-neutral-800"
+                  >
+                    <a
+                      href={pr.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-neutral-700 underline decoration-neutral-200 underline-offset-2 hover:decoration-neutral-400 dark:text-neutral-300 dark:decoration-neutral-700"
+                    >
+                      {pr.title}
+                    </a>
+                    <p className="mt-0.5 text-[10px] text-neutral-400">
+                      <span
+                        className={`mr-0.5 inline-block h-1 w-1 rounded-full ${partyDot[pr.memberParty] || "bg-neutral-400"}`}
+                      />
+                      {pr.memberName}
+                      {pr.publishedAt && (
+                        <span className="ml-1 font-mono">
+                          {new Date(pr.publishedAt).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                          })}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
           {/* Campaign Finance */}
           {financeList.length > 0 && (
             <section>

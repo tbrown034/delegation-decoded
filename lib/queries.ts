@@ -13,9 +13,10 @@ import {
   votePositions,
   events,
   delegationBriefs,
+  pressReleases,
   syncLog,
 } from "./schema";
-import { eq, and, desc, sql, count, sum } from "drizzle-orm";
+import { eq, and, desc, sql, count } from "drizzle-orm";
 
 // ─── State queries ───────────────────────────────────────────────────────────
 
@@ -258,13 +259,19 @@ export async function getMemberTopContributors(
   bioguideId: string,
   cycle?: number
 ) {
-  let query = db
+  return db
     .select()
     .from(topContributors)
-    .where(eq(topContributors.bioguideId, bioguideId))
+    .where(
+      cycle
+        ? and(
+            eq(topContributors.bioguideId, bioguideId),
+            eq(topContributors.electionCycle, cycle)
+          )
+        : eq(topContributors.bioguideId, bioguideId)
+    )
     .orderBy(desc(topContributors.totalAmount))
     .limit(10);
-  return query;
 }
 
 export async function getStateDelegationFinance(stateCode: string) {
@@ -400,6 +407,48 @@ export async function getStateBrief(stateCode: string) {
     .orderBy(desc(delegationBriefs.generatedAt))
     .limit(1);
   return brief || null;
+}
+
+// ─── Press release queries ───────────────────────────────────────────────────
+
+export async function getMemberPressReleases(bioguideId: string, limit = 10) {
+  return db
+    .select()
+    .from(pressReleases)
+    .where(eq(pressReleases.bioguideId, bioguideId))
+    .orderBy(desc(pressReleases.publishedAt))
+    .limit(limit);
+}
+
+export async function getMemberPressReleaseCount(bioguideId: string) {
+  const [result] = await db
+    .select({ count: count() })
+    .from(pressReleases)
+    .where(eq(pressReleases.bioguideId, bioguideId));
+  return result?.count || 0;
+}
+
+export async function getStatePressReleases(stateCode: string, limit = 10) {
+  return db
+    .select({
+      id: pressReleases.id,
+      title: pressReleases.title,
+      url: pressReleases.url,
+      publishedAt: pressReleases.publishedAt,
+      bioguideId: pressReleases.bioguideId,
+      memberName: members.fullName,
+      memberParty: members.party,
+    })
+    .from(pressReleases)
+    .innerJoin(members, eq(pressReleases.bioguideId, members.bioguideId))
+    .where(
+      and(
+        eq(members.stateCode, stateCode.toUpperCase()),
+        eq(members.inOffice, true)
+      )
+    )
+    .orderBy(desc(pressReleases.publishedAt))
+    .limit(limit);
 }
 
 // ─── Compare queries ────────────────────────────────────────────────────────

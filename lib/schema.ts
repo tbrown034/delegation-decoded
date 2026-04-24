@@ -302,6 +302,40 @@ export const topContributors = pgTable(
 );
 
 // =============================================================================
+// Press Releases
+// =============================================================================
+
+export const pressReleases = pgTable(
+  "press_releases",
+  {
+    id: serial("id").primaryKey(),
+    bioguideId: varchar("bioguide_id", { length: 10 })
+      .notNull()
+      .references(() => members.bioguideId, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    url: text("url").notNull(),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    description: text("description"),
+    source: varchar("source", { length: 20 }).default("rss"), // "rss" or "scrape"
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique("uq_press_release_url").on(table.url),
+    index("idx_press_member").on(table.bioguideId),
+    index("idx_press_date").on(table.publishedAt),
+  ]
+);
+
+export const pressReleasesRelations = relations(pressReleases, ({ one }) => ({
+  member: one(members, {
+    fields: [pressReleases.bioguideId],
+    references: [members.bioguideId],
+  }),
+}));
+
+// =============================================================================
 // Votes
 // =============================================================================
 

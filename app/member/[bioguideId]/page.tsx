@@ -12,6 +12,8 @@ import {
   getMemberTopContributors,
   getMemberVoteSummary,
   getMemberRecentVotes,
+  getMemberPressReleases,
+  getMemberPressReleaseCount,
 } from "@/lib/queries";
 import { STATE_BY_CODE } from "@/lib/states";
 import { effectiveTotal, fmt } from "@/lib/finance";
@@ -42,7 +44,7 @@ export default async function MemberPage({ params }: Props) {
   const member = await getMemberByBioguideId(bioguideId);
   if (!member) notFound();
 
-  const [memberTerms, memberCommittees, memberBills, billCounts, finance, contributors, voteSummary, recentVotes] =
+  const [memberTerms, memberCommittees, memberBills, billCounts, finance, contributors, voteSummary, recentVotes, memberPressReleases, pressReleaseCount] =
     await Promise.all([
       getMemberTerms(bioguideId),
       getMemberCommittees(bioguideId),
@@ -52,6 +54,8 @@ export default async function MemberPage({ params }: Props) {
       getMemberTopContributors(bioguideId),
       getMemberVoteSummary(bioguideId),
       getMemberRecentVotes(bioguideId, 15),
+      getMemberPressReleases(bioguideId, 10),
+      getMemberPressReleaseCount(bioguideId),
     ]);
 
   const stateName = STATE_BY_CODE[member.stateCode]?.name || member.stateCode;
@@ -311,6 +315,46 @@ export default async function MemberPage({ params }: Props) {
                 <span className="shrink-0 font-mono text-[11px] text-neutral-300 dark:text-neutral-600">
                   {v.voteDate}
                 </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Press Releases */}
+      {memberPressReleases.length > 0 && (
+        <section className="mb-10">
+          <h2 className="mb-3 font-serif text-lg font-semibold">
+            Press Releases
+            {pressReleaseCount > 0 && (
+              <span className="ml-2 font-mono text-xs font-normal text-neutral-400">
+                {pressReleaseCount} total
+              </span>
+            )}
+          </h2>
+          <div>
+            {memberPressReleases.map((pr) => (
+              <div
+                key={pr.id}
+                className="border-b border-neutral-100 py-2 last:border-0 dark:border-neutral-800"
+              >
+                <a
+                  href={pr.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-neutral-900 underline decoration-neutral-300 underline-offset-2 hover:decoration-neutral-500 dark:text-neutral-100 dark:decoration-neutral-600"
+                >
+                  {pr.title}
+                </a>
+                {pr.publishedAt && (
+                  <span className="ml-2 font-mono text-[11px] text-neutral-300 dark:text-neutral-600">
+                    {new Date(pr.publishedAt).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    })}
+                  </span>
+                )}
               </div>
             ))}
           </div>
