@@ -81,13 +81,19 @@ export interface CongressCosponsor {
 
 /**
  * Fetch a page of bills from the 119th Congress.
+ * If fromDateTime is provided, only returns bills updated after that date.
+ * Sorted by updateDate descending so newest changes come first.
  */
 export async function fetchBillsPage(
   congress: number,
   offset: number,
-  limit: number = 250
+  limit: number = 250,
+  fromDateTime?: string
 ): Promise<{ bills: CongressBill[]; nextUrl?: string; total: number }> {
-  const url = `${BASE_URL}/bill/${congress}?offset=${offset}&limit=${limit}&format=json&api_key=${getApiKey()}`;
+  let url = `${BASE_URL}/bill/${congress}?offset=${offset}&limit=${limit}&sort=updateDate+desc&format=json&api_key=${getApiKey()}`;
+  if (fromDateTime) {
+    url += `&fromDateTime=${fromDateTime}`;
+  }
   const res = await fetchWithRetry(url);
   const data = await res.json();
   return {

@@ -45,11 +45,15 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           FEC_API_KEY: ${{ secrets.FEC_API_KEY }}
 
+      - name: Ingest press releases
+        run: npx tsx scripts/ingest/press-releases.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
       - name: Generate delegation briefs
         run: npx tsx scripts/ingest/generate-briefs.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: Generate events feed
         run: npx tsx scripts/ingest/generate-events.ts

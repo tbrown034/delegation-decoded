@@ -4,7 +4,7 @@ config({ path: ".env.local" });
 import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
 import { bills, billSponsorships, syncLog, members } from "../../lib/schema";
-import { sql, eq } from "drizzle-orm";
+import { sql, eq, desc } from "drizzle-orm";
 import {
   fetchBillsPage,
   fetchBillDetail,
@@ -12,10 +12,11 @@ import {
 } from "../lib/congress-api";
 
 const CONGRESS = 119;
-// How many bills to ingest per run. Congress.gov has 15k+ bills.
-// For MVP, we fetch bill details only for those sponsored by current members.
 const BATCH_SIZE = 250;
-const DETAIL_DELAY_MS = 200; // ~5 req/sec to stay under rate limits
+const DETAIL_DELAY_MS = 200;
+// Max new bills to ingest per run. Keeps GitHub Actions under 45 min.
+// Existing bills that just need updates are fast (skip detail fetch).
+const MAX_NEW_BILLS = 2000;
 
 async function main() {
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
@@ -31,7 +32,7 @@ async function main() {
     .returning();
 
   try {
-    // Get all current member bioguide IDs so we can match sponsors
+    // Get all current member bioguide IDs
     const currentMembers = await db
       .select({ bioguideId: members.bioguideId })
       .from(members)
@@ -45,38 +46,76 @@ async function main() {
       .where(eq(bills.congress, CONGRESS));
     const existingBillIds = new Set(existingBills.map((b) => b.billId));
 
+    // Find the last successful bills sync to determine the fromDateTime
+    const [lastSync] = await db
+      .select({ completedAt: syncLog.completedAt })
+      .from(syncLog)
+      .where(
+        sql`${syncLog.source} = 'congress_gov' AND ${syncLog.entityType} = 'bills' AND ${syncLog.status} = 'success' AND ${syncLog.recordsCount} > 0`
+      )
+      .orderBy(desc(syncLog.completedAt))
+      .limit(1);
+
+    // If we have a previous sync, only fetch bills updated since then.
+    // Subtract 1 day as buffer for timezone/processing delays.
+    let fromDateTime: string | undefined;
+    if (lastSync?.completedAt) {
+      const since = new Date(lastSync.completedAt);
+      since.setDate(since.getDate() - 1);
+      fromDateTime = since.toISOString().replace(/\.\d{3}Z/, "Z");
+      console.log(`Incremental mode: fetching bills updated since ${fromDateTime}`);
+    } else {
+      console.log("Full scan mode: no previous successful sync found");
+    }
+
     console.log(
-      `Fetching bills for ${CONGRESS}th Congress (${memberIds.size} members tracked, ${existingBillIds.size} already ingested)...`
+      `${memberIds.size} members tracked, ${existingBillIds.size} bills already in DB`
     );
 
     let offset = 0;
     let totalProcessed = 0;
     let billsIngested = 0;
+    let billsUpdated = 0;
     let sponsorshipsIngested = 0;
-    let skipped = 0;
     let hasMore = true;
 
     while (hasMore) {
       const { bills: billList, total } = await fetchBillsPage(
         CONGRESS,
         offset,
-        BATCH_SIZE
+        BATCH_SIZE,
+        fromDateTime
       );
 
       if (billList.length === 0) break;
-      if (offset === 0) console.log(`  Total bills in ${CONGRESS}th Congress: ${total}`);
+      if (offset === 0)
+        console.log(
+          `  ${total} bills ${fromDateTime ? "updated since last sync" : "total in " + CONGRESS + "th Congress"}`
+        );
 
       for (const b of billList) {
         totalProcessed++;
 
-        // Skip bills we already have
         const candidateId = `${b.type.toLowerCase()}-${b.number}-${CONGRESS}`;
-        if (existingBillIds.has(candidateId)) {
-          skipped++;
+        const isExisting = existingBillIds.has(candidateId);
+
+        // For existing bills, update latest action without re-fetching detail
+        if (isExisting && b.latestAction) {
+          await db
+            .update(bills)
+            .set({
+              latestActionDate: b.latestAction.actionDate || null,
+              latestActionText: b.latestAction.text || null,
+              updatedAt: new Date(),
+            })
+            .where(sql`${bills.billId} = ${candidateId}`);
+          billsUpdated++;
           continue;
         }
 
-        // Fetch detail to get sponsor info
+        // For new bills, fetch full detail
+        if (isExisting) continue; // already have it, no update needed
+
         let detail;
         try {
           detail = await fetchBillDetail(CONGRESS, b.type, b.number);
@@ -89,15 +128,13 @@ async function main() {
         const billData = detail.bill;
         const sponsors = billData.sponsors || [];
 
-        // Only ingest bills that have at least one sponsor in our member database
         const relevantSponsors = sponsors.filter((s) =>
           memberIds.has(s.bioguideId)
         );
         if (relevantSponsors.length === 0) continue;
 
-        const billId = `${b.type.toLowerCase()}-${b.number}-${CONGRESS}`;
+        const billId = candidateId;
 
-        // Upsert bill
         await db
           .insert(bills)
           .values({
@@ -125,8 +162,9 @@ async function main() {
             },
           });
         billsIngested++;
+        existingBillIds.add(billId);
 
-        // Upsert sponsor relationships
+        // Upsert sponsors
         for (const s of relevantSponsors) {
           await db
             .insert(billSponsorships)
@@ -140,7 +178,7 @@ async function main() {
           sponsorshipsIngested++;
         }
 
-        // Fetch and upsert cosponsors (only if count > 0)
+        // Fetch cosponsors
         if (billData.cosponsors && billData.cosponsors.count > 0) {
           try {
             const cosponsors = await fetchCosponsors(
@@ -164,25 +202,25 @@ async function main() {
               sponsorshipsIngested++;
             }
           } catch {
-            // Non-fatal — skip cosponsors for this bill
+            // Non-fatal
           }
         }
 
-        if (billsIngested % 25 === 0) {
+        if (billsIngested % 25 === 0 && billsIngested > 0) {
           console.log(
-            `  ${billsIngested} bills ingested (scanned ${totalProcessed}/${total})...`
+            `  ${billsIngested} new bills (${billsUpdated} updated, scanned ${totalProcessed})`
           );
+        }
+
+        if (billsIngested >= MAX_NEW_BILLS) {
+          console.log(`  Reached new bill limit of ${MAX_NEW_BILLS}. Stopping.`);
+          hasMore = false;
+          break;
         }
       }
 
       offset += BATCH_SIZE;
-      hasMore = billList.length === BATCH_SIZE;
-
-      // Safety valve: for first run, cap at a reasonable number
-      if (totalProcessed >= 3000) {
-        console.log(`  Reached scan limit of ${totalProcessed}. Stopping.`);
-        break;
-      }
+      hasMore = hasMore && billList.length === BATCH_SIZE;
     }
 
     await db
@@ -190,12 +228,12 @@ async function main() {
       .set({
         status: "success",
         completedAt: new Date(),
-        recordsCount: billsIngested,
+        recordsCount: billsIngested + billsUpdated,
       })
       .where(sql`id = ${syncEntry.id}`);
 
     console.log(
-      `Done. ${billsIngested} bills, ${sponsorshipsIngested} sponsorships (scanned ${totalProcessed}).`
+      `Done. ${billsIngested} new bills, ${billsUpdated} updated, ${sponsorshipsIngested} sponsorships (scanned ${totalProcessed}).`
     );
   } catch (err) {
     await db
