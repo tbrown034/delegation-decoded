@@ -6,16 +6,11 @@ import { drizzle } from "drizzle-orm/neon-http";
 import {
   members,
   campaignFinance,
-  topContributors,
   syncLog,
 } from "../../lib/schema";
 import { sql, eq, and, isNotNull } from "drizzle-orm";
-import {
-  fetchCandidateFinancials,
-  fetchTopContributors,
-} from "../lib/fec-api";
+import { fetchCandidateFinancials } from "../lib/fec-api";
 
-const CURRENT_CYCLE = 2026;
 // FEC allows 1,000 req/hr. We make 1-2 requests per member.
 // With 537 members, we need to be careful. 600ms delay = ~6000 req/hr theoretical
 // but we only do 1 request at a time, so effective rate is ~100/min = safe.
@@ -79,7 +74,6 @@ async function main() {
     }
 
     let financeCount = 0;
-    let contributorCount = 0;
     let errors = 0;
     let rateLimitHits = 0;
 

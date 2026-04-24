@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 type Mode = "delegation" | "members" | "states";
 
@@ -37,7 +37,6 @@ export function ComparePicker({
   allMembers,
 }: ComparePickerProps) {
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   function navigate(params: Record<string, string>) {
     const sp = new URLSearchParams();

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { PartyBar } from "./party-bar";
-import { effectiveTotal, fmt } from "@/lib/finance";
+import { fmt } from "@/lib/finance";
 
 interface MemberData {
   bioguideId: string;

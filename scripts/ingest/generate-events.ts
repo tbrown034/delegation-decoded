@@ -10,9 +10,8 @@ import {
   billSponsorships,
   votes,
   votePositions,
-  syncLog,
 } from "../../lib/schema";
-import { sql, eq, and, desc, isNotNull } from "drizzle-orm";
+import { eq, and, desc, isNotNull } from "drizzle-orm";
 
 async function main() {
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL required");

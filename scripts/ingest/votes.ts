@@ -17,11 +17,6 @@ function extractTag(xml: string, tag: string): string {
   return match?.[1]?.trim() || "";
 }
 
-function extractAttr(element: string, attr: string): string {
-  const match = element.match(new RegExp(`${attr}="([^"]*)"`));
-  return match?.[1] || "";
-}
-
 // ─── House votes ─────────────────────────────────────────────────────────────
 
 async function ingestHouseVotes(
@@ -169,7 +164,7 @@ async function ingestHouseVotes(
       }
 
       await new Promise((r) => setTimeout(r, DELAY_MS));
-    } catch (err) {
+    } catch {
       // Non-fatal — skip this vote
     }
   }

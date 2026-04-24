@@ -6,11 +6,8 @@ import { drizzle } from "drizzle-orm/neon-http";
 import {
   delegationBriefs,
   members,
-  states,
-  bills,
   billSponsorships,
   campaignFinance,
-  votes,
   votePositions,
   committeeAssignments,
   committees,
@@ -82,6 +79,7 @@ async function generateBrief(
   // Finance totals
   const financeData = await db
     .select({
+      bioguideId: campaignFinance.bioguideId,
       totalReceipts: campaignFinance.totalReceipts,
       totalPac: campaignFinance.totalPac,
       smallIndividual: campaignFinance.smallIndividual,
@@ -94,19 +92,17 @@ async function generateBrief(
   // Get most recent cycle per member
   const latestCycleFinance = new Map<string, (typeof financeData)[0]>();
   for (const f of financeData) {
-    // Just sum most recent entries
+    if (!latestCycleFinance.has(f.bioguideId)) {
+      latestCycleFinance.set(f.bioguideId, f);
+    }
   }
   let totalRaised = 0;
   let totalPac = 0;
   let totalSmall = 0;
-  const seenCycles = new Set<string>();
-  for (const f of financeData) {
-    const key = `${f.electionCycle}`;
-    if (!seenCycles.has(key)) {
-      totalRaised += f.totalReceipts || 0;
-      totalPac += f.totalPac || 0;
-      totalSmall += f.smallIndividual || 0;
-    }
+  for (const f of latestCycleFinance.values()) {
+    totalRaised += f.totalReceipts || 0;
+    totalPac += f.totalPac || 0;
+    totalSmall += f.smallIndividual || 0;
   }
 
   // Vote participation
@@ -174,8 +170,10 @@ async function generateBrief(
   if (totalRaised > 0) {
     const pacPct =
       totalRaised > 0 ? ((totalPac / totalRaised) * 100).toFixed(0) : "0";
+    const smallPct =
+      totalRaised > 0 ? ((totalSmall / totalRaised) * 100).toFixed(0) : "0";
     lines.push(
-      `Across the delegation, members have reported ${fmt(totalRaised)} in total receipts, with ${pacPct}% from PACs.`
+      `Across the delegation, members have reported ${fmt(totalRaised)} in total receipts, with ${pacPct}% from PACs and ${smallPct}% from small-dollar individual contributions.`
     );
   }
 

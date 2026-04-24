@@ -6,11 +6,6 @@ function getApiKey(): string {
   return key;
 }
 
-interface CongressResponse<T> {
-  [key: string]: T | { next?: string; count?: number };
-  pagination: { next?: string; count?: number };
-}
-
 async function fetchWithRetry(url: string, retries = 3): Promise<Response> {
   for (let i = 0; i < retries; i++) {
     const res = await fetch(url);
