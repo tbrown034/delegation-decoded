@@ -24,14 +24,12 @@ function midAmount(t: TimelineTrade): number {
   return t.amountMin ?? t.amountMax ?? 1000;
 }
 
-const PARTY_COLOR: Record<string, string> = {
-  Democrat: "#2563eb",
-  Republican: "#dc2626",
-  Independent: "#9333ea",
-};
+const BUY_COLOR = "#16a34a";
+const SELL_COLOR = "#dc2626";
 
-export function TradeTimeline({ trades, height = 200, party }: Props) {
-  const color = (party && PARTY_COLOR[party]) || "#525252";
+const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+export function TradeTimeline({ trades, height = 220 }: Props) {
   const [hoverId, setHoverId] = useState<number | null>(null);
 
   const dated = trades.filter((t): t is TimelineTrade & { txDate: string } =>
@@ -45,11 +43,11 @@ export function TradeTimeline({ trades, height = 200, party }: Props) {
     const maxT = Math.max(...times);
     const range = Math.max(maxT - minT, 86_400_000);
 
-    const padX = 32;
+    const padX = 40;
     const padTop = 28;
-    const padBottom = 36;
+    const padBottom = 44;
     const width = 720;
-    const tradesY = (height - padBottom + padTop) / 2 + 20;
+    const tradesY = (height - padBottom + padTop) / 2 + 16;
 
     const xOf = (iso: string) => {
       const t = new Date(iso).getTime();
@@ -62,7 +60,7 @@ export function TradeTimeline({ trades, height = 200, party }: Props) {
     const rOf = (a: number) => {
       const lr = Math.log(Math.max(a, 1)) - Math.log(minA);
       const lt = Math.log(Math.max(maxA, 2)) - Math.log(minA);
-      return 4 + (lt > 0 ? (lr / lt) * 10 : 0);
+      return 5 + (lt > 0 ? (lr / lt) * 11 : 0);
     };
 
     return { width, padX, padTop, padBottom, tradesY, xOf, rOf, minT, maxT };
@@ -76,15 +74,40 @@ export function TradeTimeline({ trades, height = 200, party }: Props) {
     );
   }
 
-  const yearTicks: { x: number; year: number }[] = [];
-  const startYear = new Date(layout.minT).getUTCFullYear();
-  const endYear = new Date(layout.maxT).getUTCFullYear();
-  for (let y = startYear; y <= endYear; y++) {
-    const x = layout.xOf(`${y}-01-01`);
-    if (x >= layout.padX && x <= layout.width - layout.padX) {
-      yearTicks.push({ x, year: y });
+  const monthTicks: { x: number; label: string; isYearStart: boolean }[] = [];
+  const start = new Date(layout.minT);
+  const end = new Date(layout.maxT);
+  const totalMonths =
+    (end.getUTCFullYear() - start.getUTCFullYear()) * 12 +
+    (end.getUTCMonth() - start.getUTCMonth());
+  const stride = totalMonths > 18 ? 3 : totalMonths > 6 ? 2 : 1;
+
+  let cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+  while (cursor.getTime() <= layout.maxT) {
+    const iso = cursor.toISOString().slice(0, 10);
+    const x = layout.xOf(iso);
+    if (x >= layout.padX - 10 && x <= layout.width - layout.padX + 10) {
+      const m = cursor.getUTCMonth();
+      const isYearStart = m === 0;
+      const label = isYearStart
+        ? `Jan ${cursor.getUTCFullYear()}`
+        : MONTH_LABELS[m];
+      monthTicks.push({ x, label, isYearStart });
     }
+    cursor = new Date(
+      Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + stride, 1)
+    );
   }
+
+  const todayMs = Date.now();
+  const todayIso = new Date(todayMs).toISOString().slice(0, 10);
+  const todayX =
+    todayMs >= layout.minT && todayMs <= layout.maxT
+      ? layout.xOf(todayIso)
+      : null;
+
+  const buys = dated.filter((t) => t.txType === "P");
+  const sells = dated.filter((t) => t.txType !== "P");
 
   return (
     <div className="relative">
@@ -94,28 +117,59 @@ export function TradeTimeline({ trades, height = 200, party }: Props) {
         role="img"
         aria-label="Trade timeline"
       >
-        {yearTicks.map((t) => (
-          <g key={t.year}>
+        <rect
+          x={layout.padX}
+          y={layout.tradesY - 36}
+          width={layout.width - layout.padX * 2}
+          height={72}
+          fill="#fafafa"
+          rx={4}
+        />
+        {monthTicks.map((t) => (
+          <g key={`tick-${t.x}`}>
             <line
               x1={t.x}
               x2={t.x}
-              y1={layout.padTop}
-              y2={layout.tradesY + 30}
-              stroke="#e5e5e5"
-              strokeDasharray="2 3"
+              y1={layout.tradesY - 36}
+              y2={layout.tradesY + 36}
+              stroke={t.isYearStart ? "#d4d4d4" : "#ececec"}
+              strokeDasharray={t.isYearStart ? undefined : "2 3"}
             />
             <text
               x={t.x}
-              y={height - 4}
+              y={height - 8}
               fontSize="10"
               fontFamily="ui-monospace, SFMono-Regular, monospace"
               textAnchor="middle"
-              className="fill-neutral-400"
+              fill={t.isYearStart ? "#525252" : "#a3a3a3"}
             >
-              {t.year}
+              {t.label}
             </text>
           </g>
         ))}
+
+        {todayX !== null && (
+          <g>
+            <line
+              x1={todayX}
+              x2={todayX}
+              y1={layout.tradesY - 36}
+              y2={layout.tradesY + 36}
+              stroke="#a3a3a3"
+              strokeDasharray="3 2"
+            />
+            <text
+              x={todayX}
+              y={layout.tradesY - 40}
+              fontSize="9"
+              fontFamily="ui-monospace, SFMono-Regular, monospace"
+              textAnchor="middle"
+              fill="#737373"
+            >
+              today
+            </text>
+          </g>
+        )}
 
         <line
           x1={layout.padX}
@@ -129,6 +183,8 @@ export function TradeTimeline({ trades, height = 200, party }: Props) {
           const x = layout.xOf(tx.txDate);
           const r = layout.rOf(midAmount(tx));
           const isBuy = tx.txType === "P";
+          const fill = isBuy ? BUY_COLOR : SELL_COLOR;
+          const isHover = hoverId === tx.id;
           return (
             <g
               key={`tx-${tx.id}`}
@@ -136,26 +192,23 @@ export function TradeTimeline({ trades, height = 200, party }: Props) {
               onMouseLeave={() => setHoverId(null)}
               style={{ cursor: "pointer" }}
             >
-              {isBuy ? (
-                <polygon
-                  points={`${x},${layout.tradesY - r} ${x - r},${layout.tradesY + r * 0.6} ${x + r},${layout.tradesY + r * 0.6}`}
-                  fill="white"
-                  stroke={color}
-                  strokeWidth={1.4}
-                />
-              ) : (
-                <polygon
-                  points={`${x},${layout.tradesY + r} ${x - r},${layout.tradesY - r * 0.6} ${x + r},${layout.tradesY - r * 0.6}`}
-                  fill={color}
-                  fillOpacity={0.8}
-                />
-              )}
+              <circle
+                cx={x}
+                cy={layout.tradesY}
+                r={r}
+                fill={fill}
+                fillOpacity={isHover ? 0.95 : 0.78}
+                stroke={isHover ? "#171717" : "transparent"}
+                strokeWidth={isHover ? 1 : 0}
+              />
               {tx.filedLate && (
                 <circle
-                  cx={x + r * 0.7}
-                  cy={layout.tradesY - r * 0.7}
-                  r={2}
-                  fill="#d97706"
+                  cx={x + r * 0.75}
+                  cy={layout.tradesY - r * 0.75}
+                  r={2.5}
+                  fill="#f59e0b"
+                  stroke="white"
+                  strokeWidth={0.6}
                 />
               )}
             </g>
@@ -165,21 +218,18 @@ export function TradeTimeline({ trades, height = 200, party }: Props) {
 
       <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-[11px] text-neutral-600 dark:text-neutral-400">
         <LegendItem>
-          <svg width="14" height="10">
-            <polygon
-              points="7,1 1,9 13,9"
-              fill="white"
-              stroke={color}
-              strokeWidth={1.4}
-            />
-          </svg>
-          Purchase
+          <span
+            className="block h-2.5 w-2.5 rounded-full"
+            style={{ backgroundColor: BUY_COLOR, opacity: 0.85 }}
+          />
+          Purchase ({buys.length})
         </LegendItem>
         <LegendItem>
-          <svg width="14" height="10">
-            <polygon points="7,9 1,1 13,1" fill={color} fillOpacity={0.8} />
-          </svg>
-          Sale
+          <span
+            className="block h-2.5 w-2.5 rounded-full"
+            style={{ backgroundColor: SELL_COLOR, opacity: 0.85 }}
+          />
+          Sale ({sells.length})
         </LegendItem>
         <LegendItem>
           <span className="block h-2 w-2 rounded-full bg-amber-500" />

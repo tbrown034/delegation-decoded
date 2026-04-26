@@ -9,7 +9,6 @@ interface Props {
   width?: number;
   height?: number;
   domain?: [string, string];
-  party?: string;
 }
 
 function midAmount(t: {
@@ -20,32 +19,26 @@ function midAmount(t: {
   return t.amountMin ?? t.amountMax ?? 1000;
 }
 
-const PARTY_COLOR: Record<string, string> = {
-  Democrat: "#2563eb",
-  Republican: "#dc2626",
-  Independent: "#9333ea",
-};
+const BUY_COLOR = "#16a34a";
+const SELL_COLOR = "#dc2626";
 
 export function TradeSparkline({
   trades,
-  width = 220,
-  height = 36,
+  width = 320,
+  height = 44,
   domain,
-  party,
 }: Props) {
   const dated = trades.filter((t): t is typeof t & { txDate: string } =>
     Boolean(t.txDate)
   );
   if (dated.length === 0) return <svg width={width} height={height} />;
 
-  const color = (party && PARTY_COLOR[party]) || "#525252";
-
   const times = dated.map((t) => new Date(t.txDate).getTime());
   const minT = domain ? new Date(domain[0]).getTime() : Math.min(...times);
   const maxT = domain ? new Date(domain[1]).getTime() : Math.max(...times);
   const range = Math.max(maxT - minT, 86_400_000);
 
-  const padX = 2;
+  const padX = 4;
   const y = height / 2;
 
   const xOf = (iso: string) => {
@@ -59,34 +52,37 @@ export function TradeSparkline({
   const rOf = (a: number) => {
     const lr = Math.log(Math.max(a, 1)) - Math.log(minA);
     const lt = Math.log(maxA) - Math.log(minA);
-    return 2 + (lt > 0 ? (lr / lt) * 4 : 0);
+    return 3.5 + (lt > 0 ? (lr / lt) * 5 : 0);
   };
 
   return (
-    <svg width={width} height={height} className="block">
-      <line x1={padX} x2={width - padX} y1={y} y2={y} stroke="#e5e5e5" />
+    <svg
+      width="100%"
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="none"
+      className="block"
+    >
+      <line
+        x1={padX}
+        x2={width - padX}
+        y1={y}
+        y2={y}
+        stroke="#e5e5e5"
+        strokeWidth={1}
+      />
       {dated.map((tx) => {
         const x = xOf(tx.txDate);
         const r = rOf(midAmount(tx));
         const isBuy = tx.txType === "P";
-        return isBuy ? (
+        return (
           <circle
             key={tx.id}
             cx={x}
             cy={y}
             r={r}
-            fill="white"
-            stroke={color}
-            strokeWidth={1.2}
-          />
-        ) : (
-          <circle
-            key={tx.id}
-            cx={x}
-            cy={y}
-            r={r}
-            fill={color}
-            fillOpacity={0.75}
+            fill={isBuy ? BUY_COLOR : SELL_COLOR}
+            fillOpacity={0.8}
           />
         );
       })}

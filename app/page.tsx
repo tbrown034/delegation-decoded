@@ -8,16 +8,18 @@ import {
   getRecentEvents,
   getSyncSummary,
 } from "@/lib/queries";
+import { getTradesHomeSummary } from "@/lib/disclosure-queries";
 import { PartyBar } from "@/components/party-bar";
 import { StateMap } from "@/components/state-map";
 
 export default async function Home() {
-  const [statesData, latestSync, totalMembers, recentEvents, syncSummary] = await Promise.all([
+  const [statesData, latestSync, totalMembers, recentEvents, syncSummary, trades] = await Promise.all([
     getAllStatesWithCounts(),
     getLatestSync(),
     getTotalMemberCount(),
     getRecentEvents(8),
     getSyncSummary(),
+    getTradesHomeSummary(),
   ]);
 
   // Split out territories from states for display
@@ -118,6 +120,56 @@ export default async function Home() {
           </Link>
         ))}
       </div>
+
+      {/* Stock trades */}
+      {trades.totalTrades > 0 && (
+        <div className="mt-10 border-t border-neutral-100 pt-8 dark:border-neutral-800">
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+              Stock trades
+            </h2>
+            <Link
+              href="/trades"
+              className="text-xs text-neutral-500 no-underline hover:text-neutral-900 dark:hover:text-neutral-100"
+            >
+              See all →
+            </Link>
+          </div>
+          <p className="mt-2 max-w-2xl text-sm text-neutral-600 dark:text-neutral-400">
+            <span className="font-mono font-medium text-neutral-900 dark:text-neutral-100">
+              {trades.totalTrades.toLocaleString()}
+            </span>{" "}
+            disclosed trades from{" "}
+            <span className="font-mono font-medium text-neutral-900 dark:text-neutral-100">
+              {trades.houseMembers + trades.senateMembers}
+            </span>{" "}
+            members ({trades.houseMembers} House, {trades.senateMembers} Senate)
+            across{" "}
+            <span className="font-mono font-medium text-neutral-900 dark:text-neutral-100">
+              {trades.totalFilings}
+            </span>{" "}
+            STOCK Act PTRs. Parsed from House Clerk PDFs and Senate eFD HTML —
+            both chambers covered.
+          </p>
+          <div className="mt-4 grid gap-1 sm:grid-cols-5">
+            {trades.topMembers.map((m) => (
+              <Link
+                key={m.bioguideId}
+                href={`/trades/${m.bioguideId}`}
+                className="flex flex-col rounded px-2 py-1.5 no-underline transition-colors hover:bg-neutral-50 dark:hover:bg-neutral-900"
+              >
+                <span className="truncate text-xs text-neutral-700 dark:text-neutral-300">
+                  {m.fullName}
+                </span>
+                <span className="font-mono text-[10px] text-neutral-400">
+                  {m.stateCode}-{m.chamber === "senate" ? "S" : "H"} ·{" "}
+                  {m.txCount.toLocaleString()} trades
+                </span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Recent Activity */}
       {recentEvents.length > 0 && (

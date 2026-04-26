@@ -15,6 +15,24 @@ export const metadata: Metadata = {
     "Stock trades disclosed by members of Congress under the STOCK Act.",
 };
 
+const BUY_COLOR = "#16a34a";
+const SELL_COLOR = "#dc2626";
+
+const MONTH_LABELS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
 interface MemberRow {
   bioguideId: string;
   fullName: string;
@@ -32,12 +50,24 @@ interface TradeRow {
   amountMax: number | null;
 }
 
+interface MonthBucket {
+  month: string;
+  buys: number;
+  sells: number;
+}
+
 async function loadRows(): Promise<{
   rows: MemberRow[];
   trades: Map<string, TradeRow[]>;
   domain: [string, string] | null;
-  totals: { members: number; trades: number; filings: number };
-  monthlyAll: { month: string; count: number }[];
+  totals: {
+    members: number;
+    trades: number;
+    filings: number;
+    lateFilings: number;
+    latestFiling: string | null;
+  };
+  monthlyAll: MonthBucket[];
   latestByMember: Map<string, string>;
 }> {
   const memberRows = await db
@@ -76,7 +106,7 @@ async function loadRows(): Promise<{
 
   const trades = new Map<string, TradeRow[]>();
   const latestByMember = new Map<string, string>();
-  const monthBuckets = new Map<string, number>();
+  const monthBuckets = new Map<string, { buys: number; sells: number }>();
   let minDate: string | null = null;
   let maxDate: string | null = null;
 
@@ -96,13 +126,20 @@ async function loadRows(): Promise<{
       const prev = latestByMember.get(r.bioguideId);
       if (!prev || r.txDate > prev) latestByMember.set(r.bioguideId, r.txDate);
       const month = r.txDate.slice(0, 7);
-      monthBuckets.set(month, (monthBuckets.get(month) ?? 0) + 1);
+      const bucket = monthBuckets.get(month) ?? { buys: 0, sells: 0 };
+      if (r.txType === "P") bucket.buys += 1;
+      else bucket.sells += 1;
+      monthBuckets.set(month, bucket);
     }
   }
 
   const monthlyAll = [...monthBuckets.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([month, count]) => ({ month, count }));
+    .map(([month, bucket]) => ({
+      month,
+      buys: bucket.buys,
+      sells: bucket.sells,
+    }));
 
   const [totals] = await db
     .select({
@@ -112,8 +149,18 @@ async function loadRows(): Promise<{
     .from(stockTransactions);
 
   const [filingTotals] = await db
-    .select({ count: sql<number>`COUNT(*)::int` })
+    .select({
+      count: sql<number>`COUNT(*)::int`,
+      latest: sql<string | null>`MAX(${disclosureFilings.filedDate})::text`,
+    })
     .from(disclosureFilings);
+
+  const [lateTotals] = await db
+    .select({
+      lateCount: sql<number>`COUNT(*)::int`,
+    })
+    .from(stockTransactions)
+    .where(sql`${stockTransactions.filedLate} = true`);
 
   return {
     rows: memberRows,
@@ -123,6 +170,8 @@ async function loadRows(): Promise<{
       members: totals?.members ?? 0,
       trades: totals?.trades ?? 0,
       filings: filingTotals?.count ?? 0,
+      lateFilings: lateTotals?.lateCount ?? 0,
+      latestFiling: filingTotals?.latest ?? null,
     },
     monthlyAll,
     latestByMember,
@@ -135,17 +184,11 @@ const PARTY_DOT: Record<string, string> = {
   Independent: "bg-purple-500",
 };
 
-const PARTY_TINT: Record<string, string> = {
-  Democrat: "bg-blue-50/60 dark:bg-blue-950/30",
-  Republican: "bg-red-50/60 dark:bg-red-950/30",
-  Independent: "bg-purple-50/60 dark:bg-purple-950/30",
-};
-
-const PARTY_RAIL: Record<string, string> = {
-  Democrat: "border-l-blue-500",
-  Republican: "border-l-red-500",
-  Independent: "border-l-purple-500",
-};
+function fmtFilingDate(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return `${MONTH_LABELS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
+}
 
 export default async function TradesLandingPage() {
   const {
@@ -161,42 +204,52 @@ export default async function TradesLandingPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
-      <header className="mb-8 max-w-3xl">
+      <header className="mb-6 max-w-3xl">
         <p className="font-mono text-xs uppercase tracking-wide text-neutral-500">
           Disclosures · Trades
         </p>
         <h1 className="mt-1 font-serif text-4xl font-semibold leading-tight tracking-tight">
-          Stock trades disclosed by members of Congress.
+          What is Congress buying and selling?
         </h1>
         <p className="mt-3 text-base text-neutral-700 dark:text-neutral-300">
-          Periodic Transaction Reports filed under the STOCK Act, parsed from
-          the House Clerk and Senate eFD portals. Each mark is one disclosed
-          trade, colored by the member&rsquo;s party.
-          {topTrader && (
-            <>
-              {" "}
-              <span className="font-medium text-neutral-900 dark:text-neutral-100">
-                {topTrader.fullName}
-              </span>{" "}
-              leads the list with{" "}
-              <span className="font-mono">{topTrader.txCount}</span>{" "}
-              transactions.
-            </>
-          )}
+          Members of Congress must disclose their stock trades, but filings
+          are scattered across PDFs and hard to search. Each mark below is one
+          trade — green for purchases, red for sales — sized by the disclosed
+          amount range.
+        </p>
+        <p className="mt-2 font-mono text-xs text-neutral-500">
+          Most recent filing:{" "}
+          <span className="text-neutral-800 dark:text-neutral-200">
+            {fmtFilingDate(totals.latestFiling)}
+          </span>{" "}
+          · Data refreshed weekly
         </p>
       </header>
 
-      <section className="mb-8 grid grid-cols-3 gap-3 border-y border-neutral-200 py-5 dark:border-neutral-800">
-        <HeroStat label="Members trading" value={totals.members} />
-        <HeroStat label="Disclosed trades" value={totals.trades} />
-        <HeroStat label="PTR filings" value={totals.filings} />
+      <section className="mb-8 flex flex-wrap items-baseline gap-x-8 gap-y-3 border-y border-neutral-200 py-5 dark:border-neutral-800">
+        <HeroStat label="members trading" value={totals.members.toLocaleString()} dot={BUY_COLOR} />
+        <HeroStat
+          label="disclosed trades"
+          value={totals.trades.toLocaleString()}
+        />
+        <HeroStat
+          label="PTR filings"
+          value={totals.filings.toLocaleString()}
+        />
+        {totals.lateFilings > 0 && (
+          <HeroStat
+            label="late filings"
+            value={totals.lateFilings.toLocaleString()}
+            tone="warn"
+          />
+        )}
       </section>
 
       {monthlyAll.length > 0 && domain && (
-        <section className="mb-6">
+        <section className="mb-2">
           <div className="mb-1 flex items-baseline justify-between">
             <h2 className="font-mono text-[10px] uppercase tracking-wide text-neutral-500">
-              All disclosed trades, by month
+              Disclosed trades, by month
             </h2>
             <Link
               href="/trades/methodology"
@@ -221,29 +274,25 @@ export default async function TradesLandingPage() {
             <span>Member</span>
             <span>Trades</span>
             <span>Latest</span>
-            <span>Swim lane</span>
+            <span>Activity</span>
           </div>
           {domain && <SwimLaneAxis domain={domain} />}
-          <ul>
+          <ul className="divide-y divide-neutral-100 dark:divide-neutral-900">
             {rows.map((r, i) => {
               const memberTrades = trades.get(r.bioguideId) ?? [];
               const latest = latestByMember.get(r.bioguideId);
-              const isTop = i === 0;
-              const tint = isTop ? PARTY_TINT[r.party] || "" : "";
-              const rail = isTop
-                ? `border-l-2 ${PARTY_RAIL[r.party] || "border-l-neutral-400"}`
-                : "border-l-2 border-l-transparent";
+              const zebra = i % 2 === 0 ? "bg-neutral-50/50 dark:bg-neutral-900/40" : "";
               return (
                 <li
                   key={r.bioguideId}
-                  className={`grid grid-cols-[2fr_0.6fr_0.9fr_2.5fr] items-center gap-x-4 border-b border-neutral-100 py-2 pl-2 dark:border-neutral-900 ${tint} ${rail}`}
+                  className={`grid grid-cols-[2fr_0.6fr_0.9fr_2.5fr] items-center gap-x-4 px-2 py-2.5 ${zebra}`}
                 >
                   <Link
                     href={`/trades/${r.bioguideId}`}
                     className="flex items-center gap-2 truncate text-sm hover:underline"
                   >
                     <span
-                      className={`h-1.5 w-1.5 rounded-full ${PARTY_DOT[r.party] || "bg-neutral-400"}`}
+                      className={`h-2 w-2 rounded-full ${PARTY_DOT[r.party] || "bg-neutral-400"}`}
                       aria-hidden
                     />
                     <span className="truncate font-medium">{r.fullName}</span>
@@ -252,8 +301,8 @@ export default async function TradesLandingPage() {
                       {r.chamber === "house" ? "-H" : "-S"}
                     </span>
                   </Link>
-                  <span className="font-mono text-xs text-neutral-700 dark:text-neutral-300">
-                    {r.txCount}
+                  <span className="font-mono text-xs font-semibold text-neutral-800 dark:text-neutral-200">
+                    {r.txCount.toLocaleString()}
                   </span>
                   <span className="font-mono text-[11px] text-neutral-500">
                     {latest ?? "—"}
@@ -261,15 +310,37 @@ export default async function TradesLandingPage() {
                   <TradeSparkline
                     trades={memberTrades}
                     domain={domain ?? undefined}
-                    party={r.party}
                   />
                 </li>
               );
             })}
           </ul>
-          <p className="mt-4 font-mono text-[10px] text-neutral-500">
-            Marks colored by party · size = log of disclosed amount range ·
-            hollow = purchase, filled = sale
+          <p className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-1 font-mono text-[11px] text-neutral-500">
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                className="block h-2.5 w-2.5 rounded-full"
+                style={{ backgroundColor: BUY_COLOR, opacity: 0.85 }}
+              />
+              Purchase
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                className="block h-2.5 w-2.5 rounded-full"
+                style={{ backgroundColor: SELL_COLOR, opacity: 0.85 }}
+              />
+              Sale
+            </span>
+            <span className="text-neutral-400">
+              Mark size = disclosed amount range (log)
+            </span>
+            {topTrader && (
+              <span className="ml-auto text-neutral-400">
+                Sorted by trade volume · top:{" "}
+                <span className="text-neutral-700 dark:text-neutral-300">
+                  {topTrader.fullName} ({topTrader.txCount.toLocaleString()})
+                </span>
+              </span>
+            )}
           </p>
         </section>
       )}
@@ -277,46 +348,117 @@ export default async function TradesLandingPage() {
   );
 }
 
-function HeroStat({ label, value }: { label: string; value: number }) {
+function HeroStat({
+  label,
+  value,
+  dot,
+  tone,
+}: {
+  label: string;
+  value: string;
+  dot?: string;
+  tone?: "warn";
+}) {
+  const valueClass =
+    tone === "warn"
+      ? "text-amber-600 dark:text-amber-400"
+      : "text-neutral-900 dark:text-neutral-100";
   return (
-    <div>
-      <div className="font-serif text-3xl font-semibold tracking-tight">
-        {value.toLocaleString()}
-      </div>
-      <div className="mt-0.5 font-mono text-[10px] uppercase tracking-wide text-neutral-500">
-        {label}
-      </div>
+    <div className="flex items-baseline gap-2">
+      <span className={`font-serif text-3xl font-semibold tracking-tight ${valueClass}`}>
+        {value}
+      </span>
+      <span className="font-mono text-xs text-neutral-500">{label}</span>
+      {dot && (
+        <span
+          className="ml-0.5 inline-block h-1.5 w-1.5 rounded-full"
+          style={{ backgroundColor: dot }}
+          aria-hidden
+        />
+      )}
+      {tone === "warn" && (
+        <span
+          className="ml-0.5 inline-block h-1.5 w-1.5 rounded-full bg-amber-500"
+          aria-hidden
+        />
+      )}
     </div>
   );
 }
 
-function SwimLaneAxis({ domain }: { domain: [string, string] }) {
+function buildMonthTicks(
+  domain: [string, string]
+): { pct: number; label: string; isYearStart: boolean }[] {
   const minT = new Date(domain[0]).getTime();
   const maxT = new Date(domain[1]).getTime();
   const range = Math.max(maxT - minT, 86_400_000);
-  const startYear = new Date(domain[0]).getUTCFullYear();
-  const endYear = new Date(domain[1]).getUTCFullYear();
-  const ticks: { pct: number; year: number }[] = [];
-  for (let y = startYear; y <= endYear; y++) {
-    const t = new Date(`${y}-01-01`).getTime();
-    if (t < minT || t > maxT) continue;
-    ticks.push({ pct: ((t - minT) / range) * 100, year: y });
+  const start = new Date(domain[0]);
+  const totalMonths =
+    (new Date(domain[1]).getUTCFullYear() - start.getUTCFullYear()) * 12 +
+    (new Date(domain[1]).getUTCMonth() - start.getUTCMonth());
+  const stride = totalMonths > 18 ? 3 : totalMonths > 6 ? 2 : 1;
+
+  const ticks: { pct: number; label: string; isYearStart: boolean }[] = [];
+  let cursor = new Date(
+    Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1)
+  );
+  while (cursor.getTime() <= maxT) {
+    const t = cursor.getTime();
+    if (t >= minT) {
+      const m = cursor.getUTCMonth();
+      const isYearStart = m === 0;
+      const label = isYearStart
+        ? `Jan ${cursor.getUTCFullYear()}`
+        : MONTH_LABELS[m];
+      ticks.push({
+        pct: ((t - minT) / range) * 100,
+        label,
+        isYearStart,
+      });
+    }
+    cursor = new Date(
+      Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + stride, 1)
+    );
   }
+  return ticks;
+}
+
+function todayPct(domain: [string, string]): number | null {
+  const minT = new Date(domain[0]).getTime();
+  const maxT = new Date(domain[1]).getTime();
+  const now = Date.now();
+  if (now < minT || now > maxT) return null;
+  return ((now - minT) / Math.max(maxT - minT, 86_400_000)) * 100;
+}
+
+function SwimLaneAxis({ domain }: { domain: [string, string] }) {
+  const ticks = buildMonthTicks(domain);
+  const today = todayPct(domain);
   return (
-    <div className="grid grid-cols-[2fr_0.6fr_0.9fr_2.5fr] items-end gap-x-4 pb-1">
+    <div className="grid grid-cols-[2fr_0.6fr_0.9fr_2.5fr] items-end gap-x-4 pb-1 pt-2">
       <span />
       <span />
       <span />
       <div className="relative h-4">
         {ticks.map((t) => (
           <span
-            key={t.year}
-            className="absolute -translate-x-1/2 font-mono text-[10px] text-neutral-400"
+            key={t.label + t.pct}
+            className={`absolute -translate-x-1/2 font-mono text-[10px] ${
+              t.isYearStart ? "font-semibold text-neutral-700 dark:text-neutral-300" : "text-neutral-400"
+            }`}
             style={{ left: `${t.pct}%` }}
           >
-            {t.year}
+            {t.label}
           </span>
         ))}
+        {today !== null && (
+          <span
+            className="absolute -translate-x-1/2 font-mono text-[9px] text-neutral-500"
+            style={{ left: `${today}%`, top: "-14px" }}
+          >
+            today
+          </span>
+        )}
       </div>
     </div>
   );
@@ -326,52 +468,93 @@ function AggregateHistogram({
   data,
   domain,
 }: {
-  data: { month: string; count: number }[];
+  data: MonthBucket[];
   domain: [string, string];
 }) {
   const width = 1000;
-  const height = 64;
+  const height = 88;
   const padX = 4;
   const padY = 8;
   const minT = new Date(domain[0]).getTime();
   const maxT = new Date(domain[1]).getTime();
   const range = Math.max(maxT - minT, 86_400_000);
-  const maxCount = Math.max(...data.map((d) => d.count), 1);
-  const barW = Math.max(
-    2,
-    (width - padX * 2) / Math.max(1, monthsBetween(domain[0], domain[1]))
-  );
+  const maxTotal = Math.max(...data.map((d) => d.buys + d.sells), 1);
+  const totalMonths = monthsBetween(domain[0], domain[1]);
+  const barW = Math.max(2, (width - padX * 2) / Math.max(1, totalMonths));
+
+  const todayMs = Date.now();
+  const todayX =
+    todayMs >= minT && todayMs <= maxT
+      ? padX + ((todayMs - minT) / range) * (width - padX * 2)
+      : null;
+
+  const ticks = buildMonthTicks(domain);
+
   return (
     <svg
       viewBox={`0 0 ${width} ${height}`}
       className="block w-full"
       preserveAspectRatio="none"
       role="img"
-      aria-label="Trades per month across all members"
+      aria-label="Trades per month, stacked by purchase and sale"
     >
+      {ticks
+        .filter((t) => t.isYearStart)
+        .map((t) => (
+          <line
+            key={`grid-${t.pct}`}
+            x1={padX + (t.pct / 100) * (width - padX * 2)}
+            x2={padX + (t.pct / 100) * (width - padX * 2)}
+            y1={padY}
+            y2={height - padY}
+            stroke="#ececec"
+          />
+        ))}
       <line
         x1={padX}
         x2={width - padX}
         y1={height - padY}
         y2={height - padY}
-        stroke="#e5e5e5"
+        stroke="#d4d4d4"
       />
       {data.map((d) => {
         const t = new Date(`${d.month}-01`).getTime();
         const x = padX + ((t - minT) / range) * (width - padX * 2);
-        const h = ((height - padY * 2) * d.count) / maxCount;
+        const total = d.buys + d.sells;
+        const totalH = ((height - padY * 2) * total) / maxTotal;
+        const buyH = total > 0 ? (totalH * d.buys) / total : 0;
+        const sellH = totalH - buyH;
         return (
-          <rect
-            key={d.month}
-            x={x - barW / 2}
-            y={height - padY - h}
-            width={barW}
-            height={h}
-            fill="#737373"
-            fillOpacity={0.8}
-          />
+          <g key={d.month}>
+            <rect
+              x={x - barW / 2}
+              y={height - padY - sellH}
+              width={barW}
+              height={sellH}
+              fill={SELL_COLOR}
+              fillOpacity={0.85}
+            />
+            <rect
+              x={x - barW / 2}
+              y={height - padY - sellH - buyH}
+              width={barW}
+              height={buyH}
+              fill={BUY_COLOR}
+              fillOpacity={0.85}
+            />
+          </g>
         );
       })}
+      {todayX !== null && (
+        <line
+          x1={todayX}
+          x2={todayX}
+          y1={padY}
+          y2={height - padY}
+          stroke="#737373"
+          strokeDasharray="3 2"
+        />
+      )}
     </svg>
   );
 }

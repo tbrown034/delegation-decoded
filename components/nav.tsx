@@ -18,6 +18,12 @@ export function Nav() {
             States
           </Link>
           <Link
+            href="/find"
+            className="text-neutral-500 no-underline transition-colors hover:text-neutral-900 dark:hover:text-neutral-100"
+          >
+            Find mine
+          </Link>
+          <Link
             href="/compare"
             className="text-neutral-500 no-underline transition-colors hover:text-neutral-900 dark:hover:text-neutral-100"
           >

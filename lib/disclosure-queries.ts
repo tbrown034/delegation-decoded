@@ -124,6 +124,59 @@ export async function getMembersWithDisclosures() {
     .orderBy(desc(sql`COUNT(${stockTransactions.id})`));
 }
 
+export interface TradesHomeSummary {
+  totalTrades: number;
+  totalFilings: number;
+  houseMembers: number;
+  senateMembers: number;
+  topMembers: Array<{
+    bioguideId: string;
+    fullName: string;
+    party: string;
+    stateCode: string;
+    chamber: string;
+    txCount: number;
+  }>;
+}
+
+export async function getTradesHomeSummary(): Promise<TradesHomeSummary> {
+  const [totals] = await db
+    .select({
+      totalTrades: sql<number>`COUNT(*)::int`,
+      houseMembers: sql<number>`COUNT(DISTINCT ${stockTransactions.bioguideId}) FILTER (WHERE ${members.chamber} = 'house')::int`,
+      senateMembers: sql<number>`COUNT(DISTINCT ${stockTransactions.bioguideId}) FILTER (WHERE ${members.chamber} = 'senate')::int`,
+    })
+    .from(stockTransactions)
+    .innerJoin(members, eq(members.bioguideId, stockTransactions.bioguideId));
+
+  const [filingTotals] = await db
+    .select({ count: sql<number>`COUNT(*)::int` })
+    .from(disclosureFilings);
+
+  const topMembers = await db
+    .select({
+      bioguideId: members.bioguideId,
+      fullName: members.fullName,
+      party: members.party,
+      stateCode: members.stateCode,
+      chamber: members.chamber,
+      txCount: sql<number>`COUNT(${stockTransactions.id})::int`,
+    })
+    .from(members)
+    .innerJoin(stockTransactions, eq(stockTransactions.bioguideId, members.bioguideId))
+    .groupBy(members.bioguideId, members.fullName, members.party, members.stateCode, members.chamber)
+    .orderBy(desc(sql`COUNT(${stockTransactions.id})`))
+    .limit(5);
+
+  return {
+    totalTrades: totals?.totalTrades ?? 0,
+    totalFilings: filingTotals?.count ?? 0,
+    houseMembers: totals?.houseMembers ?? 0,
+    senateMembers: totals?.senateMembers ?? 0,
+    topMembers,
+  };
+}
+
 export async function getTickerHolders(ticker: string) {
   return db
     .select({

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Suspense } from "react";
 import {
   getMembersByState,
@@ -118,15 +119,9 @@ export default async function ComparePage({ searchParams }: Props) {
       )}
 
       {/* Empty states */}
-      {mode === "delegation" && !sp.state && (
-        <EmptyState message="Select a state to compare its delegation members side-by-side." />
-      )}
-      {mode === "members" && (!sp.a || !sp.b) && (
-        <EmptyState message="Pick two members of Congress to compare head-to-head." />
-      )}
-      {mode === "states" && (!sp.a || !sp.b) && (
-        <EmptyState message="Choose two states to compare their congressional delegations." />
-      )}
+      {mode === "delegation" && !sp.state && <DelegationIntro />}
+      {mode === "members" && (!sp.a || !sp.b) && <MembersIntro />}
+      {mode === "states" && (!sp.a || !sp.b) && <StatesIntro />}
     </div>
   );
 }
@@ -136,6 +131,115 @@ function EmptyState({ message }: { message: string }) {
     <div className="rounded-lg border border-dashed border-neutral-200 px-6 py-16 text-center dark:border-neutral-800">
       <p className="text-sm text-neutral-400">{message}</p>
     </div>
+  );
+}
+
+function IntroCard({
+  lede,
+  bullets,
+  quickPicks,
+}: {
+  lede: string;
+  bullets: string[];
+  quickPicks?: { label: string; href: string }[];
+}) {
+  return (
+    <div className="rounded-lg border border-neutral-200 bg-neutral-50/40 p-6 dark:border-neutral-800 dark:bg-neutral-900/40 sm:p-8">
+      <p className="text-sm text-neutral-700 dark:text-neutral-300">{lede}</p>
+
+      <div className="mt-5">
+        <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+          What you&apos;ll see
+        </p>
+        <ul className="mt-2 grid gap-1.5 text-sm text-neutral-600 dark:text-neutral-400 sm:grid-cols-2">
+          {bullets.map((b) => (
+            <li key={b} className="flex gap-2">
+              <span className="text-neutral-300 dark:text-neutral-600">—</span>
+              <span>{b}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {quickPicks && quickPicks.length > 0 && (
+        <div className="mt-5">
+          <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+            Try one
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {quickPicks.map((p) => (
+              <Link
+                key={p.href}
+                href={p.href}
+                className="rounded-full border border-neutral-200 bg-white px-3 py-1 text-xs text-neutral-700 transition-colors hover:border-neutral-400 hover:text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:border-neutral-500 dark:hover:text-neutral-100"
+              >
+                {p.label}
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DelegationIntro() {
+  return (
+    <IntroCard
+      lede="Pick a state to line up its senators and representatives. See how the same delegation votes, who fundraises hardest, and where the senators agree."
+      bullets={[
+        "Senators and House members side-by-side",
+        "Bills sponsored and cosponsored",
+        "Vote tallies — yea, nay, present",
+        "FEC totals from the most recent cycle",
+        "Senator-vs-senator voting agreement",
+        "Committee assignments",
+      ]}
+      quickPicks={[
+        { label: "California", href: "/compare?mode=delegation&state=CA" },
+        { label: "Texas", href: "/compare?mode=delegation&state=TX" },
+        { label: "New York", href: "/compare?mode=delegation&state=NY" },
+        { label: "Florida", href: "/compare?mode=delegation&state=FL" },
+        { label: "Pennsylvania", href: "/compare?mode=delegation&state=PA" },
+        { label: "Georgia", href: "/compare?mode=delegation&state=GA" },
+      ]}
+    />
+  );
+}
+
+function MembersIntro() {
+  return (
+    <IntroCard
+      lede="Pick any two members of Congress — same party, opposite ends of the country, doesn't matter. The comparison handles the rest."
+      bullets={[
+        "Bills sponsored and cosponsored",
+        "Vote breakdown across the cycle",
+        "Voting agreement on shared roll calls",
+        "FEC fundraising and donor mix",
+        "Committees and subcommittees",
+        "Tenure and chamber",
+      ]}
+    />
+  );
+}
+
+function StatesIntro() {
+  return (
+    <IntroCard
+      lede="Stack two state delegations against each other. Useful when one state punches above its weight on a committee or a fundraising cycle."
+      bullets={[
+        "Combined sponsored bills",
+        "Aggregate FEC receipts",
+        "Committee coverage across the delegation",
+        "Party split and chamber breakdown",
+      ]}
+      quickPicks={[
+        { label: "California vs. Texas", href: "/compare?mode=states&a=CA&b=TX" },
+        { label: "New York vs. Florida", href: "/compare?mode=states&a=NY&b=FL" },
+        { label: "Pennsylvania vs. Ohio", href: "/compare?mode=states&a=PA&b=OH" },
+        { label: "Georgia vs. Arizona", href: "/compare?mode=states&a=GA&b=AZ" },
+      ]}
+    />
   );
 }
 
