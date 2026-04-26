@@ -11,6 +11,7 @@ import {
 import { getTradesHomeSummary } from "@/lib/disclosure-queries";
 import { PartyBar } from "@/components/party-bar";
 import { StateMap } from "@/components/state-map";
+import { TradesMonthlyBars } from "@/components/trades-monthly-bars";
 
 export default async function Home() {
   const [statesData, latestSync, totalMembers, recentEvents, syncSummary, trades] = await Promise.all([
@@ -151,7 +152,15 @@ export default async function Home() {
             STOCK Act PTRs. Parsed from House Clerk PDFs and Senate eFD HTML —
             both chambers covered.
           </p>
-          <div className="mt-4 grid gap-1 sm:grid-cols-5">
+          {trades.monthly.length > 0 && (
+            <div className="mt-5">
+              <TradesMonthlyBars monthly={trades.monthly} />
+            </div>
+          )}
+          <p className="mt-5 text-[10px] uppercase tracking-wide text-neutral-400">
+            Most active members
+          </p>
+          <div className="mt-1 grid gap-1 sm:grid-cols-5">
             {trades.topMembers.map((m) => (
               <Link
                 key={m.bioguideId}
@@ -177,7 +186,7 @@ export default async function Home() {
           <h2 className="mb-4 text-xs font-medium uppercase tracking-wide text-neutral-400">
             Recent activity across all delegations
           </h2>
-          <div className="grid gap-0 sm:grid-cols-2">
+          <div className="grid gap-x-6 sm:grid-cols-2">
             {recentEvents.map((e) => {
               const icon =
                 e.eventType === "bill_introduced"

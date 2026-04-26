@@ -137,6 +137,7 @@ export interface TradesHomeSummary {
     chamber: string;
     txCount: number;
   }>;
+  monthly: Array<{ month: string; dem: number; rep: number; ind: number }>;
 }
 
 export async function getTradesHomeSummary(): Promise<TradesHomeSummary> {
@@ -168,12 +169,34 @@ export async function getTradesHomeSummary(): Promise<TradesHomeSummary> {
     .orderBy(desc(sql`COUNT(${stockTransactions.id})`))
     .limit(5);
 
+  const monthlyRows = await db.execute(sql`
+    SELECT
+      TO_CHAR(DATE_TRUNC('month', t.tx_date), 'YYYY-MM') AS month,
+      COUNT(*) FILTER (WHERE m.party = 'Democrat')::int AS dem,
+      COUNT(*) FILTER (WHERE m.party = 'Republican')::int AS rep,
+      COUNT(*) FILTER (WHERE m.party NOT IN ('Democrat','Republican'))::int AS ind
+    FROM stock_transactions t
+    JOIN members m ON m.bioguide_id = t.bioguide_id
+    WHERE t.tx_date IS NOT NULL
+      AND t.tx_date >= (CURRENT_DATE - INTERVAL '14 months')
+      AND t.tx_date <= CURRENT_DATE
+    GROUP BY 1 ORDER BY 1
+  `);
+
+  const monthly = monthlyRows.rows.map((r) => ({
+    month: String(r.month),
+    dem: Number(r.dem),
+    rep: Number(r.rep),
+    ind: Number(r.ind),
+  }));
+
   return {
     totalTrades: totals?.totalTrades ?? 0,
     totalFilings: filingTotals?.count ?? 0,
     houseMembers: totals?.houseMembers ?? 0,
     senateMembers: totals?.senateMembers ?? 0,
     topMembers,
+    monthly,
   };
 }
 
