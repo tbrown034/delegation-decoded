@@ -191,3 +191,64 @@ CREATE TABLE IF NOT EXISTS sync_log (
 CREATE INDEX IF NOT EXISTS idx_sync_source ON sync_log(source, entity_type);
 CREATE INDEX IF NOT EXISTS idx_sync_status ON sync_log(status);
 CREATE INDEX IF NOT EXISTS idx_sync_started ON sync_log(started_at DESC);
+
+-- =============================================================================
+-- Disclosure filings (STOCK Act PTRs from House Clerk + Senate eFD)
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS disclosure_filings (
+  id                      SERIAL PRIMARY KEY,
+  bioguide_id             VARCHAR(10) NOT NULL REFERENCES members(bioguide_id) ON DELETE CASCADE,
+  chamber                 VARCHAR(10) NOT NULL CHECK (chamber IN ('senate', 'house')),
+  filing_type             VARCHAR(20) NOT NULL CHECK (filing_type IN ('PTR', 'Annual', 'Amendment')),
+  doc_id                  TEXT NOT NULL,
+  filed_date              DATE,
+  coverage_period_start   DATE,
+  coverage_period_end     DATE,
+  pdf_url                 TEXT NOT NULL,
+  pdf_hash                CHAR(64),
+  parse_status            VARCHAR(20) NOT NULL DEFAULT 'pending'
+                            CHECK (parse_status IN ('pending', 'parsed', 'failed', 'review')),
+  parse_confidence        INTEGER,
+  page_count              INTEGER,
+  pipeline_run_id         INTEGER,
+  created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_filing_doc UNIQUE (chamber, doc_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_filings_member ON disclosure_filings(bioguide_id);
+CREATE INDEX IF NOT EXISTS idx_filings_filed ON disclosure_filings(filed_date);
+CREATE INDEX IF NOT EXISTS idx_filings_status ON disclosure_filings(parse_status);
+
+-- =============================================================================
+-- Stock transactions (one row per PTR line item)
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS stock_transactions (
+  id                  SERIAL PRIMARY KEY,
+  filing_id           INTEGER NOT NULL REFERENCES disclosure_filings(id) ON DELETE CASCADE,
+  bioguide_id         VARCHAR(10) NOT NULL REFERENCES members(bioguide_id) ON DELETE CASCADE,
+  row_index           INTEGER NOT NULL,
+  owner_code          VARCHAR(10),
+  asset_description   TEXT NOT NULL,
+  ticker              VARCHAR(10),
+  asset_type          VARCHAR(30),
+  tx_type             VARCHAR(20) NOT NULL,
+  tx_date             DATE,
+  notified_date       DATE,
+  amount_range        VARCHAR(40) NOT NULL,
+  amount_min          BIGINT,
+  amount_max          BIGINT,
+  cap_gains_over_200  BOOLEAN DEFAULT false,
+  filed_late          BOOLEAN DEFAULT false,
+  needs_review        BOOLEAN DEFAULT false,
+  confidence          INTEGER,
+  pdf_page            INTEGER,
+  CONSTRAINT uq_tx UNIQUE (filing_id, row_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tx_member ON stock_transactions(bioguide_id);
+CREATE INDEX IF NOT EXISTS idx_tx_ticker ON stock_transactions(ticker);
+CREATE INDEX IF NOT EXISTS idx_tx_date ON stock_transactions(tx_date);
+CREATE INDEX IF NOT EXISTS idx_tx_review ON stock_transactions(needs_review) WHERE needs_review = true;

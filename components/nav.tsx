@@ -24,6 +24,12 @@ export function Nav() {
             Compare
           </Link>
           <Link
+            href="/trades"
+            className="text-neutral-500 no-underline transition-colors hover:text-neutral-900 dark:hover:text-neutral-100"
+          >
+            Trades
+          </Link>
+          <Link
             href="/about"
             className="text-neutral-500 no-underline transition-colors hover:text-neutral-900 dark:hover:text-neutral-100"
           >

@@ -78,6 +78,8 @@ export const membersRelations = relations(members, ({ one, many }) => ({
   committeeAssignments: many(committeeAssignments),
   billSponsorships: many(billSponsorships),
   campaignFinance: many(campaignFinance),
+  disclosureFilings: many(disclosureFilings),
+  stockTransactions: many(stockTransactions),
 }));
 
 // =============================================================================
@@ -455,6 +457,111 @@ export const delegationBriefs = pgTable(
     index("idx_briefs_state").on(table.stateCode),
     index("idx_briefs_date").on(table.generatedAt),
   ]
+);
+
+// =============================================================================
+// Disclosure Filings (STOCK Act PTRs)
+// =============================================================================
+
+export const disclosureFilings = pgTable(
+  "disclosure_filings",
+  {
+    id: serial("id").primaryKey(),
+    bioguideId: varchar("bioguide_id", { length: 10 })
+      .notNull()
+      .references(() => members.bioguideId, { onDelete: "cascade" }),
+    chamber: varchar("chamber", { length: 10 }).notNull(), // "house" | "senate"
+    filingType: varchar("filing_type", { length: 20 }).notNull(), // "PTR" | "Annual" | "Amendment"
+    docId: text("doc_id").notNull(), // House DocID or Senate report slug
+    filedDate: date("filed_date"),
+    coveragePeriodStart: date("coverage_period_start"),
+    coveragePeriodEnd: date("coverage_period_end"),
+    pdfUrl: text("pdf_url").notNull(),
+    pdfHash: char("pdf_hash", { length: 64 }), // sha256 — dedup re-downloads
+    parseStatus: varchar("parse_status", { length: 20 })
+      .notNull()
+      .default("pending"), // "pending" | "parsed" | "failed" | "review"
+    parseConfidence: integer("parse_confidence"), // 0-100, page-averaged
+    pageCount: integer("page_count"),
+    pipelineRunId: integer("pipeline_run_id"), // soft FK to sync_log.id
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique("uq_filing_doc").on(table.chamber, table.docId),
+    index("idx_filings_member").on(table.bioguideId),
+    index("idx_filings_filed").on(table.filedDate),
+    index("idx_filings_status").on(table.parseStatus),
+  ]
+);
+
+export const disclosureFilingsRelations = relations(
+  disclosureFilings,
+  ({ one, many }) => ({
+    member: one(members, {
+      fields: [disclosureFilings.bioguideId],
+      references: [members.bioguideId],
+    }),
+    transactions: many(stockTransactions),
+  })
+);
+
+// =============================================================================
+// Stock Transactions (one row per PTR line item)
+// =============================================================================
+
+export const stockTransactions = pgTable(
+  "stock_transactions",
+  {
+    id: serial("id").primaryKey(),
+    filingId: integer("filing_id")
+      .notNull()
+      .references(() => disclosureFilings.id, { onDelete: "cascade" }),
+    bioguideId: varchar("bioguide_id", { length: 10 })
+      .notNull()
+      .references(() => members.bioguideId, { onDelete: "cascade" }),
+    rowIndex: integer("row_index").notNull(), // position in PDF — distinguishes lots
+    ownerCode: varchar("owner_code", { length: 10 }), // "SP" | "DC" | "JT" | self
+    assetDescription: text("asset_description").notNull(),
+    ticker: varchar("ticker", { length: 10 }),
+    assetType: varchar("asset_type", { length: 30 }), // "Stock" | "Bond" | "Option" | "Fund"
+    txType: varchar("tx_type", { length: 20 }).notNull(), // "P" | "S" | "S (partial)" | "Exchange"
+    txDate: date("tx_date"),
+    notifiedDate: date("notified_date"),
+    amountRange: varchar("amount_range", { length: 40 }).notNull(), // "$1,001 - $15,000"
+    amountMin: bigint("amount_min", { mode: "number" }),
+    amountMax: bigint("amount_max", { mode: "number" }),
+    capGainsOver200: boolean("cap_gains_over_200").default(false),
+    filedLate: boolean("filed_late").default(false), // tx_date + 45d < filed_date
+    needsReview: boolean("needs_review").default(false),
+    confidence: integer("confidence"), // 0-100, parser confidence
+    pdfPage: integer("pdf_page"), // page number for source-link deep-link
+  },
+  (table) => [
+    unique("uq_tx").on(table.filingId, table.rowIndex),
+    index("idx_tx_member").on(table.bioguideId),
+    index("idx_tx_ticker").on(table.ticker),
+    index("idx_tx_date").on(table.txDate),
+    index("idx_tx_review").on(table.needsReview),
+  ]
+);
+
+export const stockTransactionsRelations = relations(
+  stockTransactions,
+  ({ one }) => ({
+    filing: one(disclosureFilings, {
+      fields: [stockTransactions.filingId],
+      references: [disclosureFilings.id],
+    }),
+    member: one(members, {
+      fields: [stockTransactions.bioguideId],
+      references: [members.bioguideId],
+    }),
+  })
 );
 
 // =============================================================================

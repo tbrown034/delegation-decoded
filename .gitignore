@@ -40,3 +40,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+.env*.local
+
+# local agent state
+.claude/
+
+# raw PTR archives + PDFs (regenerate from House Clerk if needed)
+/data/
