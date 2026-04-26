@@ -43,3 +43,35 @@ All routes verified via Chrome — `/`, `/trades` (header reads `69 members · 4
 **.gitignore:** added `/data/` (16 MB of cached PDFs, regenerable from House Clerk) and `.claude/` (local agent state).
 
 ---
+
+## 2026-04-25 — Senate eFD ingest (chamber 2 of 2)
+
+**Session summary:**
+Added the Senate side of the STOCK Act pipeline. Ingest now covers both chambers: 215 filings / 4,350 transactions / 88 members, up from House-only 169 / 4,100 / 69. Senate adds 46 PTRs and 250 transactions, all at ≥80% confidence, parsed in 35.7 seconds (no LLM).
+
+**Approach:**
+Senate eFD's web-form PTRs come back as structured HTML tables — every row has a discrete ticker, owner code, asset type, transaction type, and amount band. That meant a cookie-jar + regex parser instead of the vision pipeline used for House paper PDFs. Faster, free, deterministic, and 92.1% avg confidence baseline.
+
+**What changed:**
+
+- **Recon scripts** — `recon-senate-efd.ts` walked the TOS gate (GET /search/home/, POST `csrfmiddlewaretoken` + `prohibition_agreement=1`), then hit `/search/report/data/` with `report_types=[11]` (PTR), `filer_types=[1]` (Senator). Confirmed JSON shape and got 55 PTRs for 2026. `recon-senate-detail.ts` confirmed the detail pages serve `<table class="table table-striped">` with columns `# / Tx Date / Owner / Ticker / Asset Name / Asset Type / Type / Amount / Comment` — no PDF fallback for any of the 2026 sample.
+- **`scripts/ingest/disclosures-senate.ts`** — full ingester. `acceptTos()` returns `{jar, csrf}`; `listPtrs()` paginates with `length: 100`; `parseSenateHtml()` walks `<tbody>` rows via regex, normalizes via `mapOwner` / `mapTxType` / `mapAssetType` / `bucketAmount`. Confidence is 95 when ticker is present, 85 otherwise (HTML-structured baseline is high). Inserts to `disclosure_filings` with `chamber: 'senate'`, `pdfUrl: detailUrl`, `pdfHash: sha256(html)`, and logs to `sync_log` with `source: 'senate_efd'`.
+- **`stripSuffix()` for senator name resolver** — first ingest run failed to resolve 11 senators because eFD concatenates suffixes into `lastName` (`King, Jr.`, `Hagerty, IV`). Added `/,\s*(jr|sr|i{1,3}|iv|v)\.?$/i` strip + first-name initial fallback (`fold(firstName).split(/\s+/)[0].slice(0, 3)`) to handle `Angus S` vs `Angus`. Recovered 6 more on retry. Five remaining failures are all Markwayne Mullin (R-OK) — genuinely missing from the `members` table; tracked separately as a member-sync bug.
+- **Source label** — added `chamber` to `MemberTransaction` and `lib/disclosure-queries.ts` so the per-member trade table can show "HTML" for Senate sources and "PDF" for House. The link still points to the canonical detail page either way.
+
+**Final data shape:**
+
+| Chamber | Filings | Tx | Avg confidence | <80 |
+|---|---|---|---|---|
+| House  | 169 | 4,100 | 88.8% | 2 |
+| Senate | 46  | 250   | 92.1% | 0 |
+| **Total** | **215** | **4,350** | — | 2 |
+
+**UI verification (Chrome, http://localhost:3001):**
+`/trades` header now reads `87 Members trading · 4,350 Disclosed trades · 215 PTR filings`. Senate rows are interleaved correctly — Boozman (AR-S, 81), McCormick (PA-S, 55), Britt (AL-S, 23), Capito (WV-S, 17), Fetterman (PA-S, 13), King Jr (ME-S, 12), McConnell (KY-S, 2), Hagerty (TN-S, 2). `/trades/B001236` (Boozman) renders all 81 trades with HTML source labels. `/trades/companies/MSFT` shows 16 holders mixing House + Senate (Boozman, Fetterman, Britt, Capito, King). `next build` clean.
+
+**Known follow-ups:**
+- Mullin (R-OK) needs to be added to `members` (5 PTRs deferred).
+- The 51-member Senate listing has 51 PTRs; we ingested 46 — the 5 unaccounted are all Mullin.
+
+---

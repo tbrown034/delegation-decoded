@@ -9,6 +9,7 @@ interface Props {
   width?: number;
   height?: number;
   domain?: [string, string];
+  party?: string;
 }
 
 function midAmount(t: {
@@ -19,16 +20,25 @@ function midAmount(t: {
   return t.amountMin ?? t.amountMax ?? 1000;
 }
 
+const PARTY_COLOR: Record<string, string> = {
+  Democrat: "#2563eb",
+  Republican: "#dc2626",
+  Independent: "#9333ea",
+};
+
 export function TradeSparkline({
   trades,
   width = 220,
   height = 36,
   domain,
+  party,
 }: Props) {
   const dated = trades.filter((t): t is typeof t & { txDate: string } =>
     Boolean(t.txDate)
   );
   if (dated.length === 0) return <svg width={width} height={height} />;
+
+  const color = (party && PARTY_COLOR[party]) || "#525252";
 
   const times = dated.map((t) => new Date(t.txDate).getTime());
   const minT = domain ? new Date(domain[0]).getTime() : Math.min(...times);
@@ -66,8 +76,8 @@ export function TradeSparkline({
             cy={y}
             r={r}
             fill="white"
-            stroke="#737373"
-            strokeWidth={0.8}
+            stroke={color}
+            strokeWidth={1.2}
           />
         ) : (
           <circle
@@ -75,8 +85,8 @@ export function TradeSparkline({
             cx={x}
             cy={y}
             r={r}
-            fill="#737373"
-            fillOpacity={0.8}
+            fill={color}
+            fillOpacity={0.75}
           />
         );
       })}

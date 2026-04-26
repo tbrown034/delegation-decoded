@@ -18,6 +18,7 @@ export interface MemberTransaction {
   needsReview: boolean | null;
   pdfUrl: string;
   filedDate: string | null;
+  chamber: string;
 }
 
 export async function getMemberTransactions(
@@ -40,6 +41,7 @@ export async function getMemberTransactions(
       needsReview: stockTransactions.needsReview,
       pdfUrl: disclosureFilings.pdfUrl,
       filedDate: disclosureFilings.filedDate,
+      chamber: disclosureFilings.chamber,
     })
     .from(stockTransactions)
     .innerJoin(

@@ -16,6 +16,7 @@ export interface TimelineTrade {
 interface Props {
   trades: TimelineTrade[];
   height?: number;
+  party?: string;
 }
 
 function midAmount(t: TimelineTrade): number {
@@ -23,7 +24,14 @@ function midAmount(t: TimelineTrade): number {
   return t.amountMin ?? t.amountMax ?? 1000;
 }
 
-export function TradeTimeline({ trades, height = 200 }: Props) {
+const PARTY_COLOR: Record<string, string> = {
+  Democrat: "#2563eb",
+  Republican: "#dc2626",
+  Independent: "#9333ea",
+};
+
+export function TradeTimeline({ trades, height = 200, party }: Props) {
+  const color = (party && PARTY_COLOR[party]) || "#525252";
   const [hoverId, setHoverId] = useState<number | null>(null);
 
   const dated = trades.filter((t): t is TimelineTrade & { txDate: string } =>
@@ -121,7 +129,6 @@ export function TradeTimeline({ trades, height = 200 }: Props) {
           const x = layout.xOf(tx.txDate);
           const r = layout.rOf(midAmount(tx));
           const isBuy = tx.txType === "P";
-          const stroke = "#525252";
           return (
             <g
               key={`tx-${tx.id}`}
@@ -133,14 +140,14 @@ export function TradeTimeline({ trades, height = 200 }: Props) {
                 <polygon
                   points={`${x},${layout.tradesY - r} ${x - r},${layout.tradesY + r * 0.6} ${x + r},${layout.tradesY + r * 0.6}`}
                   fill="white"
-                  stroke={stroke}
-                  strokeWidth={1}
+                  stroke={color}
+                  strokeWidth={1.4}
                 />
               ) : (
                 <polygon
                   points={`${x},${layout.tradesY + r} ${x - r},${layout.tradesY - r * 0.6} ${x + r},${layout.tradesY - r * 0.6}`}
-                  fill={stroke}
-                  fillOpacity={0.85}
+                  fill={color}
+                  fillOpacity={0.8}
                 />
               )}
               {tx.filedLate && (
@@ -159,13 +166,18 @@ export function TradeTimeline({ trades, height = 200 }: Props) {
       <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-[11px] text-neutral-600 dark:text-neutral-400">
         <LegendItem>
           <svg width="14" height="10">
-            <polygon points="7,1 1,9 13,9" fill="white" stroke="#525252" />
+            <polygon
+              points="7,1 1,9 13,9"
+              fill="white"
+              stroke={color}
+              strokeWidth={1.4}
+            />
           </svg>
           Purchase
         </LegendItem>
         <LegendItem>
           <svg width="14" height="10">
-            <polygon points="7,9 1,1 13,1" fill="#525252" />
+            <polygon points="7,9 1,1 13,1" fill={color} fillOpacity={0.8} />
           </svg>
           Sale
         </LegendItem>

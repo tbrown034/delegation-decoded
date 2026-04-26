@@ -89,7 +89,7 @@ export default async function MemberTradesPage({ params }: Props) {
         <>
           <section className="mb-6">
             <h2 className="sr-only">Trade timeline</h2>
-            <TradeTimeline trades={transactions} />
+            <TradeTimeline trades={transactions} party={member.party} />
           </section>
 
           <section className="mb-8 grid grid-cols-2 gap-2 text-sm md:grid-cols-4">
@@ -170,7 +170,7 @@ export default async function MemberTradesPage({ params }: Props) {
                           target="_blank"
                           rel="noopener noreferrer"
                         >
-                          PDF
+                          {tx.chamber === "senate" ? "HTML" : "PDF"}
                         </a>
                       </td>
                     </tr>
