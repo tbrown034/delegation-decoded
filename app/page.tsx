@@ -45,7 +45,7 @@ export default async function Home() {
             {totalMembers} members tracked
           </span>
           <span className="text-neutral-200 dark:text-neutral-700">|</span>
-          <span>3 data sources</span>
+          <span>{new Set(syncSummary.map((s) => s.source)).size} data sources</span>
           {latestSync?.completedAt && (
             <>
               <span className="text-neutral-200 dark:text-neutral-700">|</span>
@@ -239,6 +239,8 @@ export default async function Home() {
                 fec: "FEC",
                 house_senate_xml: "House/Senate XML",
                 rss: "RSS Feeds",
+                senate_efd: "Senate eFD",
+                "disclosures-clerk.house.gov": "House Clerk PTRs",
               };
               const entityLabels: Record<string, string> = {
                 members: "Members",
@@ -247,6 +249,8 @@ export default async function Home() {
                 campaign_finance: "Finance",
                 votes: "Votes",
                 press_releases: "Press Releases",
+                disclosures: "Senate PTRs",
+                ptr: "House PTRs",
               };
               const label =
                 entityLabels[s.entity_type] || s.entity_type;

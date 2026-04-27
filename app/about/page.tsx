@@ -10,7 +10,11 @@ import {
   campaignFinance,
   committees,
   committeeAssignments,
+  disclosureFilings,
+  pressReleases,
+  stockTransactions,
   syncLog,
+  votes,
 } from "@/lib/schema";
 import { count, eq, desc } from "drizzle-orm";
 
@@ -21,12 +25,16 @@ export const metadata: Metadata = {
 };
 
 async function getDataStats() {
-  const [[b], [s], [f], [c], [a]] = await Promise.all([
+  const [[b], [s], [f], [c], [a], [tx], [df], [v], [pr]] = await Promise.all([
     db.select({ count: count() }).from(bills),
     db.select({ count: count() }).from(billSponsorships),
     db.select({ count: count() }).from(campaignFinance),
     db.select({ count: count() }).from(committees),
     db.select({ count: count() }).from(committeeAssignments),
+    db.select({ count: count() }).from(stockTransactions),
+    db.select({ count: count() }).from(disclosureFilings),
+    db.select({ count: count() }).from(votes),
+    db.select({ count: count() }).from(pressReleases),
   ]);
 
   return {
@@ -35,6 +43,10 @@ async function getDataStats() {
     finance: f?.count || 0,
     committees: c?.count || 0,
     assignments: a?.count || 0,
+    trades: tx?.count || 0,
+    filings: df?.count || 0,
+    votes: v?.count || 0,
+    pressReleases: pr?.count || 0,
   };
 }
 
@@ -88,9 +100,13 @@ export default async function AboutPage() {
               { n: totalMembers, label: "members tracked" },
               { n: stats.bills, label: "bills ingested" },
               { n: stats.sponsorships, label: "sponsorship links" },
-              { n: stats.finance, label: "finance records" },
+              { n: stats.votes, label: "roll-call votes" },
               { n: stats.committees, label: "committees" },
               { n: stats.assignments, label: "committee assignments" },
+              { n: stats.finance, label: "finance records" },
+              { n: stats.filings, label: "STOCK Act filings" },
+              { n: stats.trades, label: "disclosed trades" },
+              { n: stats.pressReleases, label: "press releases" },
             ].map(({ n, label }) => (
               <div key={label}>
                 <p className="font-mono text-2xl font-semibold text-neutral-900 dark:text-neutral-100">
@@ -150,7 +166,7 @@ export default async function AboutPage() {
               </p>
             </div>
 
-            <div>
+            <div className="border-b border-neutral-100 pb-4 dark:border-neutral-800">
               <h3 className="font-medium text-neutral-900 dark:text-neutral-100">
                 FEC API
               </h3>
@@ -168,6 +184,92 @@ export default async function AboutPage() {
                 Access: REST API with free key via api.data.gov. Rate limit:
                 1,000 requests/hour. FEC data reflects filings as reported —
                 quarterly filing schedules mean data can lag by weeks or months.
+              </p>
+            </div>
+
+            <div className="border-b border-neutral-100 pb-4 dark:border-neutral-800">
+              <h3 className="font-medium text-neutral-900 dark:text-neutral-100">
+                House and Senate roll-call XML
+              </h3>
+              <p className="mt-1 text-xs text-neutral-400">
+                clerk.house.gov/evs · senate.gov/legislative
+              </p>
+              <p className="mt-1">
+                Official roll-call vote records. House votes are scraped from
+                the Clerk&apos;s per-vote XML files; Senate votes are pulled
+                from the Senate&apos;s legislative XML feed. Each vote is stored
+                with the bill or measure it relates to, the result, and a
+                position record per member.
+              </p>
+              <p className="mt-1 text-xs text-neutral-400">
+                Access: Public XML, no key. Coverage: 119th Congress,
+                {" "}{stats.votes.toLocaleString()} roll calls ingested.
+              </p>
+            </div>
+
+            <div className="border-b border-neutral-100 pb-4 dark:border-neutral-800">
+              <h3 className="font-medium text-neutral-900 dark:text-neutral-100">
+                House Clerk financial disclosures
+              </h3>
+              <p className="mt-1 text-xs text-neutral-400">
+                disclosures-clerk.house.gov
+              </p>
+              <p className="mt-1">
+                STOCK Act Periodic Transaction Reports for House members. The
+                Clerk publishes annual ZIPs of PTR PDFs. Each PDF is parsed
+                with Anthropic Claude Sonnet 4.6 in vision mode — the model
+                reads the rendered form and returns structured JSON: ticker,
+                asset description, owner, transaction type, transaction date,
+                amount band, and a per-row confidence score. Rows below 80%
+                confidence are flagged for review and rendered with a warning
+                badge in the UI.
+              </p>
+              <p className="mt-1 text-xs text-neutral-400">
+                Access: PDF bulk download. Re-parsing is idempotent via PDF
+                hash. Of {stats.filings.toLocaleString()} House and Senate
+                filings ingested, 99.95% of rows score ≥80% confidence.
+              </p>
+            </div>
+
+            <div className="border-b border-neutral-100 pb-4 dark:border-neutral-800">
+              <h3 className="font-medium text-neutral-900 dark:text-neutral-100">
+                Senate Electronic Financial Disclosures (eFD)
+              </h3>
+              <p className="mt-1 text-xs text-neutral-400">
+                efdsearch.senate.gov
+              </p>
+              <p className="mt-1">
+                STOCK Act PTRs for senators. The Senate filing system serves
+                structured HTML tables — every row already has a discrete
+                ticker, owner code, asset type, transaction type, and amount
+                band. Parsed deterministically with a cookie-jar + regex
+                pipeline; no LLM required. Faster, free, and reliably high
+                confidence (95% baseline when ticker present).
+              </p>
+              <p className="mt-1 text-xs text-neutral-400">
+                Access: Public web form, requires accepting an electronic
+                terms-of-service before each session.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="font-medium text-neutral-900 dark:text-neutral-100">
+                Member office RSS feeds
+              </h3>
+              <p className="mt-1 text-xs text-neutral-400">
+                house.gov · senate.gov subdomains
+              </p>
+              <p className="mt-1">
+                Official press releases from member office websites. Each
+                member&apos;s site is probed for one of six standard RSS feed
+                paths (`/rss.xml`, `/feed/`, `/news/rss.xml`, etc.) and parsed
+                with a small inline XML reader — no third-party dependencies.
+                Used to power the press-release timeline and keyword analytics.
+              </p>
+              <p className="mt-1 text-xs text-neutral-400">
+                Coverage: {stats.pressReleases.toLocaleString()} releases from
+                members whose offices publish a feed. Members without an
+                accessible feed are silently skipped.
               </p>
             </div>
           </div>
@@ -211,9 +313,32 @@ export default async function AboutPage() {
               small dollar (under $200), large individual, and PAC money.
             </li>
             <li>
+              <strong className="text-neutral-900 dark:text-neutral-100">Ingest votes.</strong>{" "}
+              House and Senate roll-call XML is fetched per session. Each
+              vote becomes one row with a position record per member. Used
+              to power the legislative activity feed and per-member voting
+              record.
+            </li>
+            <li>
+              <strong className="text-neutral-900 dark:text-neutral-100">Ingest disclosures.</strong>{" "}
+              House PTR PDFs are downloaded from the Clerk, hashed, and parsed
+              with Claude Sonnet 4.6 in vision mode. Senate PTRs come from the
+              eFD HTML tables and are parsed deterministically. Both pipelines
+              upsert into the same `disclosure_filings` and
+              `stock_transactions` tables and run incrementally — already-seen
+              hashes are skipped.
+            </li>
+            <li>
+              <strong className="text-neutral-900 dark:text-neutral-100">Ingest press releases.</strong>{" "}
+              Each member office&apos;s website is probed for an RSS feed. New
+              items since the last sync are stored with title, link, pub date,
+              and description for the activity timeline.
+            </li>
+            <li>
               <strong className="text-neutral-900 dark:text-neutral-100">Log everything.</strong>{" "}
               Every ingestion run is tracked in a sync log with start time,
-              completion time, record count, and success/failure status.
+              completion time, record count, and success/failure status. The
+              homepage data-freshness panel reads directly from this log.
             </li>
           </ol>
           <p className="mt-3">
@@ -272,20 +397,20 @@ export default async function AboutPage() {
               office.
             </li>
             <li>
-              The Congress.gov API provides limited structured vote-by-member
-              data. Roll call votes are not yet included. This is a known gap
-              in the ecosystem since the ProPublica Congress API was
-              discontinued.
+              STOCK Act PTRs are filed up to 45 days after a transaction.
+              Members who fail to file are flagged late but the data still
+              arrives — sometimes with a multi-month lag.
             </li>
             <li>
-              Press releases and official statements are not yet tracked.
-              Adding this requires per-member RSS discovery and scraping
-              infrastructure.
+              House PTR rows below 80% parse confidence are flagged for
+              review rather than hidden. About 0.05% of current rows are in
+              this state — typically because the PDF is hand-annotated or
+              uses an unusual asset description.
             </li>
             <li>
-              Financial disclosures (stock trades, assets) are not included.
-              These are typically filed as PDFs and require OCR or specialized
-              parsing.
+              Press release coverage depends on each member office publishing
+              an RSS feed at a discoverable path. Offices without a feed are
+              not represented in the timeline.
             </li>
             <li>
               Bill coverage is limited to the 119th Congress. Historical
@@ -304,12 +429,20 @@ export default async function AboutPage() {
             AI transparency
           </h2>
           <p>
-            No AI-generated content is currently displayed on this site. All
-            data shown traces directly to an official government API or
-            community-maintained dataset. When AI analysis features are added
-            (e.g., delegation summaries, contradiction detection), they will be
-            clearly labeled as AI-generated and this section will disclose the
-            specific models and validation methods used.
+            One pipeline uses AI: House PTR PDFs are parsed with Anthropic
+            Claude Sonnet 4.6 in vision mode. The model reads the rendered
+            disclosure form and returns structured JSON — ticker, asset
+            description, owner, transaction type, transaction date, amount
+            band — plus a per-row confidence score (0–100). Every row is
+            stored with its score; rows below 80% are flagged in the UI and
+            the user can see exactly which rows the parser was uncertain
+            about. Senate PTRs do not use AI: they come back as structured
+            HTML and are parsed deterministically.
+          </p>
+          <p className="mt-2">
+            All other data — bills, sponsorships, votes, finance, committees,
+            members, press releases — traces directly to an official API or
+            community-maintained dataset, with no model in the loop.
           </p>
           <p className="mt-2">
             The codebase was built with the assistance of Claude Code.

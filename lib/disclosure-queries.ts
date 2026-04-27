@@ -178,8 +178,8 @@ export async function getTradesHomeSummary(): Promise<TradesHomeSummary> {
     FROM stock_transactions t
     JOIN members m ON m.bioguide_id = t.bioguide_id
     WHERE t.tx_date IS NOT NULL
-      AND t.tx_date >= (CURRENT_DATE - INTERVAL '14 months')
-      AND t.tx_date <= CURRENT_DATE
+      AND t.tx_date >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '13 months')
+      AND t.tx_date < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'
     GROUP BY 1 ORDER BY 1
   `);
 

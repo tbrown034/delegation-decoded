@@ -24,7 +24,7 @@ export function Footer() {
               >
                 @unitedstates
               </a>
-              {" / "}
+              {" · "}
               <a
                 href="https://api.congress.gov"
                 target="_blank"
@@ -33,7 +33,7 @@ export function Footer() {
               >
                 Congress.gov
               </a>
-              {" / "}
+              {" · "}
               <a
                 href="https://api.open.fec.gov"
                 target="_blank"
@@ -41,6 +41,24 @@ export function Footer() {
                 className="text-neutral-500 underline decoration-neutral-300 underline-offset-2 hover:text-neutral-700 dark:decoration-neutral-600 dark:hover:text-neutral-300"
               >
                 FEC
+              </a>
+              {" · "}
+              <a
+                href="https://disclosures-clerk.house.gov"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-neutral-500 underline decoration-neutral-300 underline-offset-2 hover:text-neutral-700 dark:decoration-neutral-600 dark:hover:text-neutral-300"
+              >
+                House Clerk
+              </a>
+              {" · "}
+              <a
+                href="https://efdsearch.senate.gov"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-neutral-500 underline decoration-neutral-300 underline-offset-2 hover:text-neutral-700 dark:decoration-neutral-600 dark:hover:text-neutral-300"
+              >
+                Senate eFD
               </a>
             </p>
             <p className="mt-1">

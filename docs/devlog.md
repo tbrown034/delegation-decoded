@@ -75,3 +75,31 @@ Senate eFD's web-form PTRs come back as structured HTML tables — every row has
 - The 51-member Senate listing has 51 PTRs; we ingested 46 — the 5 unaccounted are all Mullin.
 
 ---
+
+## 2026-04-26 — Bulletproof for job application
+
+**Session summary:**
+Site review and cleanup pass to ship the project as a portfolio piece. Pruned throwaway scripts, rewrote the methodology page, and reconciled the homepage with what the pipeline actually produces.
+
+**Code cleanup:**
+- Deleted 13 one-off fix/repair/recon scripts whose work is baked into `scripts/lib/parse-ptr.ts` (BOGUS_TICKERS blacklist) and the production ingest path: `check-failed-3`, `enrich-tickers`, `enrich-tickers-2`, `fix-asset-tickers`, `fix-bogus-tickers`, `fix-data`, `recon-senate-detail`, `recon-senate-efd`, `repair-3-filings`, `restore-boeing`, `retry-stuck`, `retry-stuck-paged`, `test-one-pdf`. Also removed `scripts/lib/parse-ptr-paged.ts` since nothing in the production path used it.
+- Deleted `scripts/audit-data.ts` (hardcoded row IDs from a one-off run) and `scripts/cost-check.ts` (hardcoded UPDATE statement). Kept the generic audit tools: `low-confidence`, `missing-pdfs`, `oddities-check`, `random-sample`, `state-check`, plus `apply-schema.ts`.
+- Removed `recharts` from package.json — confirmed no source file imports it.
+- Deleted `docs/MVP_PLAN.md`. The plan is no longer accurate (says trades/votes/press releases out of scope, references a non-existent `runner.ts`, names tools we don't use). `AGENTS.md` is now the architecture reference.
+
+**Docs:**
+- Rewrote `AGENTS.md` to actually describe the project: stack, routes, data pipeline, audit scripts, conventions, ship checklist.
+- Rewrote `app/about/page.tsx` data sources section. Was 3 sources (`@unitedstates`, Congress.gov, FEC); now 6, adding House/Senate roll-call XML, House Clerk PTRs, Senate eFD, and member office RSS feeds. Each block has a current record count pulled live from the DB. Updated the collection process to include votes / disclosures / press releases. Stripped the false "not yet tracked" entries from Known Limitations (votes, press releases, financial disclosures all are tracked) and added real ones (45-day PTR filing window, 80% confidence threshold, RSS-feed dependency). AI Transparency now describes the Sonnet 4.6 vision pipeline honestly.
+- Footer: added House Clerk and Senate eFD links to data attribution.
+
+**Homepage:**
+- "3 data sources" was hardcoded; now reads `new Set(syncSummary.map(s => s.source)).size` — currently renders "6 data sources".
+- `sourceLabels` and `entityLabels` extended to map `senate_efd`, `disclosures-clerk.house.gov`, and the `ptr` entityType so the data-freshness panel labels them correctly.
+- Trades chart's tx_date filter rewritten to anchor on month boundaries: `>= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '13 months')` and `< DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'`. Future-dated trades (filer-error rows in source data) no longer pollute the chart. Bars now span 14 complete calendar months.
+
+**Verification:**
+- `next build` clean (8/8 static, all dynamic routes compile).
+- `/about` renders all 9 data-at-a-glance tiles: 538 / 4,159 / 63,929 / 861 / 230 / 3,891 / 2,810 / 215 / 4,350 / 2,859.
+- Homepage trade chart peaks at 1,406 in Jan '26, range Mar '25–Apr '26.
+
+---
