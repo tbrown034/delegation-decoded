@@ -74,7 +74,7 @@ export default async function MemberTradesPage({ params }: Props) {
         <h1 className="font-serif text-3xl font-semibold tracking-tight">
           {member.fullName}
         </h1>
-        <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+        <p className="mt-1 text-sm text-neutral-600">
           {member.party}{" "}
           {member.chamber === "senate" ? "Senator" : "Representative"} from{" "}
           {stateName} · STOCK Act Periodic Transaction Reports
@@ -82,7 +82,7 @@ export default async function MemberTradesPage({ params }: Props) {
       </header>
 
       {summary.totalTransactions === 0 ? (
-        <div className="rounded border border-dashed border-neutral-300 p-6 text-sm text-neutral-500 dark:border-neutral-700">
+        <div className="rounded border border-dashed border-neutral-300 p-6 text-sm text-neutral-500">
           No PTR transactions on file for this member yet.
         </div>
       ) : (
@@ -122,7 +122,7 @@ export default async function MemberTradesPage({ params }: Props) {
             </h2>
             <div className="overflow-x-auto">
               <table className="w-full border-collapse text-sm">
-                <thead className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-500 dark:border-neutral-800">
+                <thead className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-500">
                   <tr>
                     <th className="py-2 pr-3">Date</th>
                     <th className="py-2 pr-3">Type</th>
@@ -135,7 +135,7 @@ export default async function MemberTradesPage({ params }: Props) {
                   {transactions.map((tx) => (
                     <tr
                       key={tx.id}
-                      className="border-b border-neutral-100 dark:border-neutral-900"
+                      className="border-b border-neutral-100"
                     >
                       <td className="py-2 pr-3 align-top font-mono text-xs">
                         {tx.txDate || "—"}
@@ -195,9 +195,9 @@ function Stat({
   accent?: "warn";
 }) {
   const accentClass =
-    accent === "warn" ? "text-amber-700 dark:text-amber-300" : "";
+    accent === "warn" ? "text-amber-700" : "";
   return (
-    <div className="rounded border border-neutral-200 px-3 py-2 dark:border-neutral-800">
+    <div className="rounded border border-neutral-200 px-3 py-2">
       <div className="text-[11px] uppercase tracking-wide text-neutral-500">
         {label}
       </div>

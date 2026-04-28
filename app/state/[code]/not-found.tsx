@@ -14,7 +14,7 @@ export default function StateNotFound() {
       </p>
       <Link
         href="/"
-        className="mt-6 inline-block rounded bg-neutral-900 px-4 py-2 text-sm text-white no-underline transition-colors hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
+        className="mt-6 inline-block rounded bg-neutral-900 px-4 py-2 text-sm text-white no-underline transition-colors hover:bg-neutral-800"
       >
         All states
       </Link>

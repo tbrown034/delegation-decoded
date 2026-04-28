@@ -101,13 +101,13 @@ function MemberHeader({ member }: { member: MemberData }) {
               className="object-cover"
             />
           ) : (
-            <div className="flex h-full items-center justify-center bg-neutral-100 text-sm text-neutral-400 dark:bg-neutral-800">
+            <div className="flex h-full items-center justify-center bg-neutral-100 text-sm text-neutral-400">
               ?
             </div>
           )}
         </div>
         <div>
-          <p className="font-serif text-lg font-semibold tracking-tight group-hover:text-neutral-600 dark:group-hover:text-neutral-300">
+          <p className="font-serif text-lg font-semibold tracking-tight group-hover:text-neutral-600">
             {member.fullName}
           </p>
           <p className="text-xs text-neutral-500">
@@ -134,15 +134,15 @@ function StatRow({
   mono?: boolean;
 }) {
   return (
-    <div className="flex items-baseline border-b border-neutral-100 py-2 dark:border-neutral-800">
+    <div className="flex items-baseline border-b border-neutral-100 py-2">
       <span className="w-40 shrink-0 text-xs text-neutral-400">{label}</span>
       <span
-        className={`flex-1 text-right text-sm ${mono ? "font-mono" : ""} text-neutral-900 dark:text-neutral-100`}
+        className={`flex-1 text-right text-sm ${mono ? "font-mono" : ""} text-neutral-900`}
       >
         {valueA}
       </span>
       <span
-        className={`flex-1 text-right text-sm ${mono ? "font-mono" : ""} text-neutral-900 dark:text-neutral-100`}
+        className={`flex-1 text-right text-sm ${mono ? "font-mono" : ""} text-neutral-900`}
       >
         {valueB}
       </span>
@@ -154,7 +154,7 @@ function FinanceBar({ finance }: { finance: FinanceRecord | null }) {
   const total = finance ? effectiveTotal(finance) : 0;
   if (!finance || total === 0) {
     return (
-      <span className="text-xs text-neutral-300 dark:text-neutral-600">
+      <span className="text-xs text-neutral-300">
         No data
       </span>
     );
@@ -169,7 +169,7 @@ function FinanceBar({ finance }: { finance: FinanceRecord | null }) {
 
   return (
     <div>
-      <div className="flex h-1.5 w-full overflow-hidden rounded-sm bg-neutral-100 dark:bg-neutral-800">
+      <div className="flex h-1.5 w-full overflow-hidden rounded-sm bg-neutral-100">
         {pctSmall > 0 && (
           <div
             className="bg-emerald-600"
@@ -222,11 +222,11 @@ export function CompareMembers({
     <div>
       {/* Voting Agreement Hero */}
       {sameChamber ? (
-        <div className="mb-8 rounded-lg border border-neutral-100 bg-neutral-50 px-6 py-5 text-center dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="mb-8 rounded-lg border border-neutral-100 bg-neutral-50 px-6 py-5 text-center">
           <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">
             Voting Agreement
           </p>
-          <p className="mt-1 font-serif text-4xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100">
+          <p className="mt-1 font-serif text-4xl font-bold tracking-tight text-neutral-900">
             {agreement.agreementPct}%
           </p>
           <p className="mt-1 font-mono text-xs text-neutral-400">
@@ -234,7 +234,7 @@ export function CompareMembers({
           </p>
         </div>
       ) : (
-        <div className="mb-8 rounded-lg border border-neutral-100 bg-neutral-50 px-6 py-4 text-center dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="mb-8 rounded-lg border border-neutral-100 bg-neutral-50 px-6 py-4 text-center">
           <p className="text-xs text-neutral-400">
             Different chambers — no shared roll call votes to compare
           </p>
@@ -271,7 +271,7 @@ export function CompareMembers({
           valueA={fmt(financeA ? effectiveTotal(financeA) : 0)}
           valueB={fmt(financeB ? effectiveTotal(financeB) : 0)}
         />
-        <div className="flex border-b border-neutral-100 py-2 dark:border-neutral-800">
+        <div className="flex border-b border-neutral-100 py-2">
           <span className="w-40 shrink-0 text-xs text-neutral-400">
             Funding mix
           </span>
@@ -310,11 +310,11 @@ export function CompareMembers({
             {topCommitteesA.map((c) => (
               <div
                 key={c.committeeId}
-                className="border-b border-neutral-100 py-1.5 text-xs text-neutral-700 last:border-0 dark:border-neutral-800 dark:text-neutral-300"
+                className="border-b border-neutral-100 py-1.5 text-xs text-neutral-700 last:border-0"
               >
                 {c.name}
                 {c.role && c.role !== "member" && (
-                  <span className="ml-1.5 rounded bg-neutral-100 px-1 py-0.5 text-[10px] font-medium text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
+                  <span className="ml-1.5 rounded bg-neutral-100 px-1 py-0.5 text-[10px] font-medium text-neutral-500">
                     {c.role}
                   </span>
                 )}
@@ -328,11 +328,11 @@ export function CompareMembers({
             {topCommitteesB.map((c) => (
               <div
                 key={c.committeeId}
-                className="border-b border-neutral-100 py-1.5 text-xs text-neutral-700 last:border-0 dark:border-neutral-800 dark:text-neutral-300"
+                className="border-b border-neutral-100 py-1.5 text-xs text-neutral-700 last:border-0"
               >
                 {c.name}
                 {c.role && c.role !== "member" && (
-                  <span className="ml-1.5 rounded bg-neutral-100 px-1 py-0.5 text-[10px] font-medium text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
+                  <span className="ml-1.5 rounded bg-neutral-100 px-1 py-0.5 text-[10px] font-medium text-neutral-500">
                     {c.role}
                   </span>
                 )}

@@ -88,7 +88,7 @@ export function CompareDelegation({
           <h2 className="font-serif text-2xl font-semibold tracking-tight">
             <Link
               href={`/state/${stateCode}`}
-              className="no-underline hover:text-neutral-600 dark:hover:text-neutral-300"
+              className="no-underline hover:text-neutral-600"
             >
               {stateName}
             </Link>
@@ -109,11 +109,11 @@ export function CompareDelegation({
 
       {/* Senator Agreement */}
       {senators.length === 2 && senatorAgreement && (
-        <div className="mb-8 rounded-lg border border-neutral-100 bg-neutral-50 px-6 py-4 text-center dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="mb-8 rounded-lg border border-neutral-100 bg-neutral-50 px-6 py-4 text-center">
           <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">
             Senator Voting Agreement
           </p>
-          <p className="mt-1 font-serif text-3xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100">
+          <p className="mt-1 font-serif text-3xl font-bold tracking-tight text-neutral-900">
             {senatorAgreement.agreementPct}%
           </p>
           <p className="mt-0.5 font-mono text-[11px] text-neutral-400">
@@ -149,7 +149,7 @@ export function CompareDelegation({
                 <Link
                   key={s.bioguideId}
                   href={`/member/${s.bioguideId}`}
-                  className="group block rounded-lg border border-neutral-100 p-4 no-underline transition-colors hover:border-neutral-300 dark:border-neutral-800 dark:hover:border-neutral-600"
+                  className="group block rounded-lg border border-neutral-100 p-4 no-underline transition-colors hover:border-neutral-300"
                 >
                   <div className="flex items-center gap-3">
                     <div
@@ -164,13 +164,13 @@ export function CompareDelegation({
                           className="object-cover"
                         />
                       ) : (
-                        <div className="flex h-full items-center justify-center bg-neutral-100 text-xs text-neutral-400 dark:bg-neutral-800">
+                        <div className="flex h-full items-center justify-center bg-neutral-100 text-xs text-neutral-400">
                           ?
                         </div>
                       )}
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-neutral-900 group-hover:text-neutral-600 dark:text-neutral-100 dark:group-hover:text-neutral-300">
+                      <p className="text-sm font-medium text-neutral-900 group-hover:text-neutral-600">
                         {s.fullName}
                       </p>
                       <p className="text-xs text-neutral-500">
@@ -183,19 +183,19 @@ export function CompareDelegation({
                   </div>
                   <div className="mt-3 flex gap-4 font-mono text-xs text-neutral-400">
                     <span>
-                      <span className="font-medium text-neutral-700 dark:text-neutral-300">
+                      <span className="font-medium text-neutral-700">
                         {bc.sponsored}
                       </span>{" "}
                       bills
                     </span>
                     <span>
-                      <span className="font-medium text-neutral-700 dark:text-neutral-300">
+                      <span className="font-medium text-neutral-700">
                         {fmt(fin?.totalReceipts ?? null)}
                       </span>{" "}
                       raised
                     </span>
                     <span>
-                      <span className="font-medium text-neutral-700 dark:text-neutral-300">
+                      <span className="font-medium text-neutral-700">
                         {vs.total}
                       </span>{" "}
                       votes
@@ -217,7 +217,7 @@ export function CompareDelegation({
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="border-b border-neutral-200 text-xs font-medium uppercase tracking-wide text-neutral-400 dark:border-neutral-700">
+                <tr className="border-b border-neutral-200 text-xs font-medium uppercase tracking-wide text-neutral-400">
                   <th className="pb-2 pr-4 font-medium">Member</th>
                   <th className="pb-2 pr-4 font-medium">Party</th>
                   <th className="pb-2 pr-4 text-right font-medium">Dist.</th>
@@ -246,12 +246,12 @@ export function CompareDelegation({
                     return (
                       <tr
                         key={r.bioguideId}
-                        className="border-b border-neutral-100 last:border-0 dark:border-neutral-800"
+                        className="border-b border-neutral-100 last:border-0"
                       >
                         <td className="py-2 pr-4">
                           <Link
                             href={`/member/${r.bioguideId}`}
-                            className="text-neutral-900 no-underline hover:text-neutral-600 dark:text-neutral-100 dark:hover:text-neutral-300"
+                            className="text-neutral-900 no-underline hover:text-neutral-600"
                           >
                             {r.fullName}
                           </Link>

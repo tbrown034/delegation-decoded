@@ -79,15 +79,15 @@ function StatRow({
   mono?: boolean;
 }) {
   return (
-    <div className="flex items-baseline border-b border-neutral-100 py-2.5 dark:border-neutral-800">
+    <div className="flex items-baseline border-b border-neutral-100 py-2.5">
       <span className="w-44 shrink-0 text-xs text-neutral-400">{label}</span>
       <span
-        className={`flex-1 text-right text-sm ${mono ? "font-mono" : ""} font-medium text-neutral-900 dark:text-neutral-100`}
+        className={`flex-1 text-right text-sm ${mono ? "font-mono" : ""} font-medium text-neutral-900`}
       >
         {valueA}
       </span>
       <span
-        className={`flex-1 text-right text-sm ${mono ? "font-mono" : ""} font-medium text-neutral-900 dark:text-neutral-100`}
+        className={`flex-1 text-right text-sm ${mono ? "font-mono" : ""} font-medium text-neutral-900`}
       >
         {valueB}
       </span>
@@ -108,7 +108,7 @@ function StateHeader({
     <div className="flex-1">
       <Link
         href={`/state/${stateCode}`}
-        className="font-serif text-xl font-semibold tracking-tight no-underline hover:text-neutral-600 dark:hover:text-neutral-300"
+        className="font-serif text-xl font-semibold tracking-tight no-underline hover:text-neutral-600"
       >
         {stateName}
       </Link>

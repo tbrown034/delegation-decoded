@@ -106,12 +106,12 @@ export default async function StatePage({ params }: Props) {
       <nav className="mb-8 font-mono text-xs text-neutral-400">
         <Link
           href="/"
-          className="no-underline hover:text-neutral-700 dark:hover:text-neutral-300"
+          className="no-underline hover:text-neutral-700"
         >
           All States
         </Link>
         <span className="mx-1.5">/</span>
-        <span className="text-neutral-900 dark:text-neutral-100">
+        <span className="text-neutral-900">
           {state.name}
         </span>
       </nav>
@@ -125,7 +125,7 @@ export default async function StatePage({ params }: Props) {
           <span>
             {senators.length} senator{senators.length !== 1 ? "s" : ""}
           </span>
-          <span className="text-neutral-200 dark:text-neutral-700">/</span>
+          <span className="text-neutral-200">/</span>
           <span>
             {reps.length} representative{reps.length !== 1 ? "s" : ""}
           </span>
@@ -142,11 +142,11 @@ export default async function StatePage({ params }: Props) {
 
       {/* Delegation Brief */}
       {brief && (
-        <div className="mb-10 border-l-2 border-neutral-200 pl-4 dark:border-neutral-700">
-          <p className="text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">
+        <div className="mb-10 border-l-2 border-neutral-200 pl-4">
+          <p className="text-sm leading-relaxed text-neutral-600">
             {brief.summary}
           </p>
-          <p className="mt-2 font-mono text-[10px] text-neutral-300 dark:text-neutral-600">
+          <p className="mt-2 font-mono text-[10px] text-neutral-300">
             Generated{" "}
             {new Date(brief.generatedAt).toLocaleDateString("en-US", {
               month: "short",
@@ -225,13 +225,13 @@ export default async function StatePage({ params }: Props) {
                   return (
                     <div
                       key={e.id}
-                      className="flex items-start gap-2.5 border-b border-neutral-100 py-2 last:border-0 dark:border-neutral-800"
+                      className="flex items-start gap-2.5 border-b border-neutral-100 py-2 last:border-0"
                     >
                       <span
                         className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${icon}`}
                       />
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm text-neutral-700 dark:text-neutral-300">
+                        <p className="text-sm text-neutral-700">
                           {e.title}
                         </p>
                         {e.description && (
@@ -240,7 +240,7 @@ export default async function StatePage({ params }: Props) {
                           </p>
                         )}
                       </div>
-                      <span className="shrink-0 font-mono text-[10px] text-neutral-300 dark:text-neutral-600">
+                      <span className="shrink-0 font-mono text-[10px] text-neutral-300">
                         {e.eventDate}
                       </span>
                     </div>
@@ -260,14 +260,14 @@ export default async function StatePage({ params }: Props) {
                 {recentBills.map((b) => (
                   <div
                     key={b.billId}
-                    className="border-b border-neutral-100 py-2.5 last:border-0 dark:border-neutral-800"
+                    className="border-b border-neutral-100 py-2.5 last:border-0"
                   >
                     <div className="flex items-start gap-2">
                       <span className="mt-0.5 shrink-0 font-mono text-[11px] text-neutral-400">
                         {b.billType.toUpperCase()}&nbsp;{b.billNumber}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm text-neutral-900 dark:text-neutral-100">
+                        <p className="text-sm text-neutral-900">
                           {b.title}
                         </p>
                         <p className="mt-0.5 text-xs text-neutral-400">
@@ -302,13 +302,13 @@ export default async function StatePage({ params }: Props) {
                 {statePressReleases.map((pr) => (
                   <div
                     key={pr.id}
-                    className="border-b border-neutral-100 py-2 last:border-0 dark:border-neutral-800"
+                    className="border-b border-neutral-100 py-2 last:border-0"
                   >
                     <a
                       href={pr.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-xs text-neutral-700 underline decoration-neutral-200 underline-offset-2 hover:decoration-neutral-400 dark:text-neutral-300 dark:decoration-neutral-700"
+                      className="text-xs text-neutral-700 underline decoration-neutral-200 underline-offset-2 hover:decoration-neutral-400"
                     >
                       {pr.title}
                     </a>
@@ -342,10 +342,10 @@ export default async function StatePage({ params }: Props) {
                 {messagingKeywords.map((kw) => (
                   <span
                     key={kw.term}
-                    className="inline-flex items-center gap-1 rounded-full border border-neutral-200 px-2.5 py-1 text-xs text-neutral-600 dark:border-neutral-700 dark:text-neutral-400"
+                    className="inline-flex items-center gap-1 rounded-full border border-neutral-200 px-2.5 py-1 text-xs text-neutral-600"
                   >
                     {kw.term}
-                    <span className="font-mono text-[10px] text-neutral-300 dark:text-neutral-600">
+                    <span className="font-mono text-[10px] text-neutral-300">
                       {kw.count}
                     </span>
                   </span>
@@ -375,10 +375,10 @@ export default async function StatePage({ params }: Props) {
                     <Link
                       key={r.bioguideId}
                       href={`/member/${r.bioguideId}`}
-                      className="group block border-b border-neutral-100 py-1.5 no-underline last:border-0 dark:border-neutral-800"
+                      className="group block border-b border-neutral-100 py-1.5 no-underline last:border-0"
                     >
                       <div className="flex items-baseline justify-between">
-                        <span className="flex items-center gap-1 text-xs text-neutral-600 group-hover:text-neutral-900 dark:text-neutral-400">
+                        <span className="flex items-center gap-1 text-xs text-neutral-600 group-hover:text-neutral-900">
                           <span
                             className={`inline-block h-1.5 w-1.5 rounded-full ${dotColor}`}
                           />
@@ -389,7 +389,7 @@ export default async function StatePage({ params }: Props) {
                         </span>
                       </div>
                       {r.releaseCount > 0 && (
-                        <div className="mt-0.5 h-1 w-full overflow-hidden rounded-sm bg-neutral-100 dark:bg-neutral-800">
+                        <div className="mt-0.5 h-1 w-full overflow-hidden rounded-sm bg-neutral-100">
                           <div
                             className="h-full rounded-sm bg-neutral-400"
                             style={{ width: `${Math.max(pct, 3)}%` }}
@@ -425,17 +425,17 @@ export default async function StatePage({ params }: Props) {
                     <Link
                       key={f.bioguideId}
                       href={`/member/${f.bioguideId}`}
-                      className="group block border-b border-neutral-100 py-2 no-underline last:border-0 dark:border-neutral-800"
+                      className="group block border-b border-neutral-100 py-2 no-underline last:border-0"
                     >
                       <div className="flex items-baseline justify-between">
-                        <span className="truncate text-xs text-neutral-600 group-hover:text-neutral-900 dark:text-neutral-400">
+                        <span className="truncate text-xs text-neutral-600 group-hover:text-neutral-900">
                           {f.fullName}
                         </span>
-                        <span className="ml-2 shrink-0 font-mono text-xs font-medium text-neutral-900 dark:text-neutral-100">
+                        <span className="ml-2 shrink-0 font-mono text-xs font-medium text-neutral-900">
                           {fmt(raised)}
                         </span>
                       </div>
-                      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-sm bg-neutral-100 dark:bg-neutral-800">
+                      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-sm bg-neutral-100">
                         <div
                           className={`h-full rounded-sm ${barColor}`}
                           style={{ width: `${Math.max(pct, 3)}%` }}
@@ -459,7 +459,7 @@ export default async function StatePage({ params }: Props) {
                   .slice(0, 12)
                   .map(([id, { name, members: cms }]) => (
                     <div key={id}>
-                      <p className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
+                      <p className="text-xs font-medium text-neutral-700">
                         {name}
                       </p>
                       <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0">
@@ -467,7 +467,7 @@ export default async function StatePage({ params }: Props) {
                           <Link
                             key={cm.bioguideId}
                             href={`/member/${cm.bioguideId}`}
-                            className="text-[11px] text-neutral-400 no-underline hover:text-neutral-700 dark:hover:text-neutral-300"
+                            className="text-[11px] text-neutral-400 no-underline hover:text-neutral-700"
                           >
                             <span
                               className={`mr-0.5 inline-block h-1 w-1 rounded-full ${partyDot[cm.memberParty] || "bg-neutral-400"}`}

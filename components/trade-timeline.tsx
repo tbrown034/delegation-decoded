@@ -68,7 +68,7 @@ export function TradeTimeline({ trades, height = 220 }: Props) {
 
   if (!layout || dated.length === 0) {
     return (
-      <div className="rounded border border-dashed border-neutral-300 p-6 text-sm text-neutral-500 dark:border-neutral-700">
+      <div className="rounded border border-dashed border-neutral-300 p-6 text-sm text-neutral-500">
         No dated transactions to plot yet.
       </div>
     );
@@ -216,7 +216,7 @@ export function TradeTimeline({ trades, height = 220 }: Props) {
         })}
       </svg>
 
-      <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-[11px] text-neutral-600 dark:text-neutral-400">
+      <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-[11px] text-neutral-600">
         <LegendItem>
           <span
             className="block h-2.5 w-2.5 rounded-full"
@@ -245,7 +245,7 @@ export function TradeTimeline({ trades, height = 220 }: Props) {
           const tx = dated.find((t) => t.id === hoverId);
           if (!tx) return null;
           return (
-            <div className="mt-3 rounded border border-neutral-200 bg-white p-3 text-xs shadow-sm dark:border-neutral-800 dark:bg-neutral-950">
+            <div className="mt-3 rounded border border-neutral-200 bg-white p-3 text-xs shadow-sm">
               <div className="flex items-baseline justify-between gap-3">
                 <span className="font-mono">{tx.txDate}</span>
                 <span className="font-medium">

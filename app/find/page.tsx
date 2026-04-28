@@ -109,10 +109,10 @@ async function lookupDelegation(stateCode: string, district: number | null) {
 
 const partyColor = (party: string) =>
   party === "Democrat"
-    ? "text-blue-700 dark:text-blue-400"
+    ? "text-blue-700"
     : party === "Republican"
-      ? "text-red-700 dark:text-red-400"
-      : "text-neutral-700 dark:text-neutral-300";
+      ? "text-red-700"
+      : "text-neutral-700";
 
 interface Props {
   searchParams: Promise<{ address?: string }>;
@@ -155,37 +155,37 @@ export default async function FindPage({ searchParams }: Props) {
           name="address"
           defaultValue={address ?? ""}
           placeholder="1600 Pennsylvania Ave, Washington, DC 20500"
-          className="flex-1 rounded border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-neutral-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+          className="flex-1 rounded border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-neutral-500 focus:outline-none"
           autoFocus
           required
         />
         <button
           type="submit"
-          className="rounded bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-300"
+          className="rounded bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700"
         >
           Look up
         </button>
       </form>
 
       {error && (
-        <div className="rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+        <div className="rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           {error}
         </div>
       )}
 
       {result && delegation && (
         <div>
-          <div className="mb-6 border-b border-neutral-100 pb-4 dark:border-neutral-800">
+          <div className="mb-6 border-b border-neutral-100 pb-4">
             <p className="text-xs uppercase tracking-wide text-neutral-400">
               Matched address
             </p>
-            <p className="mt-1 font-mono text-sm text-neutral-700 dark:text-neutral-300">
+            <p className="mt-1 font-mono text-sm text-neutral-700">
               {result.matchedAddress}
             </p>
             <p className="mt-2 text-sm">
               <Link
                 href={`/state/${result.stateCode}`}
-                className="font-medium text-neutral-900 hover:underline dark:text-neutral-100"
+                className="font-medium text-neutral-900 hover:underline"
               >
                 {delegation.stateName}
               </Link>
@@ -278,7 +278,7 @@ function DelegateCard({
     <li>
       <Link
         href={`/member/${bioguideId}`}
-        className="flex items-center gap-3 rounded border border-neutral-200 bg-white p-3 no-underline transition-colors hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-950 dark:hover:bg-neutral-900"
+        className="flex items-center gap-3 rounded border border-neutral-200 bg-white p-3 no-underline transition-colors hover:bg-neutral-50"
       >
         {photoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -288,10 +288,10 @@ function DelegateCard({
             className="h-12 w-12 shrink-0 rounded-full bg-neutral-100 object-cover"
           />
         ) : (
-          <div className="h-12 w-12 shrink-0 rounded-full bg-neutral-100 dark:bg-neutral-800" />
+          <div className="h-12 w-12 shrink-0 rounded-full bg-neutral-100" />
         )}
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-100">
+          <p className="truncate text-sm font-medium text-neutral-900">
             {fullName}
           </p>
           <p className={`text-xs ${partyColor(party)}`}>

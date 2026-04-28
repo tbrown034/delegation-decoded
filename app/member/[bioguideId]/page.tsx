@@ -90,19 +90,19 @@ export default async function MemberPage({ params }: Props) {
       <nav className="mb-8 font-mono text-xs text-neutral-400">
         <Link
           href="/"
-          className="no-underline hover:text-neutral-700 dark:hover:text-neutral-300"
+          className="no-underline hover:text-neutral-700"
         >
           States
         </Link>
         <span className="mx-1.5">/</span>
         <Link
           href={`/state/${member.stateCode}`}
-          className="no-underline hover:text-neutral-700 dark:hover:text-neutral-300"
+          className="no-underline hover:text-neutral-700"
         >
           {stateName}
         </Link>
         <span className="mx-1.5">/</span>
-        <span className="text-neutral-900 dark:text-neutral-100">
+        <span className="text-neutral-900">
           {member.lastName}
         </span>
       </nav>
@@ -122,7 +122,7 @@ export default async function MemberPage({ params }: Props) {
               priority
             />
           ) : (
-            <div className="flex h-full items-center justify-center bg-neutral-100 text-lg text-neutral-400 dark:bg-neutral-800">
+            <div className="flex h-full items-center justify-center bg-neutral-100 text-lg text-neutral-400">
               ?
             </div>
           )}
@@ -139,7 +139,7 @@ export default async function MemberPage({ params }: Props) {
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-0.5 font-mono text-xs text-neutral-400">
             {billCounts.sponsored > 0 && (
               <span>
-                <span className="font-medium text-neutral-700 dark:text-neutral-300">
+                <span className="font-medium text-neutral-700">
                   {billCounts.sponsored}
                 </span>{" "}
                 bills
@@ -147,7 +147,7 @@ export default async function MemberPage({ params }: Props) {
             )}
             {billCounts.cosponsored > 0 && (
               <span>
-                <span className="font-medium text-neutral-700 dark:text-neutral-300">
+                <span className="font-medium text-neutral-700">
                   {billCounts.cosponsored}
                 </span>{" "}
                 cosponsored
@@ -155,7 +155,7 @@ export default async function MemberPage({ params }: Props) {
             )}
             {latestFinance && (
               <span>
-                <span className="font-medium text-neutral-700 dark:text-neutral-300">
+                <span className="font-medium text-neutral-700">
                   {fmt(effectiveTotal(latestFinance))}
                 </span>{" "}
                 raised
@@ -163,7 +163,7 @@ export default async function MemberPage({ params }: Props) {
             )}
             {voteSummary.total > 0 && (
               <span>
-                <span className="font-medium text-neutral-700 dark:text-neutral-300">
+                <span className="font-medium text-neutral-700">
                   {voteSummary.total}
                 </span>{" "}
                 votes recorded
@@ -174,7 +174,7 @@ export default async function MemberPage({ params }: Props) {
             {member.websiteUrl && (
               <a
                 href={member.websiteUrl}
-                className="underline decoration-neutral-300 underline-offset-2 hover:text-neutral-700 dark:decoration-neutral-600 dark:hover:text-neutral-300"
+                className="underline decoration-neutral-300 underline-offset-2 hover:text-neutral-700"
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -184,7 +184,7 @@ export default async function MemberPage({ params }: Props) {
             {member.twitter && (
               <a
                 href={`https://twitter.com/${member.twitter}`}
-                className="underline decoration-neutral-300 underline-offset-2 hover:text-neutral-700 dark:decoration-neutral-600 dark:hover:text-neutral-300"
+                className="underline decoration-neutral-300 underline-offset-2 hover:text-neutral-700"
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -207,7 +207,7 @@ export default async function MemberPage({ params }: Props) {
             {memberBills.map((b) => (
               <div
                 key={b.billId}
-                className="border-b border-neutral-100 py-2.5 last:border-0 dark:border-neutral-800"
+                className="border-b border-neutral-100 py-2.5 last:border-0"
               >
                 <div className="flex items-start gap-2.5">
                   <div className="mt-0.5 flex shrink-0 items-center gap-1.5">
@@ -217,15 +217,15 @@ export default async function MemberPage({ params }: Props) {
                     <span
                       className={`rounded px-1 py-px text-[10px] ${
                         b.role === "sponsor"
-                          ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
-                          : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"
+                          ? "bg-neutral-900 text-white"
+                          : "bg-neutral-100 text-neutral-500"
                       }`}
                     >
                       {b.role}
                     </span>
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm text-neutral-900 dark:text-neutral-100">
+                    <p className="text-sm text-neutral-900">
                       {b.title}
                     </p>
                     {b.latestActionText && (
@@ -235,7 +235,7 @@ export default async function MemberPage({ params }: Props) {
                     )}
                   </div>
                   {b.introducedDate && (
-                    <span className="shrink-0 font-mono text-[11px] text-neutral-300 dark:text-neutral-600">
+                    <span className="shrink-0 font-mono text-[11px] text-neutral-300">
                       {b.introducedDate}
                     </span>
                   )}
@@ -273,7 +273,7 @@ export default async function MemberPage({ params }: Props) {
               )}
               {voteSummary.notVoting > 0 && (
                 <div
-                  className="bg-neutral-300 dark:bg-neutral-600"
+                  className="bg-neutral-300"
                   style={{
                     width: `${(voteSummary.notVoting / voteSummary.total) * 100}%`,
                   }}
@@ -291,7 +291,7 @@ export default async function MemberPage({ params }: Props) {
               </span>
               {voteSummary.notVoting > 0 && (
                 <span>
-                  <span className="mr-0.5 inline-block h-1.5 w-1.5 rounded-full bg-neutral-300 dark:bg-neutral-600" />
+                  <span className="mr-0.5 inline-block h-1.5 w-1.5 rounded-full bg-neutral-300" />
                   {voteSummary.notVoting} missed
                 </span>
               )}
@@ -305,7 +305,7 @@ export default async function MemberPage({ params }: Props) {
             {recentVotes.map((v) => (
               <div
                 key={v.voteId}
-                className="flex items-center gap-2.5 border-b border-neutral-100 py-2 last:border-0 dark:border-neutral-800"
+                className="flex items-center gap-2.5 border-b border-neutral-100 py-2 last:border-0"
               >
                 <span
                   className={`h-2 w-2 shrink-0 rounded-full ${
@@ -313,11 +313,11 @@ export default async function MemberPage({ params }: Props) {
                       ? "bg-emerald-600"
                       : v.position === "nay"
                         ? "bg-rose-600"
-                        : "bg-neutral-300 dark:bg-neutral-600"
+                        : "bg-neutral-300"
                   }`}
                 />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm text-neutral-900 dark:text-neutral-100">
+                  <p className="truncate text-sm text-neutral-900">
                     {v.description || v.question}
                   </p>
                   <p className="text-[11px] text-neutral-400">
@@ -327,7 +327,7 @@ export default async function MemberPage({ params }: Props) {
                 <span className="shrink-0 font-mono text-[10px] uppercase text-neutral-400">
                   {v.position}
                 </span>
-                <span className="shrink-0 font-mono text-[11px] text-neutral-300 dark:text-neutral-600">
+                <span className="shrink-0 font-mono text-[11px] text-neutral-300">
                   {v.voteDate}
                 </span>
               </div>
@@ -369,18 +369,18 @@ export default async function MemberPage({ params }: Props) {
             {memberPressReleases.map((pr) => (
               <div
                 key={pr.id}
-                className="border-b border-neutral-100 py-2 last:border-0 dark:border-neutral-800"
+                className="border-b border-neutral-100 py-2 last:border-0"
               >
                 <a
                   href={pr.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-sm text-neutral-900 underline decoration-neutral-300 underline-offset-2 hover:decoration-neutral-500 dark:text-neutral-100 dark:decoration-neutral-600"
+                  className="text-sm text-neutral-900 underline decoration-neutral-300 underline-offset-2 hover:decoration-neutral-500"
                 >
                   {pr.title}
                 </a>
                 {pr.publishedAt && (
-                  <span className="ml-2 font-mono text-[11px] text-neutral-300 dark:text-neutral-600">
+                  <span className="ml-2 font-mono text-[11px] text-neutral-300">
                     {new Date(pr.publishedAt).toLocaleDateString("en-US", {
                       month: "short",
                       day: "numeric",
@@ -415,13 +415,13 @@ export default async function MemberPage({ params }: Props) {
               return (
                 <div
                   key={f.electionCycle}
-                  className="border-b border-neutral-100 pb-4 last:border-0 dark:border-neutral-800"
+                  className="border-b border-neutral-100 pb-4 last:border-0"
                 >
                   <div className="flex items-baseline justify-between">
                     <span className="font-mono text-xs text-neutral-400">
                       {f.electionCycle} cycle
                     </span>
-                    <span className="font-mono text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+                    <span className="font-mono text-lg font-semibold text-neutral-900">
                       {fmt(total)}
                     </span>
                   </div>
@@ -462,13 +462,13 @@ export default async function MemberPage({ params }: Props) {
                   <div className="mt-2 flex gap-6 font-mono text-[11px]">
                     <span className="text-neutral-400">
                       Spent{" "}
-                      <span className="text-neutral-600 dark:text-neutral-300">
+                      <span className="text-neutral-600">
                         {fmt(f.totalDisbursements)}
                       </span>
                     </span>
                     <span className="text-neutral-400">
                       Cash{" "}
-                      <span className="text-neutral-600 dark:text-neutral-300">
+                      <span className="text-neutral-600">
                         {fmt(f.cashOnHand)}
                       </span>
                     </span>
@@ -490,9 +490,9 @@ export default async function MemberPage({ params }: Props) {
             {contributors.map((c, i) => (
               <div
                 key={i}
-                className="flex items-baseline justify-between border-b border-neutral-100 py-1.5 last:border-0 dark:border-neutral-800"
+                className="flex items-baseline justify-between border-b border-neutral-100 py-1.5 last:border-0"
               >
-                <span className="truncate text-sm text-neutral-700 dark:text-neutral-300">
+                <span className="truncate text-sm text-neutral-700">
                   {c.contributorName}
                 </span>
                 <span className="ml-3 shrink-0 font-mono text-xs text-neutral-400">
@@ -516,14 +516,14 @@ export default async function MemberPage({ params }: Props) {
               return (
                 <div
                   key={c.committeeId}
-                  className="border-b border-neutral-100 pb-3 last:border-0 dark:border-neutral-800"
+                  className="border-b border-neutral-100 pb-3 last:border-0"
                 >
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                    <p className="text-sm font-medium text-neutral-900">
                       {c.name}
                     </p>
                     {c.role && c.role !== "member" && (
-                      <span className="font-mono text-[10px] uppercase text-amber-700 dark:text-amber-400">
+                      <span className="font-mono text-[10px] uppercase text-amber-700">
                         {c.role.replace("_", " ")}
                       </span>
                     )}
@@ -586,19 +586,19 @@ export default async function MemberPage({ params }: Props) {
               {timeline.map((item, i) => (
                 <div
                   key={`${item.type}-${item.date}-${i}`}
-                  className="flex items-start gap-2.5 border-b border-neutral-100 py-2 last:border-0 dark:border-neutral-800"
+                  className="flex items-start gap-2.5 border-b border-neutral-100 py-2 last:border-0"
                 >
                   <span
                     className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${typeColor[item.type]}`}
                   />
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm text-neutral-700 dark:text-neutral-300">
+                    <p className="text-sm text-neutral-700">
                       {item.relatedUrl ? (
                         <a
                           href={item.relatedUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-neutral-700 underline decoration-neutral-200 underline-offset-2 hover:decoration-neutral-400 dark:text-neutral-300 dark:decoration-neutral-700"
+                          className="text-neutral-700 underline decoration-neutral-200 underline-offset-2 hover:decoration-neutral-400"
                         >
                           {item.title}
                         </a>
@@ -626,10 +626,10 @@ export default async function MemberPage({ params }: Props) {
                     )}
                   </div>
                   <div className="shrink-0 text-right">
-                    <span className="font-mono text-[10px] text-neutral-300 dark:text-neutral-600">
+                    <span className="font-mono text-[10px] text-neutral-300">
                       {item.date}
                     </span>
-                    <p className="font-mono text-[9px] uppercase text-neutral-300 dark:text-neutral-600">
+                    <p className="font-mono text-[9px] uppercase text-neutral-300">
                       {typeLabel[item.type]}
                     </p>
                   </div>
@@ -654,10 +654,10 @@ export default async function MemberPage({ params }: Props) {
               {keywords.map((kw) => (
                 <span
                   key={kw.term}
-                  className="inline-flex items-center gap-1 rounded-full border border-neutral-200 px-2.5 py-1 text-xs text-neutral-600 dark:border-neutral-700 dark:text-neutral-400"
+                  className="inline-flex items-center gap-1 rounded-full border border-neutral-200 px-2.5 py-1 text-xs text-neutral-600"
                 >
                   {kw.term}
-                  <span className="font-mono text-[10px] text-neutral-300 dark:text-neutral-600">
+                  <span className="font-mono text-[10px] text-neutral-300">
                     {kw.count}
                   </span>
                 </span>
@@ -679,23 +679,23 @@ export default async function MemberPage({ params }: Props) {
           {memberTerms.map((t, i) => (
             <div
               key={i}
-              className="flex items-center gap-3 border-b border-neutral-100 py-2 text-sm last:border-0 dark:border-neutral-800"
+              className="flex items-center gap-3 border-b border-neutral-100 py-2 text-sm last:border-0"
             >
               <span
                 className={`h-1.5 w-1.5 rounded-full ${
                   t.isCurrent
                     ? "bg-green-600"
-                    : "bg-neutral-200 dark:bg-neutral-700"
+                    : "bg-neutral-200"
                 }`}
               />
-              <span className="text-neutral-900 dark:text-neutral-100">
+              <span className="text-neutral-900">
                 {t.chamber === "senate" ? "Senate" : "House"}
                 {t.district ? `, Dist. ${t.district}` : ""}
               </span>
               <span className="font-mono text-xs text-neutral-400">
                 {t.startDate} — {t.endDate || "present"}
               </span>
-              <span className="text-xs text-neutral-300 dark:text-neutral-600">
+              <span className="text-xs text-neutral-300">
                 {t.party}
               </span>
             </div>

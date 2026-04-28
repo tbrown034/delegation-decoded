@@ -221,7 +221,7 @@ export default async function TradesLandingPage() {
         <h1 className="mt-1 font-serif text-4xl font-semibold leading-tight tracking-tight">
           What is Congress buying and selling?
         </h1>
-        <p className="mt-3 text-base text-neutral-700 dark:text-neutral-300">
+        <p className="mt-3 text-base text-neutral-700">
           Members of Congress must disclose their stock trades, but filings
           are scattered across PDFs and hard to search. Each mark below is one
           trade — green for purchases, red for sales — sized by the disclosed
@@ -229,7 +229,7 @@ export default async function TradesLandingPage() {
         </p>
         <p className="mt-2 font-mono text-xs text-neutral-500">
           Most recent filing:{" "}
-          <span className="text-neutral-800 dark:text-neutral-200">
+          <span className="text-neutral-800">
             {fmtFilingDate(totals.latestFiling)}
           </span>{" "}
           · Data refreshed weekly
@@ -271,7 +271,7 @@ export default async function TradesLandingPage() {
             </h2>
             <Link
               href="/trades/methodology"
-              className="font-mono text-[10px] uppercase tracking-wide text-neutral-500 underline hover:text-neutral-900 dark:hover:text-neutral-100"
+              className="font-mono text-[10px] uppercase tracking-wide text-neutral-500 underline hover:text-neutral-900"
             >
               How this is built →
             </Link>
@@ -281,25 +281,25 @@ export default async function TradesLandingPage() {
       )}
 
       {rows.length === 0 ? (
-        <div className="rounded border border-dashed border-neutral-300 p-8 text-sm text-neutral-500 dark:border-neutral-700">
+        <div className="rounded border border-dashed border-neutral-300 p-8 text-sm text-neutral-500">
           No disclosure data ingested yet. Run{" "}
           <code className="font-mono">scripts/ingest/disclosures-house.ts</code>{" "}
           to populate.
         </div>
       ) : (
         <section>
-          <div className="mb-1 grid grid-cols-[2fr_0.6fr_0.9fr_2.5fr] items-end gap-x-4 border-b border-neutral-200 pb-1 font-mono text-[10px] uppercase tracking-wide text-neutral-500 dark:border-neutral-800">
+          <div className="mb-1 grid grid-cols-[2fr_0.6fr_0.9fr_2.5fr] items-end gap-x-4 border-b border-neutral-200 pb-1 font-mono text-[10px] uppercase tracking-wide text-neutral-500">
             <span>Member</span>
             <span>Trades</span>
             <span>Latest</span>
             <span>Activity</span>
           </div>
           {domain && <SwimLaneAxis domain={domain} />}
-          <ul className="divide-y divide-neutral-100 dark:divide-neutral-900">
+          <ul className="divide-y divide-neutral-100">
             {rows.map((r, i) => {
               const memberTrades = trades.get(r.bioguideId) ?? [];
               const latest = latestByMember.get(r.bioguideId);
-              const zebra = i % 2 === 0 ? "bg-neutral-50/50 dark:bg-neutral-900/40" : "";
+              const zebra = i % 2 === 0 ? "bg-neutral-50/50" : "";
               return (
                 <li
                   key={r.bioguideId}
@@ -319,7 +319,7 @@ export default async function TradesLandingPage() {
                       {r.chamber === "house" ? "-H" : "-S"}
                     </span>
                   </Link>
-                  <span className="font-mono text-xs font-semibold text-neutral-800 dark:text-neutral-200">
+                  <span className="font-mono text-xs font-semibold text-neutral-800">
                     {r.txCount.toLocaleString()}
                   </span>
                   <span className="font-mono text-[11px] text-neutral-500">
@@ -354,7 +354,7 @@ export default async function TradesLandingPage() {
             {topTrader && (
               <span className="ml-auto text-neutral-400">
                 Sorted by trade volume · top:{" "}
-                <span className="text-neutral-700 dark:text-neutral-300">
+                <span className="text-neutral-700">
                   {topTrader.fullName} ({topTrader.txCount.toLocaleString()})
                 </span>
               </span>
@@ -425,8 +425,8 @@ function HeroStat({
 }) {
   const valueClass =
     tone === "warn"
-      ? "text-amber-600 dark:text-amber-400"
-      : "text-neutral-900 dark:text-neutral-100";
+      ? "text-amber-600"
+      : "text-neutral-900";
   return (
     <div className="flex items-baseline gap-2">
       <span className={`font-serif text-3xl font-semibold tracking-tight ${valueClass}`}>
@@ -508,7 +508,7 @@ function SwimLaneAxis({ domain }: { domain: [string, string] }) {
           <span
             key={t.label + t.pct}
             className={`absolute -translate-x-1/2 font-mono text-[10px] ${
-              t.isYearStart ? "font-semibold text-neutral-700 dark:text-neutral-300" : "text-neutral-400"
+              t.isYearStart ? "font-semibold text-neutral-700" : "text-neutral-400"
             }`}
             style={{ left: `${t.pct}%` }}
           >

@@ -128,7 +128,7 @@ export default async function ComparePage({ searchParams }: Props) {
 
 function EmptyState({ message }: { message: string }) {
   return (
-    <div className="rounded-lg border border-dashed border-neutral-200 px-6 py-16 text-center dark:border-neutral-800">
+    <div className="rounded-lg border border-dashed border-neutral-200 px-6 py-16 text-center">
       <p className="text-sm text-neutral-400">{message}</p>
     </div>
   );
@@ -144,17 +144,17 @@ function IntroCard({
   quickPicks?: { label: string; href: string }[];
 }) {
   return (
-    <div className="rounded-lg border border-neutral-200 bg-neutral-50/40 p-6 dark:border-neutral-800 dark:bg-neutral-900/40 sm:p-8">
-      <p className="text-sm text-neutral-700 dark:text-neutral-300">{lede}</p>
+    <div className="rounded-lg border border-neutral-200 bg-neutral-50/40 p-6 sm:p-8">
+      <p className="text-sm text-neutral-700">{lede}</p>
 
       <div className="mt-5">
         <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">
           What you&apos;ll see
         </p>
-        <ul className="mt-2 grid gap-1.5 text-sm text-neutral-600 dark:text-neutral-400 sm:grid-cols-2">
+        <ul className="mt-2 grid gap-1.5 text-sm text-neutral-600 sm:grid-cols-2">
           {bullets.map((b) => (
             <li key={b} className="flex gap-2">
-              <span className="text-neutral-300 dark:text-neutral-600">—</span>
+              <span className="text-neutral-300">—</span>
               <span>{b}</span>
             </li>
           ))}
@@ -171,7 +171,7 @@ function IntroCard({
               <Link
                 key={p.href}
                 href={p.href}
-                className="rounded-full border border-neutral-200 bg-white px-3 py-1 text-xs text-neutral-700 transition-colors hover:border-neutral-400 hover:text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:border-neutral-500 dark:hover:text-neutral-100"
+                className="rounded-full border border-neutral-200 bg-white px-3 py-1 text-xs text-neutral-700 transition-colors hover:border-neutral-400 hover:text-neutral-900"
               >
                 {p.label}
               </Link>

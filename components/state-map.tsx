@@ -31,7 +31,7 @@ const GRID: (string | null)[][] = [
 function getDominantColor(parties: StateData["parties"]): string {
   const { democrat, republican, independent } = parties;
   const total = democrat + republican + independent;
-  if (total === 0) return "bg-neutral-100 dark:bg-neutral-800";
+  if (total === 0) return "bg-neutral-100";
 
   const demPct = democrat / total;
   const repPct = republican / total;

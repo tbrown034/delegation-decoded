@@ -140,7 +140,7 @@ export default async function TickerPage({ params }: Props) {
         <h1 className="font-serif text-4xl font-semibold tracking-tight">
           {symbol}
         </h1>
-        <p className="mt-2 text-sm text-neutral-700 dark:text-neutral-300">
+        <p className="mt-2 text-sm text-neutral-700">
           {memberRows.length} {memberRows.length === 1 ? "member" : "members"} of
           Congress disclosed {txs.length} {txs.length === 1 ? "trade" : "trades"}{" "}
           in {symbol} between{" "}
@@ -165,7 +165,7 @@ export default async function TickerPage({ params }: Props) {
         <h2 className="mb-3 font-mono text-xs uppercase tracking-wide text-neutral-500">
           Holders
         </h2>
-        <ul className="divide-y divide-neutral-100 dark:divide-neutral-900">
+        <ul className="divide-y divide-neutral-100">
           {memberRows.map((r) => (
             <li
               key={r.bioguideId}
@@ -277,7 +277,7 @@ function TickerHoldersChart({ memberRows, minDate, maxDate }: ChartProps) {
               y={y + 3}
               textAnchor="end"
               fontSize="11"
-              className="fill-neutral-700 dark:fill-neutral-300"
+              className="fill-neutral-700"
             >
               {m.memberName.length > 22
                 ? m.memberName.slice(0, 21) + "…"

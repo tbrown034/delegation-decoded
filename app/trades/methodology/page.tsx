@@ -92,7 +92,7 @@ export default async function TradesMethodologyPage() {
         <h1 className="mt-1 font-serif text-4xl font-semibold tracking-tight">
           How this is built.
         </h1>
-        <p className="mt-3 text-base text-neutral-700 dark:text-neutral-300">
+        <p className="mt-3 text-base text-neutral-700">
           From government PDFs to a structured record of who traded what, when.
         </p>
       </header>
@@ -264,7 +264,7 @@ export default async function TradesMethodologyPage() {
         </p>
       </Section>
 
-      <p className="mt-12 border-t border-neutral-200 pt-6 text-xs text-neutral-500 dark:border-neutral-800">
+      <p className="mt-12 border-t border-neutral-200 pt-6 text-xs text-neutral-500">
         Federal government documents carry no copyright (17 U.S.C. §105). For
         informational and journalism purposes only. Not investment advice.
       </p>
@@ -280,8 +280,8 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="mb-10 space-y-3 text-sm leading-relaxed text-neutral-800 dark:text-neutral-200">
-      <h2 className="font-serif text-xl font-semibold text-neutral-900 dark:text-neutral-100">
+    <section className="mb-10 space-y-3 text-sm leading-relaxed text-neutral-800">
+      <h2 className="font-serif text-xl font-semibold text-neutral-900">
         {title}
       </h2>
       {children}

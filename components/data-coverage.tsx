@@ -3,7 +3,7 @@ import type { MemberCoverage } from "@/lib/queries";
 const statusLabel: Record<string, { text: string; color: string }> = {
   good: { text: "Tracked", color: "text-emerald-600" },
   partial: { text: "Partial", color: "text-amber-600" },
-  none: { text: "Not available", color: "text-neutral-300 dark:text-neutral-600" },
+  none: { text: "Not available", color: "text-neutral-300" },
 };
 
 interface MemberCoverageBarProps {
@@ -32,7 +32,7 @@ export function MemberCoverageBar({ coverage }: MemberCoverageBarProps) {
                   ? "bg-emerald-600"
                   : status === "partial"
                     ? "bg-amber-500"
-                    : "bg-neutral-200 dark:bg-neutral-700"
+                    : "bg-neutral-200"
               }`}
             />
             {label}
@@ -70,8 +70,8 @@ export function StateCoverageNote({
   if (notes.length === 0) return null;
 
   return (
-    <div className="border-t border-neutral-100 pt-4 dark:border-neutral-800">
-      <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-neutral-300 dark:text-neutral-600">
+    <div className="border-t border-neutral-100 pt-4">
+      <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-neutral-300">
         Data coverage
       </p>
       <div className="space-y-0.5">

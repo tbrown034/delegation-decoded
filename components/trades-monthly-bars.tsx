@@ -56,7 +56,7 @@ export function TradesMonthlyBars({ monthly }: { monthly: MonthBucket[] }) {
           y1={padTop + innerH}
           y2={padTop + innerH}
           stroke="currentColor"
-          className="text-neutral-200 dark:text-neutral-800"
+          className="text-neutral-200"
           strokeWidth={1}
         />
 
@@ -91,7 +91,7 @@ export function TradesMonthlyBars({ monthly }: { monthly: MonthBucket[] }) {
               x={padLeft + peakIdx * slot + slot / 2}
               y={yOf(peak) - 6}
               textAnchor="middle"
-              className="fill-neutral-700 dark:fill-neutral-300"
+              className="fill-neutral-700"
               fontSize="11"
               fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
               fontWeight={500}
@@ -138,7 +138,7 @@ export function TradesMonthlyBars({ monthly }: { monthly: MonthBucket[] }) {
         <span className="flex items-center gap-1">
           <span className="inline-block h-2 w-2 rounded-sm" style={{ background: IND }} /> Independent
         </span>
-        <span className="text-neutral-300 dark:text-neutral-600">·</span>
+        <span className="text-neutral-300">·</span>
         <span>One bar per month, last 14 months</span>
       </figcaption>
     </figure>

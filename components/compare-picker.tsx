@@ -72,8 +72,8 @@ export function ComparePicker({
             onClick={() => handleModeChange(m.value)}
             className={`rounded-md px-3.5 py-1.5 text-xs font-medium transition-colors ${
               mode === m.value
-                ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
-                : "border border-neutral-200 text-neutral-500 hover:border-neutral-400 hover:text-neutral-700 dark:border-neutral-700 dark:hover:border-neutral-500 dark:hover:text-neutral-300"
+                ? "bg-neutral-900 text-white"
+                : "border border-neutral-200 text-neutral-500 hover:border-neutral-400 hover:text-neutral-700"
             }`}
           >
             {m.label}
@@ -93,7 +93,7 @@ export function ComparePicker({
               onChange={(e) =>
                 navigate({ mode: "delegation", state: e.target.value })
               }
-              className="rounded-md border border-neutral-200 bg-white px-3 py-1.5 font-mono text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+              className="rounded-md border border-neutral-200 bg-white px-3 py-1.5 font-mono text-sm text-neutral-900"
             >
               <option value="">Select a state</option>
               {states.map((s) => (
@@ -120,7 +120,7 @@ export function ComparePicker({
                     b: selectedB || "",
                   })
                 }
-                className="rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+                className="rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-900"
               >
                 <option value="">Select a member</option>
                 {Object.entries(membersByState).map(([code, mems]) => (
@@ -153,7 +153,7 @@ export function ComparePicker({
                     b: e.target.value,
                   })
                 }
-                className="rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+                className="rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-900"
               >
                 <option value="">Select a member</option>
                 {Object.entries(membersByState).map(([code, mems]) => (
@@ -190,7 +190,7 @@ export function ComparePicker({
                     b: selectedB || "",
                   })
                 }
-                className="rounded-md border border-neutral-200 bg-white px-3 py-1.5 font-mono text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+                className="rounded-md border border-neutral-200 bg-white px-3 py-1.5 font-mono text-sm text-neutral-900"
               >
                 <option value="">Select a state</option>
                 {states.map((s) => (
@@ -214,7 +214,7 @@ export function ComparePicker({
                     b: e.target.value,
                   })
                 }
-                className="rounded-md border border-neutral-200 bg-white px-3 py-1.5 font-mono text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+                className="rounded-md border border-neutral-200 bg-white px-3 py-1.5 font-mono text-sm text-neutral-900"
               >
                 <option value="">Select a state</option>
                 {states.map((s) => (

@@ -44,11 +44,11 @@ export default async function Home() {
           <span>
             {totalMembers} members tracked
           </span>
-          <span className="text-neutral-200 dark:text-neutral-700">|</span>
+          <span className="text-neutral-200">|</span>
           <span>{new Set(syncSummary.map((s) => s.source)).size} data sources</span>
           {latestSync?.completedAt && (
             <>
-              <span className="text-neutral-200 dark:text-neutral-700">|</span>
+              <span className="text-neutral-200">|</span>
               <span>
                 Updated{" "}
                 {new Date(latestSync.completedAt).toLocaleDateString("en-US", {
@@ -95,14 +95,14 @@ export default async function Home() {
           <Link
             key={state.code}
             href={`/state/${state.code}`}
-            className="group flex items-center justify-between rounded px-3 py-2.5 no-underline transition-colors hover:bg-neutral-50 dark:hover:bg-neutral-900"
+            className="group flex items-center justify-between rounded px-3 py-2.5 no-underline transition-colors hover:bg-neutral-50"
           >
             <div className="min-w-0">
               <div className="flex items-baseline gap-1.5">
-                <span className="font-mono text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                <span className="font-mono text-sm font-medium text-neutral-900">
                   {state.code}
                 </span>
-                <span className="font-mono text-[10px] text-neutral-300 dark:text-neutral-600">
+                <span className="font-mono text-[10px] text-neutral-300">
                   {state.memberCount}
                 </span>
               </div>
@@ -124,29 +124,29 @@ export default async function Home() {
 
       {/* Stock trades */}
       {trades.totalTrades > 0 && (
-        <div className="mt-10 border-t border-neutral-100 pt-8 dark:border-neutral-800">
+        <div className="mt-10 border-t border-neutral-100 pt-8">
           <div className="flex items-baseline justify-between">
             <h2 className="text-xs font-medium uppercase tracking-wide text-neutral-400">
               Stock trades
             </h2>
             <Link
               href="/trades"
-              className="text-xs text-neutral-500 no-underline hover:text-neutral-900 dark:hover:text-neutral-100"
+              className="text-xs text-neutral-500 no-underline hover:text-neutral-900"
             >
               See all →
             </Link>
           </div>
-          <p className="mt-2 max-w-2xl text-sm text-neutral-600 dark:text-neutral-400">
-            <span className="font-mono font-medium text-neutral-900 dark:text-neutral-100">
+          <p className="mt-2 max-w-2xl text-sm text-neutral-600">
+            <span className="font-mono font-medium text-neutral-900">
               {trades.totalTrades.toLocaleString()}
             </span>{" "}
             disclosed trades from{" "}
-            <span className="font-mono font-medium text-neutral-900 dark:text-neutral-100">
+            <span className="font-mono font-medium text-neutral-900">
               {trades.houseMembers + trades.senateMembers}
             </span>{" "}
             members ({trades.houseMembers} House, {trades.senateMembers} Senate)
             across{" "}
-            <span className="font-mono font-medium text-neutral-900 dark:text-neutral-100">
+            <span className="font-mono font-medium text-neutral-900">
               {trades.totalFilings}
             </span>{" "}
             STOCK Act PTRs. Parsed from House Clerk PDFs and Senate eFD HTML —
@@ -165,9 +165,9 @@ export default async function Home() {
               <Link
                 key={m.bioguideId}
                 href={`/trades/${m.bioguideId}`}
-                className="flex flex-col rounded px-2 py-1.5 no-underline transition-colors hover:bg-neutral-50 dark:hover:bg-neutral-900"
+                className="flex flex-col rounded px-2 py-1.5 no-underline transition-colors hover:bg-neutral-50"
               >
-                <span className="truncate text-xs text-neutral-700 dark:text-neutral-300">
+                <span className="truncate text-xs text-neutral-700">
                   {m.fullName}
                 </span>
                 <span className="font-mono text-[10px] text-neutral-400">
@@ -182,7 +182,7 @@ export default async function Home() {
 
       {/* Recent Activity */}
       {recentEvents.length > 0 && (
-        <div className="mt-10 border-t border-neutral-100 pt-8 dark:border-neutral-800">
+        <div className="mt-10 border-t border-neutral-100 pt-8">
           <h2 className="mb-4 text-xs font-medium uppercase tracking-wide text-neutral-400">
             Recent activity across all delegations
           </h2>
@@ -197,17 +197,17 @@ export default async function Home() {
               return (
                 <div
                   key={e.id}
-                  className="flex items-start gap-2 border-b border-neutral-100 py-2 dark:border-neutral-800"
+                  className="flex items-start gap-2 border-b border-neutral-100 py-2"
                 >
                   <span
                     className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${icon}`}
                   />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs text-neutral-600 dark:text-neutral-400">
+                    <p className="truncate text-xs text-neutral-600">
                       {e.stateCode && (
                         <Link
                           href={`/state/${e.stateCode}`}
-                          className="mr-1 font-mono font-medium text-neutral-900 no-underline hover:text-neutral-500 dark:text-neutral-100"
+                          className="mr-1 font-mono font-medium text-neutral-900 no-underline hover:text-neutral-500"
                         >
                           {e.stateCode}
                         </Link>
@@ -215,7 +215,7 @@ export default async function Home() {
                       {e.title}
                     </p>
                   </div>
-                  <span className="shrink-0 font-mono text-[10px] text-neutral-300 dark:text-neutral-600">
+                  <span className="shrink-0 font-mono text-[10px] text-neutral-300">
                     {e.eventDate}
                   </span>
                 </div>
@@ -227,7 +227,7 @@ export default async function Home() {
 
       {/* Data Freshness */}
       {syncSummary.length > 0 && (
-        <div className="mt-10 border-t border-neutral-100 pt-8 dark:border-neutral-800">
+        <div className="mt-10 border-t border-neutral-100 pt-8">
           <h2 className="mb-4 text-xs font-medium uppercase tracking-wide text-neutral-400">
             Data sources & freshness
           </h2>
@@ -288,7 +288,7 @@ export default async function Home() {
                     }`}
                   />
                   <div>
-                    <p className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
+                    <p className="text-xs font-medium text-neutral-700">
                       {label}
                     </p>
                     <p className="font-mono text-[10px] text-neutral-400">
@@ -296,7 +296,7 @@ export default async function Home() {
                       {" / "}
                       {ageLabel}
                     </p>
-                    <p className="text-[10px] text-neutral-300 dark:text-neutral-600">
+                    <p className="text-[10px] text-neutral-300">
                       {source}
                     </p>
                   </div>
@@ -309,7 +309,7 @@ export default async function Home() {
 
       {/* Territories */}
       {territoryList.length > 0 && (
-        <div className="mt-8 border-t border-neutral-100 pt-6 dark:border-neutral-800">
+        <div className="mt-8 border-t border-neutral-100 pt-6">
           <p className="mb-3 text-xs font-medium uppercase tracking-wide text-neutral-400">
             Territories & DC
           </p>
@@ -318,10 +318,10 @@ export default async function Home() {
               <Link
                 key={t.code}
                 href={`/state/${t.code}`}
-                className="font-mono text-xs text-neutral-500 no-underline hover:text-neutral-900 dark:hover:text-neutral-100"
+                className="font-mono text-xs text-neutral-500 no-underline hover:text-neutral-900"
               >
                 {t.code}
-                <span className="ml-1 text-neutral-300 dark:text-neutral-600">
+                <span className="ml-1 text-neutral-300">
                   {t.name}
                 </span>
               </Link>

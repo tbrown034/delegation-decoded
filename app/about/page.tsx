@@ -72,7 +72,7 @@ export default async function AboutPage() {
         About & Methodology
       </h1>
 
-      <div className="mt-8 space-y-10 text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">
+      <div className="mt-8 space-y-10 text-sm leading-relaxed text-neutral-600">
         {/* What this is */}
         <section>
           <p>
@@ -92,7 +92,7 @@ export default async function AboutPage() {
 
         {/* Data quality */}
         <section>
-          <h2 className="mb-4 font-serif text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+          <h2 className="mb-4 font-serif text-lg font-semibold text-neutral-900">
             Data at a glance
           </h2>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
@@ -109,7 +109,7 @@ export default async function AboutPage() {
               { n: stats.pressReleases, label: "press releases" },
             ].map(({ n, label }) => (
               <div key={label}>
-                <p className="font-mono text-2xl font-semibold text-neutral-900 dark:text-neutral-100">
+                <p className="font-mono text-2xl font-semibold text-neutral-900">
                   {n.toLocaleString()}
                 </p>
                 <p className="text-xs text-neutral-400">{label}</p>
@@ -120,12 +120,12 @@ export default async function AboutPage() {
 
         {/* Data sources */}
         <section>
-          <h2 className="mb-4 font-serif text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+          <h2 className="mb-4 font-serif text-lg font-semibold text-neutral-900">
             Data sources
           </h2>
           <div className="space-y-5">
-            <div className="border-b border-neutral-100 pb-4 dark:border-neutral-800">
-              <h3 className="font-medium text-neutral-900 dark:text-neutral-100">
+            <div className="border-b border-neutral-100 pb-4">
+              <h3 className="font-medium text-neutral-900">
                 @unitedstates/congress-legislators
               </h3>
               <p className="mt-1 text-xs text-neutral-400">
@@ -145,8 +145,8 @@ export default async function AboutPage() {
               </p>
             </div>
 
-            <div className="border-b border-neutral-100 pb-4 dark:border-neutral-800">
-              <h3 className="font-medium text-neutral-900 dark:text-neutral-100">
+            <div className="border-b border-neutral-100 pb-4">
+              <h3 className="font-medium text-neutral-900">
                 Congress.gov API
               </h3>
               <p className="mt-1 text-xs text-neutral-400">
@@ -166,8 +166,8 @@ export default async function AboutPage() {
               </p>
             </div>
 
-            <div className="border-b border-neutral-100 pb-4 dark:border-neutral-800">
-              <h3 className="font-medium text-neutral-900 dark:text-neutral-100">
+            <div className="border-b border-neutral-100 pb-4">
+              <h3 className="font-medium text-neutral-900">
                 FEC API
               </h3>
               <p className="mt-1 text-xs text-neutral-400">
@@ -187,8 +187,8 @@ export default async function AboutPage() {
               </p>
             </div>
 
-            <div className="border-b border-neutral-100 pb-4 dark:border-neutral-800">
-              <h3 className="font-medium text-neutral-900 dark:text-neutral-100">
+            <div className="border-b border-neutral-100 pb-4">
+              <h3 className="font-medium text-neutral-900">
                 House and Senate roll-call XML
               </h3>
               <p className="mt-1 text-xs text-neutral-400">
@@ -207,8 +207,8 @@ export default async function AboutPage() {
               </p>
             </div>
 
-            <div className="border-b border-neutral-100 pb-4 dark:border-neutral-800">
-              <h3 className="font-medium text-neutral-900 dark:text-neutral-100">
+            <div className="border-b border-neutral-100 pb-4">
+              <h3 className="font-medium text-neutral-900">
                 House Clerk financial disclosures
               </h3>
               <p className="mt-1 text-xs text-neutral-400">
@@ -231,8 +231,8 @@ export default async function AboutPage() {
               </p>
             </div>
 
-            <div className="border-b border-neutral-100 pb-4 dark:border-neutral-800">
-              <h3 className="font-medium text-neutral-900 dark:text-neutral-100">
+            <div className="border-b border-neutral-100 pb-4">
+              <h3 className="font-medium text-neutral-900">
                 Senate Electronic Financial Disclosures (eFD)
               </h3>
               <p className="mt-1 text-xs text-neutral-400">
@@ -253,7 +253,7 @@ export default async function AboutPage() {
             </div>
 
             <div>
-              <h3 className="font-medium text-neutral-900 dark:text-neutral-100">
+              <h3 className="font-medium text-neutral-900">
                 Member office RSS feeds
               </h3>
               <p className="mt-1 text-xs text-neutral-400">
@@ -277,50 +277,50 @@ export default async function AboutPage() {
 
         {/* Collection process */}
         <section>
-          <h2 className="mb-4 font-serif text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+          <h2 className="mb-4 font-serif text-lg font-semibold text-neutral-900">
             Collection process
           </h2>
           <ol className="list-inside list-decimal space-y-2 marker:font-mono marker:text-neutral-300">
             <li>
-              <strong className="text-neutral-900 dark:text-neutral-100">Seed states.</strong>{" "}
+              <strong className="text-neutral-900">Seed states.</strong>{" "}
               All 50 states plus DC and 5 territories are loaded as reference
               data with FIPS codes and current district counts.
             </li>
             <li>
-              <strong className="text-neutral-900 dark:text-neutral-100">Ingest members.</strong>{" "}
+              <strong className="text-neutral-900">Ingest members.</strong>{" "}
               Current legislators are fetched from @unitedstates, including
               full term histories and social media. Each member is upserted by
               bioguide ID. Congressional headshots are loaded from the companion
               images repository.
             </li>
             <li>
-              <strong className="text-neutral-900 dark:text-neutral-100">Ingest committees.</strong>{" "}
+              <strong className="text-neutral-900">Ingest committees.</strong>{" "}
               Committee rosters and membership assignments are fetched from
               @unitedstates for the 119th Congress. Subcommittees are linked to
               parent committees.
             </li>
             <li>
-              <strong className="text-neutral-900 dark:text-neutral-100">Ingest bills.</strong>{" "}
+              <strong className="text-neutral-900">Ingest bills.</strong>{" "}
               The Congress.gov API is queried for all bills in the 119th
               Congress. Each bill&apos;s detail endpoint is hit to retrieve
               sponsors and cosponsors. Only bills linked to a tracked member
               are stored. Rate-limited to stay under API caps.
             </li>
             <li>
-              <strong className="text-neutral-900 dark:text-neutral-100">Ingest finance.</strong>{" "}
+              <strong className="text-neutral-900">Ingest finance.</strong>{" "}
               For each member with an FEC candidate ID, financial totals are
               pulled per election cycle. Contribution breakdowns distinguish
               small dollar (under $200), large individual, and PAC money.
             </li>
             <li>
-              <strong className="text-neutral-900 dark:text-neutral-100">Ingest votes.</strong>{" "}
+              <strong className="text-neutral-900">Ingest votes.</strong>{" "}
               House and Senate roll-call XML is fetched per session. Each
               vote becomes one row with a position record per member. Used
               to power the legislative activity feed and per-member voting
               record.
             </li>
             <li>
-              <strong className="text-neutral-900 dark:text-neutral-100">Ingest disclosures.</strong>{" "}
+              <strong className="text-neutral-900">Ingest disclosures.</strong>{" "}
               House PTR PDFs are downloaded from the Clerk, hashed, and parsed
               with Claude Sonnet 4.6 in vision mode. Senate PTRs come from the
               eFD HTML tables and are parsed deterministically. Both pipelines
@@ -329,13 +329,13 @@ export default async function AboutPage() {
               hashes are skipped.
             </li>
             <li>
-              <strong className="text-neutral-900 dark:text-neutral-100">Ingest press releases.</strong>{" "}
+              <strong className="text-neutral-900">Ingest press releases.</strong>{" "}
               Each member office&apos;s website is probed for an RSS feed. New
               items since the last sync are stored with title, link, pub date,
               and description for the activity timeline.
             </li>
             <li>
-              <strong className="text-neutral-900 dark:text-neutral-100">Log everything.</strong>{" "}
+              <strong className="text-neutral-900">Log everything.</strong>{" "}
               Every ingestion run is tracked in a sync log with start time,
               completion time, record count, and success/failure status. The
               homepage data-freshness panel reads directly from this log.
@@ -350,14 +350,14 @@ export default async function AboutPage() {
         {/* Sync history */}
         {syncs.length > 0 && (
           <section>
-            <h2 className="mb-4 font-serif text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+            <h2 className="mb-4 font-serif text-lg font-semibold text-neutral-900">
               Recent sync history
             </h2>
             <div>
               {syncs.map((s) => (
                 <div
                   key={s.id}
-                  className="flex items-center gap-3 border-b border-neutral-100 py-1.5 font-mono text-xs last:border-0 dark:border-neutral-800"
+                  className="flex items-center gap-3 border-b border-neutral-100 py-1.5 font-mono text-xs last:border-0"
                 >
                   <span className="w-28 text-neutral-400">
                     {s.completedAt
@@ -371,7 +371,7 @@ export default async function AboutPage() {
                   </span>
                   <span className="w-24 text-neutral-500">{s.source}</span>
                   <span className="w-24 text-neutral-500">{s.entityType}</span>
-                  <span className="text-neutral-700 dark:text-neutral-300">
+                  <span className="text-neutral-700">
                     {s.recordsCount?.toLocaleString() || 0} records
                   </span>
                 </div>
@@ -382,7 +382,7 @@ export default async function AboutPage() {
 
         {/* Known limitations */}
         <section>
-          <h2 className="mb-4 font-serif text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+          <h2 className="mb-4 font-serif text-lg font-semibold text-neutral-900">
             Known limitations
           </h2>
           <ul className="list-inside list-disc space-y-1.5 marker:text-neutral-300">
@@ -425,7 +425,7 @@ export default async function AboutPage() {
 
         {/* AI transparency */}
         <section>
-          <h2 className="mb-4 font-serif text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+          <h2 className="mb-4 font-serif text-lg font-semibold text-neutral-900">
             AI transparency
           </h2>
           <p>
@@ -451,7 +451,7 @@ export default async function AboutPage() {
 
         {/* Tech stack */}
         <section>
-          <h2 className="mb-4 font-serif text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+          <h2 className="mb-4 font-serif text-lg font-semibold text-neutral-900">
             Technical details
           </h2>
           <div className="font-mono text-xs text-neutral-400">
@@ -463,14 +463,14 @@ export default async function AboutPage() {
         </section>
 
         {/* Contact */}
-        <section className="border-t border-neutral-100 pt-8 dark:border-neutral-800">
+        <section className="border-t border-neutral-100 pt-8">
           <p>
             Built by{" "}
             <a
               href="https://trevorthewebdeveloper.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-neutral-900 underline decoration-neutral-300 underline-offset-2 hover:decoration-neutral-500 dark:text-neutral-100 dark:decoration-neutral-600"
+              className="text-neutral-900 underline decoration-neutral-300 underline-offset-2 hover:decoration-neutral-500"
             >
               Trevor Brown
             </a>
@@ -480,7 +480,7 @@ export default async function AboutPage() {
           <p className="mt-4">
             <Link
               href="/"
-              className="font-mono text-xs text-neutral-400 no-underline hover:text-neutral-700 dark:hover:text-neutral-300"
+              className="font-mono text-xs text-neutral-400 no-underline hover:text-neutral-700"
             >
               Back to all states
             </Link>
