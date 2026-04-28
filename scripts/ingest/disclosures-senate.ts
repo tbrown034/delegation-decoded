@@ -435,7 +435,7 @@ async function main() {
     await db.insert(syncLog).values({
       source: "senate_efd",
       entityType: "disclosures",
-      status: "ok",
+      status: "success",
       recordsCount: inserted,
       completedAt: new Date(),
     });

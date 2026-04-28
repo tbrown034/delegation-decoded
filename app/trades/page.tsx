@@ -66,6 +66,8 @@ async function loadRows(): Promise<{
     filings: number;
     lateFilings: number;
     latestFiling: string | null;
+    earliestFiling: string | null;
+    activeMembers: number;
   };
   monthlyAll: MonthBucket[];
   latestByMember: Map<string, string>;
@@ -152,6 +154,7 @@ async function loadRows(): Promise<{
     .select({
       count: sql<number>`COUNT(*)::int`,
       latest: sql<string | null>`MAX(${disclosureFilings.filedDate})::text`,
+      earliest: sql<string | null>`MIN(${disclosureFilings.filedDate})::text`,
     })
     .from(disclosureFilings);
 
@@ -161,6 +164,11 @@ async function loadRows(): Promise<{
     })
     .from(stockTransactions)
     .where(sql`${stockTransactions.filedLate} = true`);
+
+  const [activeMembersRow] = await db
+    .select({ n: sql<number>`COUNT(*)::int` })
+    .from(members)
+    .where(eq(members.inOffice, true));
 
   return {
     rows: memberRows,
@@ -172,6 +180,8 @@ async function loadRows(): Promise<{
       filings: filingTotals?.count ?? 0,
       lateFilings: lateTotals?.lateCount ?? 0,
       latestFiling: filingTotals?.latest ?? null,
+      earliestFiling: filingTotals?.earliest ?? null,
+      activeMembers: activeMembersRow?.n ?? 0,
     },
     monthlyAll,
     latestByMember,
@@ -226,7 +236,7 @@ export default async function TradesLandingPage() {
         </p>
       </header>
 
-      <section className="mb-8 flex flex-wrap items-baseline gap-x-8 gap-y-3 border-y border-neutral-200 py-5 dark:border-neutral-800">
+      <section className="mb-6 flex flex-wrap items-baseline gap-x-8 gap-y-3 border-y border-neutral-200 py-5">
         <HeroStat label="members trading" value={totals.members.toLocaleString()} dot={BUY_COLOR} />
         <HeroStat
           label="disclosed trades"
@@ -244,6 +254,14 @@ export default async function TradesLandingPage() {
           />
         )}
       </section>
+
+      <CoveragePanel
+        earliestFiling={totals.earliestFiling}
+        latestFiling={totals.latestFiling}
+        traders={totals.members}
+        activeMembers={totals.activeMembers}
+      />
+
 
       {monthlyAll.length > 0 && domain && (
         <section className="mb-2">
@@ -345,6 +363,52 @@ export default async function TradesLandingPage() {
         </section>
       )}
     </div>
+  );
+}
+
+function CoveragePanel({
+  earliestFiling,
+  latestFiling,
+  traders,
+  activeMembers,
+}: {
+  earliestFiling: string | null;
+  latestFiling: string | null;
+  traders: number;
+  activeMembers: number;
+}) {
+  if (!earliestFiling || !latestFiling || activeMembers === 0) return null;
+
+  const traderPct = activeMembers ? Math.round((traders / activeMembers) * 100) : 0;
+  const nonTraders = activeMembers - traders;
+
+  return (
+    <section className="mb-8 rounded border border-neutral-200 bg-stone-50 p-4 text-sm leading-relaxed text-neutral-700">
+      <p className="font-mono text-[10px] uppercase tracking-wide text-neutral-500">
+        What you&rsquo;re looking at
+      </p>
+      <p className="mt-2">
+        Periodic transaction reports filed{" "}
+        <span className="font-medium text-neutral-900">
+          {fmtFilingDate(earliestFiling)} – {fmtFilingDate(latestFiling)}
+        </span>
+        . Of{" "}
+        <span className="font-medium text-neutral-900">
+          {activeMembers} active members
+        </span>
+        ,{" "}
+        <span className="font-medium text-neutral-900">{traders}</span> ({traderPct}%) have reported individual securities transactions in this window. The remaining {nonTraders} either don&rsquo;t trade individual stocks, hold assets via blind trusts or index funds (no STOCK Act trigger), or have not filed a PTR for this period.
+      </p>
+      <p className="mt-2 text-[12px] text-neutral-500">
+        New filings are ingested within ~24h of being posted to the House Clerk and Senate eFD portals.{" "}
+        <Link
+          href="/trades/methodology"
+          className="underline hover:text-neutral-900"
+        >
+          How this compares to other trackers →
+        </Link>
+      </p>
+    </section>
   );
 }
 
