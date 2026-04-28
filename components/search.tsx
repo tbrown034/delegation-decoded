@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 type Hit = {
-  type: "member" | "ticker" | "state";
+  type: "member" | "ticker" | "state" | "bill" | "committee";
   href: string;
   title: string;
   subtitle: string;
@@ -16,6 +16,8 @@ const TYPE_LABEL: Record<Hit["type"], string> = {
   member: "Member",
   ticker: "Ticker",
   state: "State",
+  bill: "Bill",
+  committee: "Committee",
 };
 
 export function Search() {

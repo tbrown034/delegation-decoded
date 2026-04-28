@@ -1,7 +1,4 @@
-// Cross-entity search across members, tickers, and states.
-//
-// Bills and committees aren't included because they don't have dedicated
-// routes — they're only viewed in the context of a member or state.
+// Cross-entity search across members, tickers, states, bills, and committees.
 //
 // Uses plain ILIKE rather than pg_trgm so we don't have to introduce a schema
 // migration; ranking is a CASE expression that prefers exact > prefix > sub.
@@ -10,7 +7,7 @@ import { db } from "./db";
 import { sql } from "drizzle-orm";
 
 export type SearchHit = {
-  type: "member" | "ticker" | "state";
+  type: "member" | "ticker" | "state" | "bill" | "committee";
   href: string;
   title: string;
   subtitle: string;
@@ -28,7 +25,7 @@ export async function searchAll(query: string): Promise<SearchHit[]> {
   const exact = q.toLowerCase();
   const prefix = `${q.toLowerCase()}%`;
 
-  const [memberRows, tickerRows, stateRows] = await Promise.all([
+  const [memberRows, tickerRows, stateRows, billRows, committeeRows] = await Promise.all([
     db.execute(sql`
       SELECT bioguide_id, full_name, party, state_code, district, chamber,
         CASE
@@ -71,6 +68,32 @@ export async function searchAll(query: string): Promise<SearchHit[]> {
       ORDER BY rank DESC, name ASC
       LIMIT ${MAX_PER_BUCKET}
     `),
+    db.execute(sql`
+      SELECT bill_id, bill_type, bill_number, congress, title,
+        CASE
+          WHEN LOWER(bill_id) = ${exact} THEN 100
+          WHEN LOWER(REPLACE(bill_id, '-', '')) = ${exact} THEN 95
+          WHEN LOWER(bill_id) LIKE ${prefix} THEN 80
+          WHEN LOWER(title) LIKE ${prefix} THEN 60
+          ELSE 40
+        END AS rank
+      FROM bills
+      WHERE LOWER(bill_id) LIKE ${like} OR LOWER(title) LIKE ${like}
+      ORDER BY rank DESC, introduced_date DESC NULLS LAST
+      LIMIT ${MAX_PER_BUCKET}
+    `),
+    db.execute(sql`
+      SELECT committee_id, name, chamber,
+        CASE
+          WHEN LOWER(name) = ${exact} THEN 100
+          WHEN LOWER(name) LIKE ${prefix} THEN 70
+          ELSE 40
+        END AS rank
+      FROM committees
+      WHERE LOWER(name) LIKE ${like}
+      ORDER BY rank DESC, name ASC
+      LIMIT ${MAX_PER_BUCKET}
+    `),
   ]);
 
   const hits: SearchHit[] = [];
@@ -103,6 +126,33 @@ export async function searchAll(query: string): Promise<SearchHit[]> {
       href: `/state/${r.code}`,
       title: r.name as string,
       subtitle: `Delegation page · ${r.code}`,
+      rank: Number(r.rank),
+    });
+  }
+
+  for (const r of billRows.rows as Array<Record<string, unknown>>) {
+    const label = `${(r.bill_type as string).toUpperCase()} ${r.bill_number}`;
+    hits.push({
+      type: "bill",
+      href: `/bill/${r.bill_id}`,
+      title: label,
+      subtitle: `${truncate((r.title as string) ?? "", 70)} · ${r.congress}th Congress`,
+      rank: Number(r.rank),
+    });
+  }
+
+  for (const r of committeeRows.rows as Array<Record<string, unknown>>) {
+    const chamberLabel =
+      r.chamber === "senate"
+        ? "Senate committee"
+        : r.chamber === "house"
+          ? "House committee"
+          : "Joint committee";
+    hits.push({
+      type: "committee",
+      href: `/committee/${r.committee_id}`,
+      title: r.name as string,
+      subtitle: chamberLabel,
       rank: Number(r.rank),
     });
   }
