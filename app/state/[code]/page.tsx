@@ -160,8 +160,8 @@ export default async function StatePage({ params }: Props) {
       )}
 
       {/* Two-column layout: delegation + sidebar */}
-      <div className="grid gap-10 lg:grid-cols-3">
-        <div className="lg:col-span-2">
+      <div className="grid grid-cols-1 gap-10 lg:grid-cols-3">
+        <div className="min-w-0 lg:col-span-2">
           {/* Senators */}
           {senators.length > 0 && (
             <section className="mb-8">
