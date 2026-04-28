@@ -15,8 +15,10 @@ import {
   getMemberPressReleases,
   getMemberPressReleaseCount,
   getMemberCoverage,
+  getMemberCoverageDetail,
   getMemberActivityData,
 } from "@/lib/queries";
+import { MemberCoverageCard } from "@/components/member-coverage-card";
 import { STATE_BY_CODE } from "@/lib/states";
 import { effectiveTotal, fmt } from "@/lib/finance";
 import { MemberCoverageBar } from "@/components/data-coverage";
@@ -51,7 +53,7 @@ export default async function MemberPage({ params }: Props) {
   const member = await getMemberByBioguideId(bioguideId);
   if (!member) notFound();
 
-  const [memberTerms, memberCommittees, memberBills, billCounts, finance, contributors, voteSummary, recentVotes, memberPressReleases, pressReleaseCount, coverage, activityData] =
+  const [memberTerms, memberCommittees, memberBills, billCounts, finance, contributors, voteSummary, recentVotes, memberPressReleases, pressReleaseCount, coverage, coverageDetail, activityData] =
     await Promise.all([
       getMemberTerms(bioguideId),
       getMemberCommittees(bioguideId),
@@ -64,6 +66,7 @@ export default async function MemberPage({ params }: Props) {
       getMemberPressReleases(bioguideId, 10),
       getMemberPressReleaseCount(bioguideId),
       getMemberCoverage(bioguideId),
+      getMemberCoverageDetail(bioguideId),
       getMemberActivityData(bioguideId),
     ]);
 
@@ -699,6 +702,8 @@ export default async function MemberPage({ params }: Props) {
           ))}
         </div>
       </section>
+
+      <MemberCoverageCard items={coverageDetail} />
     </div>
   );
 }

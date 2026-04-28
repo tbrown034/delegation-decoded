@@ -14,6 +14,8 @@ import {
   events,
   delegationBriefs,
   pressReleases,
+  stockTransactions,
+  disclosureFilings,
   syncLog,
 } from "./schema";
 import { eq, and, desc, sql, count } from "drizzle-orm";
@@ -458,6 +460,126 @@ export async function getMemberCoverage(
         : "none", // "none" means no RSS feed found
     committees: (committeeRow?.count || 0) > 0 ? "good" : "none",
   };
+}
+
+export type CoverageDetailItem = {
+  source: "bills" | "votes" | "committees" | "finance" | "press" | "trades";
+  label: string;
+  count: number;
+  status: "present" | "expected_empty" | "missing";
+  description: string;
+};
+
+// Reasoned coverage per data source for a single member. Renders the why
+// behind a zero count so a casual visitor reads the gap as intentional rather
+// than broken.
+export async function getMemberCoverageDetail(
+  bioguideId: string
+): Promise<CoverageDetailItem[]> {
+  const [
+    [billsRow],
+    [voteRow],
+    [committeeRow],
+    [financeRow],
+    [pressRow],
+    [tradeRow],
+    [filingRow],
+  ] = await Promise.all([
+    db.select({ n: count() }).from(billSponsorships).where(eq(billSponsorships.bioguideId, bioguideId)),
+    db.select({ n: count() }).from(votePositions).where(eq(votePositions.bioguideId, bioguideId)),
+    db.select({ n: count() }).from(committeeAssignments).where(eq(committeeAssignments.bioguideId, bioguideId)),
+    db.select({ n: count() }).from(campaignFinance).where(eq(campaignFinance.bioguideId, bioguideId)),
+    db.select({ n: count() }).from(pressReleases).where(eq(pressReleases.bioguideId, bioguideId)),
+    db
+      .select({ n: count() })
+      .from(stockTransactions)
+      .where(eq(stockTransactions.bioguideId, bioguideId)),
+    db
+      .select({ n: count() })
+      .from(disclosureFilings)
+      .where(eq(disclosureFilings.bioguideId, bioguideId)),
+  ]);
+
+  const [memberRow] = await db
+    .select({ fecCandidateId: members.fecCandidateId, chamber: members.chamber })
+    .from(members)
+    .where(eq(members.bioguideId, bioguideId))
+    .limit(1);
+
+  const bills = billsRow?.n ?? 0;
+  const votes = voteRow?.n ?? 0;
+  const committees = committeeRow?.n ?? 0;
+  const finance = financeRow?.n ?? 0;
+  const press = pressRow?.n ?? 0;
+  const trades = tradeRow?.n ?? 0;
+  const filings = filingRow?.n ?? 0;
+
+  const items: CoverageDetailItem[] = [
+    {
+      source: "bills",
+      label: "Bills",
+      count: bills,
+      status: bills > 0 ? "present" : "missing",
+      description:
+        bills > 0
+          ? "Sponsored or cosponsored bills tracked from Congress.gov."
+          : "Member has not sponsored or cosponsored any bills in the active Congress.",
+    },
+    {
+      source: "votes",
+      label: "Votes",
+      count: votes,
+      status: votes > 0 ? "present" : "missing",
+      description:
+        votes > 0
+          ? "Roll-call positions parsed from official chamber XML."
+          : "No recorded roll-call positions yet — likely a brand-new member or a chamber with sparse recent activity.",
+    },
+    {
+      source: "committees",
+      label: "Committees",
+      count: committees,
+      status: committees > 0 ? "present" : "missing",
+      description:
+        committees > 0
+          ? "Standing assignments from the @unitedstates project."
+          : "No committee assignments on record. Verify against the chamber's committee directory.",
+    },
+    {
+      source: "finance",
+      label: "Campaign finance",
+      count: finance,
+      status: finance > 0 ? "present" : memberRow?.fecCandidateId ? "missing" : "expected_empty",
+      description:
+        finance > 0
+          ? "Top-line FEC numbers per election cycle."
+          : memberRow?.fecCandidateId
+            ? "FEC candidate ID is set but no committee data ingested yet."
+            : "No FEC candidate ID linked to this member yet.",
+    },
+    {
+      source: "press",
+      label: "Press releases",
+      count: press,
+      status: press > 0 ? "present" : "expected_empty",
+      description:
+        press > 0
+          ? "Pulled from the member's official RSS feed."
+          : "Office does not publish a discoverable RSS feed. Many members of Congress communicate primarily through social media and email lists rather than RSS.",
+    },
+    {
+      source: "trades",
+      label: "STOCK Act trades",
+      count: trades,
+      status: trades > 0 ? "present" : "expected_empty",
+      description:
+        trades > 0
+          ? `Parsed line items from ${filings} disclosed PTR filing${filings === 1 ? "" : "s"}.`
+          : "No Periodic Transaction Reports filed in the coverage window. Most members of Congress do not actively trade individual securities.",
+    },
+  ];
+
+  return items;
 }
 
 export async function getStateCoverage(stateCode: string) {
