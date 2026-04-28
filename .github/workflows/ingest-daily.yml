@@ -54,6 +54,15 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
+      # Compare our most-recent trade date for a curated set of high-volume
+      # traders against CapitolTrades. Surfaces ingest lag we'd otherwise miss.
+      - name: Audit divergence vs CapitolTrades
+        if: always()
+        run: npx tsx scripts/audit/divergence.ts
+        continue-on-error: true
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
       # Final gate: any 'crit' issue exits non-zero and fails the workflow.
       - name: Health check
         if: always()

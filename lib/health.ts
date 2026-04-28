@@ -242,6 +242,28 @@ export async function buildHealthReport(): Promise<HealthReport> {
     });
   }
 
+  // CapitolTrades divergence — last run of the audit script.
+  const divResult = await db.execute(sql`
+    SELECT status, error_message, started_at
+    FROM sync_log
+    WHERE source = 'capitoltrades_divergence'
+    ORDER BY id DESC
+    LIMIT 1
+  `);
+  const divRow = divResult.rows[0] as
+    | { status: string; error_message: string | null; started_at: string }
+    | undefined;
+  if (divRow && divRow.status === "failed") {
+    checks.push({
+      id: "divergence-capitoltrades",
+      level: "warn",
+      title: "Trade ingest is behind CapitolTrades",
+      detail:
+        divRow.error_message?.slice(0, 220) ??
+        "One or more curated traders show newer activity on capitoltrades.com than in our database.",
+    });
+  }
+
   // Recent failures.
   if (recentFailures.length > 0) {
     checks.push({
