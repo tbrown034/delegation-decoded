@@ -161,15 +161,22 @@ export default async function Home() {
             STOCK Act PTRs. Parsed from House Clerk PDFs and Senate eFD HTML —
             both chambers covered.
           </p>
-          {trades.earliestFiling && trades.latestFiling && (
+          {trades.activeCollectionStart && (
             <p className="mt-1 max-w-2xl text-[12px] text-neutral-500">
-              Coverage window: PTRs filed{" "}
+              Active collection began{" "}
               <span className="font-medium text-neutral-700">
-                {fmtCoverage(trades.earliestFiling)} – {fmtCoverage(trades.latestFiling)}
+                {fmtCoverage(trades.activeCollectionStart + "-01")}
               </span>
-              . Months before that show no bars because the pipeline hadn&rsquo;t started ingesting yet, not because Congress wasn&rsquo;t trading.{" "}
+              {trades.stragglerFilingCount > 0 && (
+                <>
+                  {" "}({trades.stragglerFilingCount}{" "}
+                  earlier PTR{trades.stragglerFilingCount === 1 ? "" : "s"} from late-filed
+                  amendments not shown)
+                </>
+              )}
+              . Hover any bar for the breakdown. Each PTR discloses trades up to ~45 days back, so transaction dates lag filing dates.{" "}
               <Link href="/trades/methodology" className="underline hover:text-neutral-900">
-                More on coverage →
+                Methodology →
               </Link>
             </p>
           )}

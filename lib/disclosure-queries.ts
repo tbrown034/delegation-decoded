@@ -142,6 +142,8 @@ export interface TradesHomeSummary {
   windowEnd: string | null;
   earliestFiling: string | null;
   latestFiling: string | null;
+  activeCollectionStart: string | null;
+  stragglerFilingCount: number;
 }
 
 export async function getTradesHomeSummary(): Promise<TradesHomeSummary> {
@@ -177,15 +179,22 @@ export async function getTradesHomeSummary(): Promise<TradesHomeSummary> {
     .orderBy(desc(sql`COUNT(${stockTransactions.id})`))
     .limit(5);
 
-  // Anchor the chart to our actual collection window: the month of the earliest
-  // PTR filed_date through the current month. This avoids fourteen empty bars
-  // pre-pipeline that read as "Congress wasn't trading" when the truth is
-  // "we hadn't started collecting yet".
+  // Anchor the chart to active collection: the first month where >=5 PTRs were
+  // filed. We do have a handful of pre-2026 stragglers (5 PTRs scattered across
+  // 2025) but those are late-filed amendments, not continuous coverage —
+  // showing them stretches the chart over a 16-month window with 11 near-empty
+  // months that read as "Congress wasn't trading" when the truth is "we
+  // weren't collecting yet."
   const monthlyRows = await db.execute(sql`
-    WITH window_bounds AS (
-      SELECT DATE_TRUNC('month', MIN(filed_date))::date AS start_month
+    WITH active_months AS (
+      SELECT DATE_TRUNC('month', filed_date)::date AS m
       FROM disclosure_filings
       WHERE filed_date IS NOT NULL
+      GROUP BY 1
+      HAVING COUNT(*) >= 5
+    ),
+    window_bounds AS (
+      SELECT MIN(m) AS start_month FROM active_months
     )
     SELECT
       TO_CHAR(DATE_TRUNC('month', t.tx_date), 'YYYY-MM') AS month,
@@ -196,10 +205,22 @@ export async function getTradesHomeSummary(): Promise<TradesHomeSummary> {
     JOIN members m ON m.bioguide_id = t.bioguide_id
     CROSS JOIN window_bounds w
     WHERE t.tx_date IS NOT NULL
-      AND t.tx_date >= w.start_month
+      AND t.tx_date >= w.start_month - INTERVAL '1 month'
       AND t.tx_date < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'
     GROUP BY 1 ORDER BY 1
   `);
+
+  const activeStartResult = await db.execute(sql`
+    WITH active_months AS (
+      SELECT DATE_TRUNC('month', filed_date)::date AS m
+      FROM disclosure_filings
+      WHERE filed_date IS NOT NULL
+      GROUP BY 1
+      HAVING COUNT(*) >= 5
+    )
+    SELECT to_char(MIN(m), 'YYYY-MM') AS m FROM active_months
+  `);
+  const activeStart = (activeStartResult.rows as { m: string | null }[])[0];
 
   const monthly = monthlyRows.rows.map((r) => ({
     month: String(r.month),
@@ -207,6 +228,25 @@ export async function getTradesHomeSummary(): Promise<TradesHomeSummary> {
     rep: Number(r.rep),
     ind: Number(r.ind),
   }));
+
+  // Count "stragglers" — PTRs filed before the active collection window. These
+  // are real, parsed filings that we surface in /trades and the methodology
+  // page; they're just excluded from the homepage chart for visual clarity.
+  const stragglerResult = await db.execute(sql`
+    WITH active_months AS (
+      SELECT DATE_TRUNC('month', filed_date)::date AS m
+      FROM disclosure_filings
+      WHERE filed_date IS NOT NULL
+      GROUP BY 1
+      HAVING COUNT(*) >= 5
+    ),
+    cutoff AS (SELECT MIN(m) AS start_month FROM active_months)
+    SELECT COUNT(*)::int AS n
+    FROM disclosure_filings df, cutoff
+    WHERE df.filed_date IS NOT NULL
+      AND df.filed_date < cutoff.start_month
+  `);
+  const stragglerRow = (stragglerResult.rows as { n: number }[])[0];
 
   return {
     totalTrades: totals?.totalTrades ?? 0,
@@ -219,6 +259,8 @@ export async function getTradesHomeSummary(): Promise<TradesHomeSummary> {
     windowEnd: monthly[monthly.length - 1]?.month ?? null,
     earliestFiling: filingTotals?.earliest ?? null,
     latestFiling: filingTotals?.latest ?? null,
+    activeCollectionStart: activeStart?.m ?? null,
+    stragglerFilingCount: stragglerRow?.n ?? 0,
   };
 }
 
