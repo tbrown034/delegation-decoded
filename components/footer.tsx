@@ -27,6 +27,9 @@ export function Footer() {
             <Link href="/trades" className="transition-colors hover:text-neutral-900">
               Trades
             </Link>
+            <Link href="/for-journalists" className="transition-colors hover:text-neutral-900">
+              For journalists
+            </Link>
             <Link href="/health" className="transition-colors hover:text-neutral-900">
               Health
             </Link>
