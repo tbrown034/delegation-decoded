@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Search } from "./search";
 
 const links = [
   { href: "/", label: "States" },
@@ -51,6 +52,7 @@ export function Nav() {
               </Link>
             );
           })}
+          <Search />
         </div>
 
         <div className="flex items-center md:hidden">
