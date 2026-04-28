@@ -19,8 +19,15 @@ function fmtMonth(m: string): string {
   return MONTH_ABBR[parseInt(mm, 10) - 1] ?? m;
 }
 
+function fmtMonthYear(m: string): string {
+  const [yy, mm] = m.split("-");
+  return `${MONTH_ABBR[parseInt(mm, 10) - 1] ?? mm} '${yy.slice(2)}`;
+}
+
 export function TradesMonthlyBars({ monthly }: { monthly: MonthBucket[] }) {
   if (!monthly.length) return null;
+  const first = monthly[0];
+  const last = monthly[monthly.length - 1];
 
   const totals = monthly.map((m) => m.dem + m.rep + m.ind);
   const peak = Math.max(...totals, 1);
@@ -139,7 +146,9 @@ export function TradesMonthlyBars({ monthly }: { monthly: MonthBucket[] }) {
           <span className="inline-block h-2 w-2 rounded-sm" style={{ background: IND }} /> Independent
         </span>
         <span className="text-neutral-300">·</span>
-        <span>One bar per month, last 14 months</span>
+        <span>
+          {fmtMonthYear(first.month)} – {fmtMonthYear(last.month)} (since first PTR ingested)
+        </span>
       </figcaption>
     </figure>
   );

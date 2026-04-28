@@ -13,6 +13,15 @@ import { PartyBar } from "@/components/party-bar";
 import { StateMap } from "@/components/state-map";
 import { TradesMonthlyBars } from "@/components/trades-monthly-bars";
 
+function fmtCoverage(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 export default async function Home() {
   const [statesData, latestSync, totalMembers, recentEvents, syncSummary, trades] = await Promise.all([
     getAllStatesWithCounts(),
@@ -152,6 +161,18 @@ export default async function Home() {
             STOCK Act PTRs. Parsed from House Clerk PDFs and Senate eFD HTML —
             both chambers covered.
           </p>
+          {trades.earliestFiling && trades.latestFiling && (
+            <p className="mt-1 max-w-2xl text-[12px] text-neutral-500">
+              Coverage window: PTRs filed{" "}
+              <span className="font-medium text-neutral-700">
+                {fmtCoverage(trades.earliestFiling)} – {fmtCoverage(trades.latestFiling)}
+              </span>
+              . Months before that show no bars because the pipeline hadn&rsquo;t started ingesting yet, not because Congress wasn&rsquo;t trading.{" "}
+              <Link href="/trades/methodology" className="underline hover:text-neutral-900">
+                More on coverage →
+              </Link>
+            </p>
+          )}
           {trades.monthly.length > 0 && (
             <div className="mt-5">
               <TradesMonthlyBars monthly={trades.monthly} />

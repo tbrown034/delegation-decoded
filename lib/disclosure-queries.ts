@@ -138,6 +138,10 @@ export interface TradesHomeSummary {
     txCount: number;
   }>;
   monthly: Array<{ month: string; dem: number; rep: number; ind: number }>;
+  windowStart: string | null;
+  windowEnd: string | null;
+  earliestFiling: string | null;
+  latestFiling: string | null;
 }
 
 export async function getTradesHomeSummary(): Promise<TradesHomeSummary> {
@@ -151,7 +155,11 @@ export async function getTradesHomeSummary(): Promise<TradesHomeSummary> {
     .innerJoin(members, eq(members.bioguideId, stockTransactions.bioguideId));
 
   const [filingTotals] = await db
-    .select({ count: sql<number>`COUNT(*)::int` })
+    .select({
+      count: sql<number>`COUNT(*)::int`,
+      earliest: sql<string | null>`to_char(MIN(${disclosureFilings.filedDate}), 'YYYY-MM-DD')`,
+      latest: sql<string | null>`to_char(MAX(${disclosureFilings.filedDate}), 'YYYY-MM-DD')`,
+    })
     .from(disclosureFilings);
 
   const topMembers = await db
@@ -169,7 +177,16 @@ export async function getTradesHomeSummary(): Promise<TradesHomeSummary> {
     .orderBy(desc(sql`COUNT(${stockTransactions.id})`))
     .limit(5);
 
+  // Anchor the chart to our actual collection window: the month of the earliest
+  // PTR filed_date through the current month. This avoids fourteen empty bars
+  // pre-pipeline that read as "Congress wasn't trading" when the truth is
+  // "we hadn't started collecting yet".
   const monthlyRows = await db.execute(sql`
+    WITH window_bounds AS (
+      SELECT DATE_TRUNC('month', MIN(filed_date))::date AS start_month
+      FROM disclosure_filings
+      WHERE filed_date IS NOT NULL
+    )
     SELECT
       TO_CHAR(DATE_TRUNC('month', t.tx_date), 'YYYY-MM') AS month,
       COUNT(*) FILTER (WHERE m.party = 'Democrat')::int AS dem,
@@ -177,8 +194,9 @@ export async function getTradesHomeSummary(): Promise<TradesHomeSummary> {
       COUNT(*) FILTER (WHERE m.party NOT IN ('Democrat','Republican'))::int AS ind
     FROM stock_transactions t
     JOIN members m ON m.bioguide_id = t.bioguide_id
+    CROSS JOIN window_bounds w
     WHERE t.tx_date IS NOT NULL
-      AND t.tx_date >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '13 months')
+      AND t.tx_date >= w.start_month
       AND t.tx_date < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'
     GROUP BY 1 ORDER BY 1
   `);
@@ -197,6 +215,10 @@ export async function getTradesHomeSummary(): Promise<TradesHomeSummary> {
     senateMembers: totals?.senateMembers ?? 0,
     topMembers,
     monthly,
+    windowStart: monthly[0]?.month ?? null,
+    windowEnd: monthly[monthly.length - 1]?.month ?? null,
+    earliestFiling: filingTotals?.earliest ?? null,
+    latestFiling: filingTotals?.latest ?? null,
   };
 }
 
