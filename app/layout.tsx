@@ -23,7 +23,11 @@ const sourceSerif = Source_Serif_4({
   style: ["normal", "italic"],
 });
 
+const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL ?? "https://delegation-decoded.vercel.app";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: {
     default: "Delegation Decoded",
     template: "%s | Delegation Decoded",

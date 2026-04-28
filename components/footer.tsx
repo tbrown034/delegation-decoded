@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { HealthDot } from "./health-dot";
 
 export function Footer() {
   return (
@@ -30,9 +31,7 @@ export function Footer() {
             <Link href="/for-journalists" className="transition-colors hover:text-neutral-900">
               For journalists
             </Link>
-            <Link href="/health" className="transition-colors hover:text-neutral-900">
-              Health
-            </Link>
+            <HealthDot />
             <Link href="/about" className="transition-colors hover:text-neutral-900">
               About & Methodology
             </Link>
