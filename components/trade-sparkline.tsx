@@ -21,6 +21,7 @@ function midAmount(t: {
 
 const BUY_COLOR = "#16a34a";
 const SELL_COLOR = "#dc2626";
+const NUM_BUCKETS = 64;
 
 export function TradeSparkline({
   trades,
@@ -41,19 +42,35 @@ export function TradeSparkline({
   const padX = 4;
   const y = height / 2;
 
-  const xOf = (iso: string) => {
-    const t = new Date(iso).getTime();
-    return padX + ((t - minT) / range) * (width - padX * 2);
-  };
+  const buckets = new Map<number, { buyAmt: number; sellAmt: number }>();
+  for (const tx of dated) {
+    const t = new Date(tx.txDate).getTime();
+    const idx = Math.min(
+      NUM_BUCKETS - 1,
+      Math.max(0, Math.floor(((t - minT) / range) * NUM_BUCKETS))
+    );
+    const b = buckets.get(idx) ?? { buyAmt: 0, sellAmt: 0 };
+    const amt = midAmount(tx);
+    if (tx.txType === "P") b.buyAmt += amt;
+    else b.sellAmt += amt;
+    buckets.set(idx, b);
+  }
 
-  const amounts = dated.map(midAmount);
-  const minA = Math.max(Math.min(...amounts), 1);
-  const maxA = Math.max(...amounts, 2);
+  const renderedAmts: number[] = [];
+  buckets.forEach((b) => {
+    if (b.buyAmt > 0) renderedAmts.push(b.buyAmt);
+    if (b.sellAmt > 0) renderedAmts.push(b.sellAmt);
+  });
+  const minA = Math.max(Math.min(...renderedAmts), 1);
+  const maxA = Math.max(...renderedAmts, 2);
   const rOf = (a: number) => {
     const lr = Math.log(Math.max(a, 1)) - Math.log(minA);
     const lt = Math.log(maxA) - Math.log(minA);
     return 3.5 + (lt > 0 ? (lr / lt) * 5 : 0);
   };
+
+  const xOfBucket = (idx: number) =>
+    padX + ((idx + 0.5) / NUM_BUCKETS) * (width - padX * 2);
 
   return (
     <svg
@@ -71,20 +88,34 @@ export function TradeSparkline({
         stroke="#e5e5e5"
         strokeWidth={1}
       />
-      {dated.map((tx) => {
-        const x = xOf(tx.txDate);
-        const r = rOf(midAmount(tx));
-        const isBuy = tx.txType === "P";
-        return (
-          <circle
-            key={tx.id}
-            cx={x}
-            cy={y}
-            r={r}
-            fill={isBuy ? BUY_COLOR : SELL_COLOR}
-            fillOpacity={0.8}
-          />
-        );
+      {Array.from(buckets.entries()).flatMap(([idx, b]) => {
+        const x = xOfBucket(idx);
+        const out = [];
+        if (b.sellAmt > 0) {
+          out.push(
+            <circle
+              key={`s${idx}`}
+              cx={x}
+              cy={y}
+              r={rOf(b.sellAmt)}
+              fill={SELL_COLOR}
+              fillOpacity={0.8}
+            />
+          );
+        }
+        if (b.buyAmt > 0) {
+          out.push(
+            <circle
+              key={`b${idx}`}
+              cx={x}
+              cy={y}
+              r={rOf(b.buyAmt)}
+              fill={BUY_COLOR}
+              fillOpacity={0.8}
+            />
+          );
+        }
+        return out;
       })}
     </svg>
   );
