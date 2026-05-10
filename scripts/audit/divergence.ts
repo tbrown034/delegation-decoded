@@ -17,8 +17,11 @@ import { sql } from "drizzle-orm";
 // Curate to high-volume traders so the comparison is signal-rich.
 const SAMPLE = ["K000389", "M001157", "C001123", "B001236", "M001243"] as const;
 
-const DRIFT_DAYS_WARN = 4;
-const DRIFT_DAYS_CRIT = 10;
+// Threshold tuned 2026-05-10: PTRs disclose trades up to 45 days back and
+// the public House Clerk PDF feed lags CapitolTrades' notice by ~14-21 days,
+// so anything under 21 days of drift is structural lag, not an ingest failure.
+const DRIFT_DAYS_WARN = 10;
+const DRIFT_DAYS_CRIT = 21;
 
 const UA =
   "Mozilla/5.0 (compatible; delegation-decoded/divergence-audit; +https://github.com/tbrown034/delegation-decoded)";

@@ -1,6 +1,7 @@
 # Runs every day at 6 AM UTC (midnight CT / 1 AM ET)
-# Ingests bills and votes — the data that changes daily when Congress is in session.
-# Also regenerates the activity feed and runs the health gate after ingestion.
+# Ingests bills, votes, and PTR disclosures — the data that changes daily
+# when Congress is in session. Also regenerates the activity feed and runs
+# the health gate after ingestion.
 
 name: Daily data ingestion
 
@@ -41,7 +42,26 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
+      # PTR disclosures — Senate is fast HTML, House is slower (PDF + vision).
+      # continue-on-error so a flake in one chamber doesn't kill the workflow;
+      # divergence audit will catch real ingest gaps.
+      - name: Ingest Senate PTR disclosures
+        if: always()
+        continue-on-error: true
+        run: npx tsx scripts/ingest/disclosures-senate.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Ingest House PTR disclosures
+        if: always()
+        continue-on-error: true
+        run: npx tsx scripts/ingest/disclosures-house.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
       - name: Generate events feed
+        if: always()
         run: npx tsx scripts/ingest/generate-events.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
