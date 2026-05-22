@@ -371,9 +371,9 @@ async function renderDivergenceDetail(raw: string | null): Promise<string> {
 }
 
 async function renderRecentFailuresDetail(runs: SyncRun[]): Promise<string> {
-  // Surface the source/entity and the first short reason line, scrubbed of
-  // file paths and env-variable names. Bioguide IDs in the message are
-  // resolved to member names where possible.
+  // Roll the last few failed runs into one line: the source/entity and a
+  // short, scrubbed reason. Bioguide IDs are resolved to names; raw
+  // env-variable names and ours=/theirs= debug syntax are filtered.
   const ids = new Set<string>();
   for (const r of runs) {
     if (!r.errorMessage) continue;
@@ -389,6 +389,10 @@ async function renderRecentFailuresDetail(runs: SyncRun[]): Promise<string> {
     })
     .join(" · ");
 }
+
+// Env-variable names that should never appear in journalist-facing copy.
+// Match a token that looks like a Postgres/Anthropic/etc. secret name.
+const SECRET_NAME = /\b[A-Z][A-Z0-9_]{6,}(?:_KEY|_URL|_TOKEN|_SECRET|_PASSWORD)\b/g;
 
 const SOURCE_LABELS: Record<string, string> = {
   congress_gov: "Congress.gov",
@@ -423,13 +427,22 @@ function scrubErrorMessage(
   s = s.replace(/\b([A-Z]\d{6})\b/g, (m) => names[m] ?? m);
   // Drop dev syntax.
   s = s.replace(/\bours=\S+\s+theirs=\S+\s+drift=(-?\d+)/g, "$1 days behind CapitolTrades");
-  // Strip file path references and env-var names.
+  // Filter drift=0 noise — the audit summary lists every sampled member,
+  // including those that are caught up; readers only care about real drift.
+  s = s.replace(/\b[A-Za-z][A-Za-z .'-]+: 0 days behind CapitolTrades\s*(\||$)/g, "");
+  s = s.replace(/\s*\|\s*$/g, "");
+  // Replace file-path references and any UPPER_SNAKE secret name with
+  // generic language so journalist-facing copy never names internal config.
   s = s.replace(/\.env(\.[a-z]+)?/g, "the environment");
   s = s.replace(/scripts\/\S+\.ts/g, "the ingest job");
+  s = s.replace(SECRET_NAME, "an API key");
+  // "terminated" from undici is opaque; soften it.
+  s = s.replace(/\bTypeError:\s*terminated\b/g, "upstream connection dropped");
+  s = s.replace(/^terminated$/g, "upstream connection dropped");
   // Truncate to a sensible length, breaking on a word boundary.
   if (s.length > 200) {
     const cut = s.lastIndexOf(" ", 200);
     s = s.slice(0, cut > 100 ? cut : 200).trim() + "…";
   }
-  return s;
+  return s.trim();
 }
