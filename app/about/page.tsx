@@ -420,6 +420,20 @@ export default async function AboutPage() {
               Territory delegates (DC, PR, GU, AS, MP, VI) have limited
               legislative data — they cannot vote on the House floor.
             </li>
+            <li>
+              The roster is sourced from{" "}
+              <a
+                href="https://github.com/unitedstates/congress-legislators"
+                className="underline hover:text-neutral-900"
+              >
+                @unitedstates/congress-legislators
+              </a>
+              , which currently lists 536 of the 538 voting House districts +
+              100 Senate seats. A handful of sitting House members are missing
+              from that upstream feed (CA-01, CA-14, TX-23 as of this writing).
+              Those member pages return 404 until the upstream JSON catches up
+              or a secondary backfill is wired in.
+            </li>
           </ul>
         </section>
 

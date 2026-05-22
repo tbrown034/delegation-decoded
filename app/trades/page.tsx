@@ -291,6 +291,13 @@ export default async function TradesLandingPage() {
         </div>
       ) : (
         <section>
+          <p className="mb-3 max-w-3xl text-xs text-neutral-500">
+            A handful of members file trades through actively-managed
+            accounts where each underlying security is disclosed as a
+            separate line item — that's how a single representative can show
+            up with thousands of trades in a single window. The methodology
+            page has the breakdown.
+          </p>
           <div className="mb-1 grid grid-cols-[2fr_0.6fr_0.9fr_2.5fr] items-end gap-x-4 border-b border-neutral-200 pb-1 font-mono text-[10px] uppercase tracking-wide text-neutral-500">
             <span>Member</span>
             <span>Trades</span>
