@@ -144,17 +144,35 @@ async function generateBrief(
   // Composition. The party counts the caller passes in include every
   // delegation member, so the split must include Independents when present
   // — otherwise the brief contradicts the visual party bar above it.
+  // Single-member delegations (PR, DC, etc.) and shutouts (3D-0R) read
+  // awkwardly as a "majority"; describe them straight.
   const total = senators.length + reps.length;
   const ind = total - dems - gop;
-  const indStr = ind > 0 ? `, ${ind}I` : "";
+  const parts: string[] = [];
+  if (dems > 0) parts.push(`${dems}D`);
+  if (gop > 0) parts.push(`${gop}R`);
+  if (ind > 0) parts.push(`${ind}I`);
   const partyDesc =
-    dems === gop
-      ? `evenly split (${dems}D-${gop}R${indStr})`
-      : dems > gop
-        ? `majority Democrat (${dems}D-${gop}R${indStr})`
-        : `majority Republican (${gop}R-${dems}D${indStr})`;
+    total === 1
+      ? dems === 1
+        ? "a Democrat"
+        : gop === 1
+          ? "a Republican"
+          : "an Independent"
+      : dems === gop && ind === 0
+        ? `evenly split (${parts.join("-")})`
+        : dems > gop
+          ? `majority Democrat (${parts.join("-")})`
+          : gop > dems
+            ? `majority Republican (${parts.join("-")})`
+            : `mixed (${parts.join("-")})`;
+  const seatPhrase = total === 1
+    ? "1 member"
+    : `${senators.length} senator${senators.length !== 1 ? "s" : ""} and ${reps.length} representative${reps.length !== 1 ? "s" : ""}`;
   lines.push(
-    `${stateName}'s delegation has ${senators.length} senator${senators.length !== 1 ? "s" : ""} and ${reps.length} representative${reps.length !== 1 ? "s" : ""}, ${partyDesc}.`
+    total === 1
+      ? `${stateName}'s delegation has 1 member, ${partyDesc}.`
+      : `${stateName}'s delegation has ${seatPhrase}, ${partyDesc}.`
   );
 
   // Legislative activity
