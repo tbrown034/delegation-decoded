@@ -1,8 +1,7 @@
 // One-off coverage audit. Prints chamber-level coverage across every data source.
 // Used to inform what the unified health-check should track.
 
-import dotenv from "dotenv";
-dotenv.config({ path: ".env.local" });
+import "./lib/env";
 import { neon } from "@neondatabase/serverless";
 
 const sql = neon(process.env.DATABASE_URL!);

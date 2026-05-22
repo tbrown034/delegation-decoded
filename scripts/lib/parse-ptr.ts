@@ -8,9 +8,7 @@
  */
 import { readFile } from "fs/promises";
 import Anthropic from "@anthropic-ai/sdk";
-import dotenv from "dotenv";
-
-dotenv.config({ path: ".env.local" });
+import "./env";
 
 export interface ParsedTransaction {
   rowIndex: number;
@@ -88,7 +86,7 @@ export async function parsePtr(
 ): Promise<ParseResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    throw new Error("ANTHROPIC_API_KEY must be set in .env.local");
+    throw new Error("ANTHROPIC_API_KEY is not set");
   }
 
   const client = new Anthropic({ apiKey, timeout: 600_000, maxRetries: 3 });

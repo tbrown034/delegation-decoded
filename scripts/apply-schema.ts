@@ -4,8 +4,7 @@
  *
  * Run: npx tsx scripts/apply-schema.ts
  */
-import { config } from "dotenv";
-config({ path: ".env.local" });
+import "./lib/env";
 
 import { readFile } from "fs/promises";
 import path from "path";
@@ -14,7 +13,7 @@ import { neon } from "@neondatabase/serverless";
 async function main() {
   const url = process.env.DATABASE_URL || process.env.DATABASE_URL_UNPOOLED;
   if (!url) {
-    console.error("DATABASE_URL not set in .env.local");
+    console.error("DATABASE_URL is not set");
     process.exit(1);
   }
 

@@ -3,8 +3,7 @@
 // CLI wrapper around buildHealthReport. Exits 1 if the overall level is 'crit'
 // so it can be used as a final-step gate in GitHub Actions.
 
-import dotenv from "dotenv";
-dotenv.config({ path: ".env.local" });
+import "./lib/env";
 
 import { buildHealthReport, type HealthLevel } from "../lib/health";
 

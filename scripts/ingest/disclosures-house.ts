@@ -7,8 +7,7 @@
  *
  * Run: npx tsx scripts/ingest/disclosures-house.ts [--year 2025] [--limit 5] [--dry]
  */
-import { config } from "dotenv";
-config({ path: ".env.local" });
+import "../lib/env";
 
 import { writeFile, readFile, mkdir, stat } from "fs/promises";
 import { existsSync } from "fs";
@@ -33,7 +32,7 @@ const CACHE_DIR = path.join(process.cwd(), "data", "house-ptrs");
 const connectionString =
   process.env.DATABASE_URL || process.env.DATABASE_URL_UNPOOLED;
 if (!connectionString) {
-  console.error("DATABASE_URL must be set in .env.local");
+  console.error("DATABASE_URL is not set");
   process.exit(1);
 }
 const db = drizzle(neon(connectionString));

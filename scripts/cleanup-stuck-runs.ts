@@ -4,8 +4,7 @@
 //
 // Read-only by default. Pass --apply to actually write.
 
-import dotenv from "dotenv";
-dotenv.config({ path: ".env.local" });
+import "./lib/env";
 
 import { db } from "../lib/db";
 import { sql } from "drizzle-orm";

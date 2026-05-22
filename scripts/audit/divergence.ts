@@ -7,8 +7,7 @@
 // time and emits a non-zero exit code if drift exceeds the threshold so the
 // workflow opens a tracking issue.
 
-import dotenv from "dotenv";
-dotenv.config({ path: ".env.local" });
+import "../lib/env";
 
 import { db } from "../../lib/db";
 import { sql } from "drizzle-orm";

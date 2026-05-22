@@ -7,8 +7,7 @@
  *
  * Run: npx tsx scripts/ingest/disclosures-senate.ts [--year 2026] [--limit 5] [--dry]
  */
-import dotenv from "dotenv";
-dotenv.config({ path: ".env.local" });
+import "../lib/env";
 
 import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
@@ -28,7 +27,7 @@ const UA =
 const connectionString =
   process.env.DATABASE_URL || process.env.DATABASE_URL_UNPOOLED;
 if (!connectionString) {
-  console.error("DATABASE_URL must be set in .env.local");
+  console.error("DATABASE_URL is not set");
   process.exit(1);
 }
 const db = drizzle(neon(connectionString));
