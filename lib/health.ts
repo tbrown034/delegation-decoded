@@ -325,10 +325,14 @@ async function lookupMemberNames(
   bioguideIds: string[]
 ): Promise<Record<string, string>> {
   if (bioguideIds.length === 0) return {};
+  // Drizzle's tagged-template serializes an array into a comma-separated
+  // parameter tuple, not a Postgres array literal, so ANY($1) breaks. Build
+  // the IN-list as a sql.join of individually-bound values instead.
+  const params = sql.join(bioguideIds.map((id) => sql`${id}`), sql`, `);
   const rows = await db.execute(sql`
     SELECT bioguide_id, last_name, first_name
     FROM members
-    WHERE bioguide_id = ANY(${bioguideIds})
+    WHERE bioguide_id IN (${params})
   `);
   const out: Record<string, string> = {};
   for (const r of rows.rows as { bioguide_id: string; last_name: string; first_name: string }[]) {
