@@ -225,9 +225,11 @@ export default async function TradesMethodologyPage() {
           clusters. Tables hide that structure. Time axes reveal it.
         </p>
         <p>
-          Marks: triangles point up for purchases, down for sales. Mark size
-          maps to amount range on a log scale because filing values span four
-          orders of magnitude. Late-filed trades carry an amber dot.
+          Marks: green for purchases, red for sales. The per-ticker pages
+          use up/down triangles instead, since the contrast carries more
+          weight when every row is one company. Mark size maps to amount
+          range on a log scale because filing values span four orders of
+          magnitude. Late-filed trades carry an amber dot.
         </p>
       </Section>
 
