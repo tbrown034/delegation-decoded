@@ -473,22 +473,24 @@ function buildMonthTicks(
   const stride = totalMonths > 18 ? 3 : totalMonths > 6 ? 2 : 1;
 
   const ticks: { pct: number; label: string; isYearStart: boolean }[] = [];
-  let cursor = new Date(
-    Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1)
-  );
+  // Anchor at January of the start year so January ticks always exist;
+  // otherwise a 3-month stride starting mid-year never lands on Jan.
+  let cursor = new Date(Date.UTC(start.getUTCFullYear(), 0, 1));
+  let lastYearShown: number | null = null;
   while (cursor.getTime() <= maxT) {
     const t = cursor.getTime();
     if (t >= minT) {
       const m = cursor.getUTCMonth();
+      const y = cursor.getUTCFullYear();
       const isYearStart = m === 0;
-      const label = isYearStart
-        ? `Jan ${cursor.getUTCFullYear()}`
-        : MONTH_LABELS[m];
+      const showYear = lastYearShown !== y;
+      const label = showYear ? `${MONTH_LABELS[m]} ${y}` : MONTH_LABELS[m];
       ticks.push({
         pct: ((t - minT) / range) * 100,
         label,
         isYearStart,
       });
+      if (showYear) lastYearShown = y;
     }
     cursor = new Date(
       Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + stride, 1)

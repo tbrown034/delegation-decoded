@@ -82,17 +82,25 @@ export function TradeTimeline({ trades, height = 220 }: Props) {
     (end.getUTCMonth() - start.getUTCMonth());
   const stride = totalMonths > 18 ? 3 : totalMonths > 6 ? 2 : 1;
 
-  let cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+  // Anchor the cursor at January of the start year so the year-label tick
+  // always lands on a stride boundary; otherwise a 3-month stride starting
+  // mid-year never crosses January and the year never appears anywhere.
+  let cursor = new Date(Date.UTC(start.getUTCFullYear(), 0, 1));
+  let lastYearShown: number | null = null;
   while (cursor.getTime() <= layout.maxT) {
-    const iso = cursor.toISOString().slice(0, 10);
-    const x = layout.xOf(iso);
-    if (x >= layout.padX - 10 && x <= layout.width - layout.padX + 10) {
-      const m = cursor.getUTCMonth();
-      const isYearStart = m === 0;
-      const label = isYearStart
-        ? `Jan ${cursor.getUTCFullYear()}`
-        : MONTH_LABELS[m];
-      monthTicks.push({ x, label, isYearStart });
+    if (cursor.getTime() >= layout.minT) {
+      const iso = cursor.toISOString().slice(0, 10);
+      const x = layout.xOf(iso);
+      if (x >= layout.padX - 10 && x <= layout.width - layout.padX + 10) {
+        const m = cursor.getUTCMonth();
+        const y = cursor.getUTCFullYear();
+        // Show the year on the first visible tick of each calendar year,
+        // even if that tick isn't January.
+        const showYear = lastYearShown !== y;
+        const label = showYear ? `${MONTH_LABELS[m]} ${y}` : MONTH_LABELS[m];
+        monthTicks.push({ x, label, isYearStart: showYear });
+        if (showYear) lastYearShown = y;
+      }
     }
     cursor = new Date(
       Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + stride, 1)
