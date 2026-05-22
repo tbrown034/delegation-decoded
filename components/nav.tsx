@@ -12,7 +12,7 @@ const links = [
   { href: "/trades", label: "Trades" },
   { href: "/for-journalists", label: "For journalists" },
   { href: "/health", label: "Health" },
-  { href: "/about", label: "About" },
+  { href: "/about", label: "About & Methodology" },
 ];
 
 export function Nav() {

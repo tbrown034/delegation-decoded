@@ -232,7 +232,10 @@ export default async function TradesLandingPage() {
           <span className="text-neutral-800">
             {fmtFilingDate(totals.latestFiling)}
           </span>{" "}
-          · Data refreshed weekly
+          · Refreshed daily when the pipeline is healthy ·{" "}
+          <Link href="/health" className="underline hover:text-neutral-900">
+            status
+          </Link>
         </p>
       </header>
 

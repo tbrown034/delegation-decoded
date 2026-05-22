@@ -243,6 +243,9 @@ export async function buildHealthReport(): Promise<HealthReport> {
   }
 
   // CapitolTrades divergence — last run of the audit script.
+  // The script logs a bioguide-id-keyed summary into error_message; resolve
+  // those IDs to member names so the public detail reads as journalism, not
+  // as a debug dump.
   const divResult = await db.execute(sql`
     SELECT status, error_message, started_at
     FROM sync_log
@@ -258,9 +261,7 @@ export async function buildHealthReport(): Promise<HealthReport> {
       id: "divergence-capitoltrades",
       level: "warn",
       title: "Trade ingest is behind CapitolTrades",
-      detail:
-        divRow.error_message?.slice(0, 220) ??
-        "One or more curated traders show newer activity on capitoltrades.com than in our database.",
+      detail: await renderDivergenceDetail(divRow.error_message),
     });
   }
 
@@ -270,10 +271,7 @@ export async function buildHealthReport(): Promise<HealthReport> {
       id: "recent-failures",
       level: recentFailures.length >= 3 ? "crit" : "warn",
       title: `${recentFailures.length} failed sync run${recentFailures.length === 1 ? "" : "s"} in the last 14 days`,
-      detail: recentFailures
-        .slice(0, 3)
-        .map((r) => `${r.source}/${r.entityType}: ${r.errorMessage ?? "no message"}`)
-        .join(" · "),
+      detail: await renderRecentFailuresDetail(recentFailures.slice(0, 3)),
     });
   }
 
@@ -283,7 +281,7 @@ export async function buildHealthReport(): Promise<HealthReport> {
       id: "ptr-review",
       level: "warn",
       title: `${ptrFilings.review} PTR filing${ptrFilings.review === 1 ? "" : "s"} flagged for review`,
-      detail: "Vision parser couldn't confidently extract these — surfaced with a warning badge in the UI.",
+      detail: "The vision parser couldn't confidently extract these. Underlying transactions are still loaded but should be hand-checked before citing.",
     });
   }
 
@@ -292,7 +290,7 @@ export async function buildHealthReport(): Promise<HealthReport> {
       id: "ptr-failed",
       level: "crit",
       title: `${ptrFilings.failed} PTR filing${ptrFilings.failed === 1 ? "" : "s"} failed to parse`,
-      detail: "Re-run scripts/ingest/disclosures-house.ts or escalate.",
+      detail: "These filings could not be parsed by the vision pipeline and will be retried on the next daily run.",
     });
   }
 
@@ -315,4 +313,119 @@ export async function buildHealthReport(): Promise<HealthReport> {
     lowConfidenceTrades,
     checks,
   };
+}
+
+// ─── Detail renderers ────────────────────────────────────────────────────────
+// The divergence audit and disclosures-house ingest log bioguide-keyed
+// strings into sync_log.error_message. Those are fine for ops but read as
+// gibberish to a journalist. These helpers resolve IDs to names and rewrite
+// the detail in editorial voice.
+
+async function lookupMemberNames(
+  bioguideIds: string[]
+): Promise<Record<string, string>> {
+  if (bioguideIds.length === 0) return {};
+  const rows = await db.execute(sql`
+    SELECT bioguide_id, last_name, first_name
+    FROM members
+    WHERE bioguide_id = ANY(${bioguideIds})
+  `);
+  const out: Record<string, string> = {};
+  for (const r of rows.rows as { bioguide_id: string; last_name: string; first_name: string }[]) {
+    out[r.bioguide_id] = `${r.first_name} ${r.last_name}`;
+  }
+  return out;
+}
+
+async function renderDivergenceDetail(raw: string | null): Promise<string> {
+  if (!raw) {
+    return "One or more curated traders show newer activity on capitoltrades.com than in our database.";
+  }
+  // raw shape: "K000389: ours=2026-03-30 theirs=2026-04-29 drift=30 | M001157: ..."
+  const entries = raw.split("|").map((s) => s.trim());
+  const parsed = entries
+    .map((e) => {
+      const m = e.match(/^([A-Z]\d{6}):\s*ours=(\S+)\s+theirs=(\S+)\s+drift=(-?\d+)/);
+      return m
+        ? { bioguideId: m[1], ours: m[2], theirs: m[3], drift: Number(m[4]) }
+        : null;
+    })
+    .filter((x): x is { bioguideId: string; ours: string; theirs: string; drift: number } => !!x)
+    .filter((x) => x.drift > 0);
+  if (parsed.length === 0) {
+    return "One or more curated traders show newer activity on capitoltrades.com than in our database.";
+  }
+  const names = await lookupMemberNames(parsed.map((p) => p.bioguideId));
+  parsed.sort((a, b) => b.drift - a.drift);
+  const top = parsed.slice(0, 3).map((p) => {
+    const name = names[p.bioguideId] ?? p.bioguideId;
+    return `${name} (${p.drift}d behind, latest ${p.ours})`;
+  });
+  const tail =
+    parsed.length > 3 ? ` and ${parsed.length - 3} other${parsed.length - 3 === 1 ? "" : "s"}` : "";
+  return `${top.join(", ")}${tail}.`;
+}
+
+async function renderRecentFailuresDetail(runs: SyncRun[]): Promise<string> {
+  // Surface the source/entity and the first short reason line, scrubbed of
+  // file paths and env-variable names. Bioguide IDs in the message are
+  // resolved to member names where possible.
+  const ids = new Set<string>();
+  for (const r of runs) {
+    if (!r.errorMessage) continue;
+    for (const m of r.errorMessage.matchAll(/\b([A-Z]\d{6})\b/g)) ids.add(m[1]);
+  }
+  const names = await lookupMemberNames([...ids]);
+  return runs
+    .map((r) => {
+      const sourceLabel = SOURCE_LABELS[r.source] ?? r.source;
+      const entity = ENTITY_LABELS[r.entityType] ?? r.entityType;
+      const reason = scrubErrorMessage(r.errorMessage, names);
+      return `${sourceLabel} (${entity}): ${reason}`;
+    })
+    .join(" · ");
+}
+
+const SOURCE_LABELS: Record<string, string> = {
+  congress_gov: "Congress.gov",
+  fec: "FEC",
+  house_senate_xml: "House/Senate XML",
+  rss: "RSS feeds",
+  senate_efd: "Senate eFD",
+  "disclosures-clerk.house.gov": "House Clerk",
+  unitedstates: "@unitedstates",
+  capitoltrades_divergence: "Drift audit",
+};
+
+const ENTITY_LABELS: Record<string, string> = {
+  members: "members",
+  committees: "committees",
+  bills: "bills",
+  campaign_finance: "finance",
+  votes: "votes",
+  press_releases: "press releases",
+  disclosures: "Senate PTRs",
+  ptr: "House PTRs",
+  audit: "drift check",
+};
+
+function scrubErrorMessage(
+  msg: string | null,
+  names: Record<string, string>
+): string {
+  if (!msg) return "no message";
+  let s = msg.split("\n")[0];
+  // Resolve bioguide IDs.
+  s = s.replace(/\b([A-Z]\d{6})\b/g, (m) => names[m] ?? m);
+  // Drop dev syntax.
+  s = s.replace(/\bours=\S+\s+theirs=\S+\s+drift=(-?\d+)/g, "$1 days behind CapitolTrades");
+  // Strip file path references and env-var names.
+  s = s.replace(/\.env(\.[a-z]+)?/g, "the environment");
+  s = s.replace(/scripts\/\S+\.ts/g, "the ingest job");
+  // Truncate to a sensible length, breaking on a word boundary.
+  if (s.length > 200) {
+    const cut = s.lastIndexOf(" ", 200);
+    s = s.slice(0, cut > 100 ? cut : 200).trim() + "…";
+  }
+  return s;
 }

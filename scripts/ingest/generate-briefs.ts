@@ -141,13 +141,18 @@ async function generateBrief(
   // Build the brief
   const lines: string[] = [];
 
-  // Composition
+  // Composition. The party counts the caller passes in include every
+  // delegation member, so the split must include Independents when present
+  // — otherwise the brief contradicts the visual party bar above it.
+  const total = senators.length + reps.length;
+  const ind = total - dems - gop;
+  const indStr = ind > 0 ? `, ${ind}I` : "";
   const partyDesc =
     dems === gop
-      ? "evenly split between parties"
+      ? `evenly split (${dems}D-${gop}R${indStr})`
       : dems > gop
-        ? `majority Democrat (${dems}D-${gop}R)`
-        : `majority Republican (${gop}R-${dems}D)`;
+        ? `majority Democrat (${dems}D-${gop}R${indStr})`
+        : `majority Republican (${gop}R-${dems}D${indStr})`;
   lines.push(
     `${stateName}'s delegation has ${senators.length} senator${senators.length !== 1 ? "s" : ""} and ${reps.length} representative${reps.length !== 1 ? "s" : ""}, ${partyDesc}.`
   );

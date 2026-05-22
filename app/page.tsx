@@ -64,6 +64,7 @@ export default async function Home() {
                   month: "short",
                   day: "numeric",
                   year: "numeric",
+                  timeZone: "America/New_York",
                 })}
               </span>
             </>

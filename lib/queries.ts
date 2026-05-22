@@ -844,12 +844,17 @@ export async function getLatestSync() {
 }
 
 export async function getSyncSummary() {
-  // Get the most recent successful sync per source+entity_type
+  // Get the most recent successful sync per source+entity_type.
+  // Audit-type rows (e.g. capitoltrades_divergence) aren't data sources,
+  // they're meta-checks — exclude them so they don't render in the
+  // homepage freshness panel as if they were.
   const rows = await db.execute(sql`
     SELECT DISTINCT ON (source, entity_type)
       source, entity_type, records_count, completed_at
     FROM sync_log
-    WHERE status = 'success' AND records_count > 0
+    WHERE status = 'success'
+      AND records_count > 0
+      AND entity_type <> 'audit'
     ORDER BY source, entity_type, completed_at DESC
   `);
   return rows.rows as {
