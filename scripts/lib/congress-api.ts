@@ -6,23 +6,37 @@ function getApiKey(): string {
   return key;
 }
 
-async function fetchWithRetry(url: string, retries = 3): Promise<Response> {
+async function fetchWithRetry(url: string, retries = 4): Promise<Response> {
+  let lastError: unknown;
   for (let i = 0; i < retries; i++) {
-    const res = await fetch(url);
-    if (res.ok) return res;
-    if (res.status === 429) {
-      // Rate limited — back off
-      const wait = Math.pow(2, i + 1) * 1000;
-      console.log(`  Rate limited, waiting ${wait}ms...`);
-      await new Promise((r) => setTimeout(r, wait));
-      continue;
+    try {
+      const res = await fetch(url);
+      if (res.ok) return res;
+      if (res.status === 429) {
+        const wait = Math.pow(2, i + 1) * 1000;
+        console.log(`  Rate limited, waiting ${wait}ms...`);
+        await new Promise((r) => setTimeout(r, wait));
+        continue;
+      }
+      // Transient 5xx from upstream — retry with backoff.
+      if (res.status >= 500 && res.status < 600 && i < retries - 1) {
+        await new Promise((r) => setTimeout(r, Math.pow(2, i) * 1000));
+        continue;
+      }
+      if (i === retries - 1) {
+        throw new Error(`Congress API error: ${res.status} ${res.statusText} for ${url}`);
+      }
+      await new Promise((r) => setTimeout(r, 1000));
+    } catch (err) {
+      // Network-level failure (socket close, DNS, TLS reset) — these
+      // surface as thrown TypeErrors with UND_ERR_SOCKET causes from undici.
+      // Treat them like 5xx and retry.
+      lastError = err;
+      if (i === retries - 1) throw err;
+      await new Promise((r) => setTimeout(r, Math.pow(2, i) * 1000));
     }
-    if (i === retries - 1) {
-      throw new Error(`Congress API error: ${res.status} ${res.statusText} for ${url}`);
-    }
-    await new Promise((r) => setTimeout(r, 1000));
   }
-  throw new Error("Unreachable");
+  throw lastError ?? new Error("Unreachable");
 }
 
 export interface CongressBill {
