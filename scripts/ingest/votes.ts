@@ -12,7 +12,15 @@ const DELAY_MS = 300;
 // ─── XML parsing helpers (no dependency needed for this simple structure) ─────
 
 function extractTag(xml: string, tag: string): string {
-  const match = xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`));
+  // The opening pattern must require either an immediate `>` or whitespace
+  // before any attributes — otherwise `<vote_result[^>]*>` happily matches
+  // `<vote_result_text>` and then captures everything up to `</vote_result>`,
+  // pulling in every sibling element as raw text. That bug surfaced in the
+  // Senate voting descriptions on member pages as literal `</vote_result_text>`
+  // and `<question>` tags bleeding into the rendered copy.
+  const match = xml.match(
+    new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)</${tag}>`)
+  );
   return match?.[1]?.trim() || "";
 }
 
