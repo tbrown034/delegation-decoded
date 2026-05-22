@@ -265,6 +265,28 @@ export async function buildHealthReport(): Promise<HealthReport> {
     });
   }
 
+  // Dedicated alert for upstream-API auth failures so they don't get
+  // buried in the generic recent-failures detail. Looks across the last
+  // 14 days of failures for any auth-shape error and reports it with
+  // the offending source called out.
+  const authFailures = recentFailures.filter((r) =>
+    /\b(?:401|403)\b.*(?:authentication_error|invalid[_ -]?(?:x-)?api[_ -]?key|invalid[_ -]?token|API_KEY_INVALID)/i.test(
+      r.errorMessage ?? ""
+    )
+  );
+  if (authFailures.length > 0) {
+    const sources = Array.from(
+      new Set(authFailures.map((r) => SOURCE_LABELS[r.source] ?? r.source))
+    );
+    checks.push({
+      id: "auth-failure",
+      level: "crit",
+      title: `Upstream API key rejected (${sources.join(", ")})`,
+      detail:
+        "The configured key is being returned as invalid by the upstream service. Until the secret is rotated, this source can't ingest new data.",
+    });
+  }
+
   // Recent failures.
   if (recentFailures.length > 0) {
     checks.push({
@@ -425,6 +447,20 @@ function scrubErrorMessage(
   let s = msg.split("\n")[0];
   // Resolve bioguide IDs.
   s = s.replace(/\b([A-Z]\d{6})\b/g, (m) => names[m] ?? m);
+  // Authentication errors from upstream APIs come back as opaque JSON.
+  // Recognize the common shapes and rewrite the whole error envelope —
+  // from the HTTP status code through the trailing }} of the response body
+  // — to journalist-readable copy. Without consuming the JSON envelope,
+  // the closing braces would be left orphaned in the output.
+  // Match the whole HTTP-status + JSON envelope greedily (up to the next
+  // sync_log separator) so the closing braces and request_id don't bleed
+  // out into the rendered detail.
+  const AUTH_SHAPE =
+    /\b(?:401|403)\b\s*\{[^·|]*?(?:authentication_error|invalid[_ -]?(?:x-)?api[_ -]?key|invalid[_ -]?token|API_KEY_INVALID)[^·|]*\}/gi;
+  s = s.replace(
+    AUTH_SHAPE,
+    "the configured API key was rejected by the upstream service"
+  );
   // Drop dev syntax.
   s = s.replace(/\bours=\S+\s+theirs=\S+\s+drift=(-?\d+)/g, "$1 days behind CapitolTrades");
   // Filter drift=0 noise — the audit summary lists every sampled member,
@@ -436,9 +472,15 @@ function scrubErrorMessage(
   s = s.replace(/\.env(\.[a-z]+)?/g, "the environment");
   s = s.replace(/scripts\/\S+\.ts/g, "the ingest job");
   s = s.replace(SECRET_NAME, "an API key");
+  // Strip leftover JSON fragments from API error bodies once the meaningful
+  // pieces have been rewritten above.
+  s = s.replace(/\{[^{}]*"request_id"[^{}]*\}/g, "");
+  s = s.replace(/\{[^{}]*"type"\s*:\s*"error"[^{}]*\}/g, "");
   // "terminated" from undici is opaque; soften it.
   s = s.replace(/\bTypeError:\s*terminated\b/g, "upstream connection dropped");
   s = s.replace(/^terminated$/g, "upstream connection dropped");
+  // Collapse runs of whitespace introduced by deletions above.
+  s = s.replace(/\s{2,}/g, " ").replace(/\s+,/g, ",");
   // Truncate to a sensible length, breaking on a word boundary.
   if (s.length > 200) {
     const cut = s.lastIndexOf(" ", 200);
