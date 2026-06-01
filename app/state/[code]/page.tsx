@@ -24,6 +24,12 @@ type Props = {
   params: Promise<{ code: string }>;
 };
 
+const PARTY_DOT: Record<string, string> = {
+  Democrat: "bg-blue-600",
+  Republican: "bg-red-600",
+  Independent: "bg-purple-500",
+};
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { code } = await params;
   const state = await getStateByCode(code);
@@ -91,12 +97,6 @@ export default async function StatePage({ params }: Props) {
   const financeList = Array.from(financeByMember.values()).sort(
     (a, b) => effectiveTotal(b) - effectiveTotal(a)
   );
-
-  const partyDot: Record<string, string> = {
-    Democrat: "bg-blue-600",
-    Republican: "bg-red-600",
-    Independent: "bg-purple-500",
-  };
 
   const messagingKeywords = extractKeywords(pressTitles, 12);
 
@@ -272,7 +272,7 @@ export default async function StatePage({ params }: Props) {
                         </p>
                         <p className="mt-0.5 text-xs text-neutral-400">
                           <span
-                            className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${partyDot[b.sponsorParty] || "bg-neutral-400"}`}
+                            className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${PARTY_DOT[b.sponsorParty] || "bg-neutral-400"}`}
                           />
                           {b.sponsorName}
                           {b.introducedDate && (
@@ -290,6 +290,31 @@ export default async function StatePage({ params }: Props) {
           )}
         </div>
 
+        <StateSidebar statePressReleases={statePressReleases} messagingKeywords={messagingKeywords} pressRankings={pressRankings} pressTitleCount={pressTitles.length} financeList={financeList} committeeMap={committeeMap} coverageStats={coverageStats} />
+      </div>
+    </div>
+  );
+}
+
+function StateSidebar({
+  statePressReleases,
+  messagingKeywords,
+  pressRankings,
+  pressTitleCount,
+  financeList,
+  committeeMap,
+  coverageStats,
+}: {
+  statePressReleases: Awaited<ReturnType<typeof getStatePressReleases>>;
+  messagingKeywords: ReturnType<typeof extractKeywords>;
+  pressRankings: Awaited<ReturnType<typeof getStatePressRankings>>;
+  pressTitleCount: number;
+  financeList: Awaited<ReturnType<typeof getStateDelegationFinance>>;
+  committeeMap: Map<string, { name: string; members: Awaited<ReturnType<typeof getStateCommitteeCoverage>> }>;
+  coverageStats: Awaited<ReturnType<typeof getStateCoverage>>;
+}) {
+  return (
+    <>
         {/* Sidebar */}
         <div className="space-y-8">
           {/* Press Releases */}
@@ -314,7 +339,7 @@ export default async function StatePage({ params }: Props) {
                     </a>
                     <p className="mt-0.5 text-[10px] text-neutral-400">
                       <span
-                        className={`mr-0.5 inline-block h-1 w-1 rounded-full ${partyDot[pr.memberParty] || "bg-neutral-400"}`}
+                        className={`mr-0.5 inline-block h-1 w-1 rounded-full ${PARTY_DOT[pr.memberParty] || "bg-neutral-400"}`}
                       />
                       {pr.memberName}
                       {pr.publishedAt && (
@@ -352,7 +377,7 @@ export default async function StatePage({ params }: Props) {
                 ))}
               </div>
               <p className="mt-2 text-[10px] italic text-neutral-400">
-                Extracted from {pressTitles.length} press release titles via
+                Extracted from {pressTitleCount} press release titles via
                 RSS
               </p>
             </section>
@@ -369,7 +394,7 @@ export default async function StatePage({ params }: Props) {
                   const maxCount = pressRankings[0]?.releaseCount || 1;
                   const pct =
                     maxCount > 0 ? (r.releaseCount / maxCount) * 100 : 0;
-                  const dotColor = partyDot[r.party] || "bg-neutral-400";
+                  const dotColor = PARTY_DOT[r.party] || "bg-neutral-400";
 
                   return (
                     <Link
@@ -470,7 +495,7 @@ export default async function StatePage({ params }: Props) {
                             className="text-[11px] text-neutral-400 no-underline hover:text-neutral-700"
                           >
                             <span
-                              className={`mr-0.5 inline-block h-1 w-1 rounded-full ${partyDot[cm.memberParty] || "bg-neutral-400"}`}
+                              className={`mr-0.5 inline-block h-1 w-1 rounded-full ${PARTY_DOT[cm.memberParty] || "bg-neutral-400"}`}
                             />
                             {cm.memberName.split(" ").pop()}
                             {cm.role !== "member" && (
@@ -501,7 +526,6 @@ export default async function StatePage({ params }: Props) {
             />
           )}
         </div>
-      </div>
-    </div>
+    </>
   );
 }

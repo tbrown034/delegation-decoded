@@ -8,9 +8,10 @@ import {
 } from "@/lib/schema";
 import { eq, sql, desc } from "drizzle-orm";
 import { TradeSparkline } from "@/components/trade-sparkline";
+import { TradesWipNotice } from "@/components/trades-wip-notice";
 
 export const metadata: Metadata = {
-  title: "Trades — Delegation Decoded",
+  title: "Trades, Delegation Decoded",
   description:
     "Stock trades disclosed by members of Congress under the STOCK Act.",
 };
@@ -32,6 +33,10 @@ const MONTH_LABELS = [
   "Nov",
   "Dec",
 ];
+
+function getCurrentTimeMs(): number {
+  return Date.now();
+}
 
 interface MemberRow {
   bioguideId: string;
@@ -72,39 +77,40 @@ async function loadRows(): Promise<{
   monthlyAll: MonthBucket[];
   latestByMember: Map<string, string>;
 }> {
-  const memberRows = await db
-    .select({
-      bioguideId: members.bioguideId,
-      fullName: members.fullName,
-      party: members.party,
-      stateCode: members.stateCode,
-      chamber: members.chamber,
-      txCount: sql<number>`COUNT(${stockTransactions.id})::int`,
-    })
-    .from(members)
-    .innerJoin(
-      stockTransactions,
-      eq(stockTransactions.bioguideId, members.bioguideId)
-    )
-    .groupBy(
-      members.bioguideId,
-      members.fullName,
-      members.party,
-      members.stateCode,
-      members.chamber
-    )
-    .orderBy(desc(sql`COUNT(${stockTransactions.id})`));
-
-  const tradeRows = await db
-    .select({
-      id: stockTransactions.id,
-      bioguideId: stockTransactions.bioguideId,
-      txDate: stockTransactions.txDate,
-      txType: stockTransactions.txType,
-      amountMin: stockTransactions.amountMin,
-      amountMax: stockTransactions.amountMax,
-    })
-    .from(stockTransactions);
+  const [memberRows, tradeRows] = await Promise.all([
+    db
+      .select({
+        bioguideId: members.bioguideId,
+        fullName: members.fullName,
+        party: members.party,
+        stateCode: members.stateCode,
+        chamber: members.chamber,
+        txCount: sql<number>`COUNT(${stockTransactions.id})::int`,
+      })
+      .from(members)
+      .innerJoin(
+        stockTransactions,
+        eq(stockTransactions.bioguideId, members.bioguideId)
+      )
+      .groupBy(
+        members.bioguideId,
+        members.fullName,
+        members.party,
+        members.stateCode,
+        members.chamber
+      )
+      .orderBy(desc(sql`COUNT(${stockTransactions.id})`)),
+    db
+      .select({
+        id: stockTransactions.id,
+        bioguideId: stockTransactions.bioguideId,
+        txDate: stockTransactions.txDate,
+        txType: stockTransactions.txType,
+        amountMin: stockTransactions.amountMin,
+        amountMax: stockTransactions.amountMax,
+      })
+      .from(stockTransactions),
+  ]);
 
   const trades = new Map<string, TradeRow[]>();
   const latestByMember = new Map<string, string>();
@@ -135,40 +141,40 @@ async function loadRows(): Promise<{
     }
   }
 
-  const monthlyAll = [...monthBuckets.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
+  const monthlyAll = Array.from(monthBuckets.entries())
+    .toSorted(([a], [b]) => a.localeCompare(b))
     .map(([month, bucket]) => ({
       month,
       buys: bucket.buys,
       sells: bucket.sells,
     }));
 
-  const [totals] = await db
-    .select({
-      members: sql<number>`COUNT(DISTINCT ${stockTransactions.bioguideId})::int`,
-      trades: sql<number>`COUNT(${stockTransactions.id})::int`,
-    })
-    .from(stockTransactions);
-
-  const [filingTotals] = await db
-    .select({
-      count: sql<number>`COUNT(*)::int`,
-      latest: sql<string | null>`MAX(${disclosureFilings.filedDate})::text`,
-      earliest: sql<string | null>`MIN(${disclosureFilings.filedDate})::text`,
-    })
-    .from(disclosureFilings);
-
-  const [lateTotals] = await db
-    .select({
-      lateCount: sql<number>`COUNT(*)::int`,
-    })
-    .from(stockTransactions)
-    .where(sql`${stockTransactions.filedLate} = true`);
-
-  const [activeMembersRow] = await db
-    .select({ n: sql<number>`COUNT(*)::int` })
-    .from(members)
-    .where(eq(members.inOffice, true));
+  const [[totals], [filingTotals], [lateTotals], [activeMembersRow]] =
+    await Promise.all([
+      db
+        .select({
+          members: sql<number>`COUNT(DISTINCT ${stockTransactions.bioguideId})::int`,
+          trades: sql<number>`COUNT(${stockTransactions.id})::int`,
+        })
+        .from(stockTransactions),
+      db
+        .select({
+          count: sql<number>`COUNT(*)::int`,
+          latest: sql<string | null>`MAX(${disclosureFilings.filedDate})::text`,
+          earliest: sql<string | null>`MIN(${disclosureFilings.filedDate})::text`,
+        })
+        .from(disclosureFilings),
+      db
+        .select({
+          lateCount: sql<number>`COUNT(*)::int`,
+        })
+        .from(stockTransactions)
+        .where(sql`${stockTransactions.filedLate} = true`),
+      db
+        .select({ n: sql<number>`COUNT(*)::int` })
+        .from(members)
+        .where(eq(members.inOffice, true)),
+    ]);
 
   return {
     rows: memberRows,
@@ -224,7 +230,7 @@ export default async function TradesLandingPage() {
         <p className="mt-3 text-base text-neutral-700">
           Members of Congress must disclose their stock trades, but filings
           are scattered across PDFs and hard to search. Each mark below is one
-          trade — green for purchases, red for sales — sized by the disclosed
+          trade, green for purchases, red for sales, sized by the disclosed
           amount range.
         </p>
         <p className="mt-2 font-mono text-xs text-neutral-500">
@@ -238,6 +244,8 @@ export default async function TradesLandingPage() {
           </Link>
         </p>
       </header>
+
+      <TradesWipNotice />
 
       <section className="mb-6 flex flex-wrap items-baseline gap-x-8 gap-y-3 border-y border-neutral-200 py-5">
         <HeroStat label="members trading" value={totals.members.toLocaleString()} dot={BUY_COLOR} />
@@ -294,7 +302,7 @@ export default async function TradesLandingPage() {
           <p className="mb-3 max-w-3xl text-xs text-neutral-500">
             A handful of members file trades through actively-managed
             accounts where each underlying security is disclosed as a
-            separate line item — that's how a single representative can show
+            separate line item, that&apos;s how a single representative can show
             up with thousands of trades in a single window. The methodology
             page has the breakdown.
           </p>
@@ -320,7 +328,7 @@ export default async function TradesLandingPage() {
                     className="flex items-center gap-2 truncate text-sm hover:underline"
                   >
                     <span
-                      className={`h-2 w-2 rounded-full ${PARTY_DOT[r.party] || "bg-neutral-400"}`}
+                      className={`size-2 rounded-full ${PARTY_DOT[r.party] || "bg-neutral-400"}`}
                       aria-hidden
                     />
                     <span className="truncate font-medium">{r.fullName}</span>
@@ -346,14 +354,14 @@ export default async function TradesLandingPage() {
           <p className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-1 font-mono text-[11px] text-neutral-500">
             <span className="inline-flex items-center gap-1.5">
               <span
-                className="block h-2.5 w-2.5 rounded-full"
+                className="block size-2.5 rounded-full"
                 style={{ backgroundColor: BUY_COLOR, opacity: 0.85 }}
               />
               Purchase
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span
-                className="block h-2.5 w-2.5 rounded-full"
+                className="block size-2.5 rounded-full"
                 style={{ backgroundColor: SELL_COLOR, opacity: 0.85 }}
               />
               Sale
@@ -445,14 +453,14 @@ function HeroStat({
       <span className="font-mono text-xs text-neutral-500">{label}</span>
       {dot && (
         <span
-          className="ml-0.5 inline-block h-1.5 w-1.5 rounded-full"
+          className="ml-0.5 inline-block size-1.5 rounded-full"
           style={{ backgroundColor: dot }}
           aria-hidden
         />
       )}
       {tone === "warn" && (
         <span
-          className="ml-0.5 inline-block h-1.5 w-1.5 rounded-full bg-amber-500"
+          className="ml-0.5 inline-block size-1.5 rounded-full bg-amber-500"
           aria-hidden
         />
       )}
@@ -558,7 +566,7 @@ function AggregateHistogram({
   const totalMonths = monthsBetween(domain[0], domain[1]);
   const barW = Math.max(2, (width - padX * 2) / Math.max(1, totalMonths));
 
-  const todayMs = Date.now();
+  const todayMs = getCurrentTimeMs();
   const todayX =
     todayMs >= minT && todayMs <= maxT
       ? padX + ((todayMs - minT) / range) * (width - padX * 2)
@@ -574,9 +582,8 @@ function AggregateHistogram({
       role="img"
       aria-label="Trades per month, stacked by purchase and sale"
     >
-      {ticks
-        .filter((t) => t.isYearStart)
-        .map((t) => (
+      {ticks.flatMap((t) =>
+        t.isYearStart ? [
           <line
             key={`grid-${t.pct}`}
             x1={padX + (t.pct / 100) * (width - padX * 2)}
@@ -585,7 +592,8 @@ function AggregateHistogram({
             y2={height - padY}
             stroke="#ececec"
           />
-        ))}
+        ] : []
+      )}
       <line
         x1={padX}
         x2={width - padX}

@@ -3,8 +3,8 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { bills, billSponsorships, members } from "@/lib/schema";
-import { eq, and } from "drizzle-orm";
-import { renderActionText } from "@/lib/render-action-text";
+import { eq } from "drizzle-orm";
+import { ActionText } from "@/lib/render-action-text";
 
 type Props = { params: Promise<{ billId: string }> };
 
@@ -128,7 +128,9 @@ export default async function BillPage({ params }: Props) {
           <p className="font-mono text-[10px] uppercase tracking-wide text-neutral-500">
             Latest action
           </p>
-          <p className="mt-1.5">{renderActionText(bill.latestActionText)}</p>
+          <p className="mt-1.5">
+            <ActionText raw={bill.latestActionText} />
+          </p>
         </section>
       )}
 

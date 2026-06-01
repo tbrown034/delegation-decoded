@@ -2,6 +2,7 @@ import { ImageResponse } from "next/og";
 import { db } from "@/lib/db";
 import { eq, sql } from "drizzle-orm";
 import { stockTransactions } from "@/lib/schema";
+import { OgStat } from "@/components/og-stat";
 
 export const runtime = "nodejs";
 export const size = { width: 1200, height: 630 };
@@ -9,7 +10,19 @@ export const contentType = "image/png";
 
 type Params = { params: Promise<{ ticker: string }> };
 
-export default async function OG({ params }: Params) {
+const assetNameStyle = {
+  marginTop: 4,
+  fontSize: 22,
+  color: "#525252",
+  fontFamily: "Georgia, serif",
+  fontStyle: "italic",
+  maxWidth: 1000,
+  overflow: "hidden",
+  whiteSpace: "nowrap",
+  textOverflow: "ellipsis",
+} as const;
+
+export default async function opengraphImage({ params }: Params) {
   const { ticker } = await params;
   const upper = ticker.toUpperCase();
 
@@ -66,17 +79,7 @@ export default async function OG({ params }: Params) {
 
         {stats?.assetName && (
           <div
-            style={{
-              marginTop: 4,
-              fontSize: 22,
-              color: "#525252",
-              fontFamily: "Georgia, serif",
-              fontStyle: "italic",
-              maxWidth: 1000,
-              overflow: "hidden",
-              whiteSpace: "nowrap",
-              textOverflow: "ellipsis",
-            }}
+            style={assetNameStyle}
           >
             {stats.assetName}
           </div>
@@ -92,10 +95,10 @@ export default async function OG({ params }: Params) {
           }}
         >
           <div style={{ display: "flex", gap: 56 }}>
-            <Stat label="trades" value={(stats?.total ?? 0).toLocaleString()} />
-            <Stat label="members" value={(stats?.holders ?? 0).toLocaleString()} />
-            <Stat label="buys" value={(stats?.buys ?? 0).toLocaleString()} color="#16a34a" />
-            <Stat label="sells" value={(stats?.sells ?? 0).toLocaleString()} color="#dc2626" />
+            <OgStat label="trades" value={(stats?.total ?? 0).toLocaleString()} />
+            <OgStat label="members" value={(stats?.holders ?? 0).toLocaleString()} />
+            <OgStat label="buys" value={(stats?.buys ?? 0).toLocaleString()} color="#16a34a" />
+            <OgStat label="sells" value={(stats?.sells ?? 0).toLocaleString()} color="#dc2626" />
           </div>
           <div
             style={{
@@ -115,32 +118,3 @@ export default async function OG({ params }: Params) {
   );
 }
 
-function Stat({ label, value, color }: { label: string; value: string; color?: string }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column" }}>
-      <div
-        style={{
-          fontSize: 48,
-          fontWeight: 600,
-          color: color ?? "#171717",
-          fontFamily: "Georgia, serif",
-          letterSpacing: -1,
-        }}
-      >
-        {value}
-      </div>
-      <div
-        style={{
-          fontSize: 14,
-          color: "#737373",
-          textTransform: "uppercase",
-          letterSpacing: 1.2,
-          marginTop: 4,
-          fontFamily: "system-ui",
-        }}
-      >
-        {label}
-      </div>
-    </div>
-  );
-}

@@ -49,7 +49,7 @@ export function extractKeywords(
   for (const title of titles) {
     const lower = title.toLowerCase();
 
-    // Check for known phrases
+    // Check for known phrases (all plain substrings, no regex needed)
     for (const phrase of PHRASE_PATTERNS) {
       if (lower.includes(phrase)) {
         phraseCount.set(phrase, (phraseCount.get(phrase) || 0) + 1);
@@ -69,17 +69,19 @@ export function extractKeywords(
 
   // Combine phrases and words, phrases get priority
   const results: KeywordResult[] = [];
+  const phraseTerms: string[] = [];
 
   for (const [term, count] of phraseCount) {
     if (count >= 1) {
       results.push({ term, count, isPhrase: true });
+      phraseTerms.push(term);
     }
   }
 
   for (const [term, count] of wordCount) {
     if (count >= 2) {
       // Don't include words that are part of already-counted phrases
-      const inPhrase = results.some((r) => r.isPhrase && r.term.includes(term));
+      const inPhrase = phraseTerms.some((phrase) => phrase.includes(term));
       if (!inPhrase) {
         results.push({ term, count, isPhrase: false });
       }

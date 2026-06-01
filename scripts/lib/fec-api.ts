@@ -7,21 +7,25 @@ function getApiKey(): string {
 }
 
 async function fetchWithRetry(url: string, retries = 3): Promise<Response> {
-  for (let i = 0; i < retries; i++) {
+  async function attempt(i: number): Promise<Response> {
     const res = await fetch(url);
     if (res.ok) return res;
     if (res.status === 429) {
+      if (i >= retries - 1) {
+        throw new Error(`FEC API error: ${res.status} ${res.statusText} for ${url}`);
+      }
       const wait = Math.pow(2, i + 1) * 1000;
       console.log(`  Rate limited, waiting ${wait}ms...`);
       await new Promise((r) => setTimeout(r, wait));
-      continue;
+      return attempt(i + 1);
     }
     if (i === retries - 1) {
       throw new Error(`FEC API error: ${res.status} ${res.statusText} for ${url}`);
     }
     await new Promise((r) => setTimeout(r, 1000));
+    return attempt(i + 1);
   }
-  throw new Error("Unreachable");
+  return attempt(0);
 }
 
 export interface FECCandidateFinance {
@@ -56,52 +60,4 @@ export async function fetchCandidateFinancials(
   const res = await fetchWithRetry(url);
   const data = await res.json();
   return data.results || [];
-}
-
-/**
- * Search for a candidate by name and state to find their FEC ID.
- */
-export async function searchCandidate(
-  name: string,
-  state: string
-): Promise<
-  {
-    candidate_id: string;
-    name: string;
-    office: string;
-    state: string;
-    party: string;
-    cycles: number[];
-  }[]
-> {
-  const url = `${BASE_URL}/candidates/search?q=${encodeURIComponent(name)}&state=${state}&per_page=5&api_key=${getApiKey()}`;
-  const res = await fetchWithRetry(url);
-  const data = await res.json();
-  return data.results || [];
-}
-
-/**
- * Fetch top committee contributors (PACs) for a candidate.
- */
-export async function fetchTopContributors(
-  candidateId: string,
-  cycle?: number
-): Promise<FECCommitteeContributor[]> {
-  let url = `${BASE_URL}/schedules/schedule_a/by_contributor?candidate_id=${candidateId}&per_page=20&sort=-total&api_key=${getApiKey()}`;
-  if (cycle) url += `&cycle=${cycle}`;
-
-  try {
-    const res = await fetchWithRetry(url);
-    const data = await res.json();
-    return (data.results || []).map(
-      (r: { committee_name: string; total: number; committee_id: string }) => ({
-        committee_name: r.committee_name,
-        total: r.total,
-        committee_id: r.committee_id,
-      })
-    );
-  } catch {
-    // This endpoint can be flaky for some candidates
-    return [];
-  }
 }

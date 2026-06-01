@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useCallback, useEffect, useEffectEvent, useReducer, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -20,80 +20,130 @@ const TYPE_LABEL: Record<Hit["type"], string> = {
   committee: "Committee",
 };
 
+interface SearchState {
+  open: boolean;
+  query: string;
+  hits: Hit[];
+  active: number;
+  loading: boolean;
+}
+
+type SearchAction =
+  | { type: "open" }
+  | { type: "close" }
+  | { type: "query"; query: string }
+  | { type: "clearResults" }
+  | { type: "loading" }
+  | { type: "loaded"; hits: Hit[] }
+  | { type: "active"; active: number };
+
+const initialSearchState: SearchState = {
+  open: false,
+  query: "",
+  hits: [],
+  active: 0,
+  loading: false,
+};
+
+function searchReducer(state: SearchState, action: SearchAction): SearchState {
+  switch (action.type) {
+    case "open":
+      return { ...state, open: true };
+    case "close":
+      return initialSearchState;
+    case "query":
+      return { ...state, query: action.query };
+    case "clearResults":
+      return { ...state, hits: [], active: 0, loading: false };
+    case "loading":
+      return { ...state, loading: true };
+    case "loaded":
+      return { ...state, hits: action.hits, active: 0, loading: false };
+    case "active":
+      return { ...state, active: action.active };
+  }
+}
+
 export function Search() {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [hits, setHits] = useState<Hit[]>([]);
-  const [active, setActive] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [state, dispatch] = useReducer(searchReducer, initialSearchState);
   const inputRef = useRef<HTMLInputElement>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const controllerRef = useRef<AbortController | null>(null);
   const router = useRouter();
 
-  const close = useCallback(() => {
-    setOpen(false);
-    setQuery("");
-    setHits([]);
-    setActive(0);
+  const focusInput = useCallback(() => {
+    requestAnimationFrame(() => inputRef.current?.focus());
   }, []);
+
+  const openSearch = useCallback(() => {
+    dispatch({ type: "open" });
+    focusInput();
+  }, [focusInput]);
+
+  const close = useCallback(() => {
+    controllerRef.current?.abort();
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    dispatch({ type: "close" });
+  }, []);
+  const closeEvent = useEffectEvent(close);
+  const openSearchEvent = useEffectEvent(openSearch);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
-        setOpen(true);
-      } else if (e.key === "Escape" && open) {
-        close();
+        openSearchEvent();
+      } else if (e.key === "Escape" && state.open) {
+        closeEvent();
       }
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open, close]);
+  }, [state.open]);
 
   useEffect(() => {
-    if (open) {
-      // wait one frame for the input to mount
-      requestAnimationFrame(() => inputRef.current?.focus());
-    }
-  }, [open]);
+    return close;
+  }, [close]);
 
-  useEffect(() => {
-    if (query.trim().length < 2) {
-      setHits([]);
-      setLoading(false);
+  function handleQueryChange(nextQuery: string) {
+    dispatch({ type: "query", query: nextQuery });
+    controllerRef.current?.abort();
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+
+    if (nextQuery.trim().length < 2) {
+      dispatch({ type: "clearResults" });
       return;
     }
+
     const ctl = new AbortController();
-    setLoading(true);
-    const t = setTimeout(async () => {
+    controllerRef.current = ctl;
+    dispatch({ type: "loading" });
+    timeoutRef.current = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`, {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(nextQuery)}`, {
           signal: ctl.signal,
         });
         const data = await res.json();
-        setHits(data.hits as Hit[]);
-        setActive(0);
+        dispatch({ type: "loaded", hits: data.hits as Hit[] });
       } catch {
-        // aborted
-      } finally {
-        setLoading(false);
+        if (!ctl.signal.aborted) dispatch({ type: "loaded", hits: [] });
       }
     }, 120);
-    return () => {
-      ctl.abort();
-      clearTimeout(t);
-    };
-  }, [query]);
+  }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setActive((i) => Math.min(i + 1, hits.length - 1));
+      dispatch({
+        type: "active",
+        active: Math.min(state.active + 1, state.hits.length - 1),
+      });
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      setActive((i) => Math.max(i - 1, 0));
+      dispatch({ type: "active", active: Math.max(state.active - 1, 0) });
     } else if (e.key === "Enter") {
       e.preventDefault();
-      const hit = hits[active];
+      const hit = state.hits[state.active];
       if (hit) {
         router.push(hit.href);
         close();
@@ -105,7 +155,7 @@ export function Search() {
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={openSearch}
         aria-label="Open search"
         className="hidden h-8 items-center gap-2 rounded border border-neutral-200 px-3 text-xs text-neutral-500 transition-colors hover:border-neutral-400 hover:text-neutral-700 md:inline-flex"
       >
@@ -119,7 +169,7 @@ export function Search() {
         </kbd>
       </button>
 
-      {open && (
+      {state.open && (
         <div
           className="fixed inset-0 z-50 flex items-start justify-center bg-neutral-900/30 px-4 pt-[15vh]"
           onClick={close}
@@ -145,39 +195,58 @@ export function Search() {
               </svg>
               <input
                 ref={inputRef}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                value={state.query}
+                onChange={(e) => handleQueryChange(e.target.value)}
                 onKeyDown={onKeyDown}
+                role="combobox"
+                aria-expanded={state.hits.length > 0}
+                aria-controls="search-listbox"
+                aria-autocomplete="list"
+                aria-activedescendant={
+                  state.active >= 0 && state.hits.length > 0
+                    ? `search-opt-${state.active}`
+                    : undefined
+                }
+                aria-label="Search members, tickers, states, bills, and committees"
                 placeholder="Search members, tickers, states…"
+                spellCheck={false}
+                autoComplete="off"
+                enterKeyHint="search"
                 className="flex-1 bg-transparent text-sm outline-none placeholder:text-neutral-400"
               />
-              {loading && (
+              {state.loading && (
                 <span className="font-mono text-[10px] uppercase tracking-wide text-neutral-400">
                   Searching…
                 </span>
               )}
             </div>
 
-            <div className="max-h-[60vh] overflow-y-auto py-2">
-              {query.trim().length < 2 ? (
+            <div
+              className="max-h-[60vh] overflow-y-auto overscroll-contain py-2"
+              aria-live="polite"
+            >
+              {state.query.trim().length < 2 ? (
                 <p className="px-4 py-3 text-xs text-neutral-500">
                   Type at least 2 characters. Try “khanna”, “NVDA”, or “California”.
                 </p>
-              ) : hits.length === 0 && !loading ? (
+              ) : state.hits.length === 0 && !state.loading ? (
                 <p className="px-4 py-3 text-xs text-neutral-500">No matches.</p>
               ) : (
-                <ul role="listbox">
-                  {hits.map((hit, i) => (
-                    <li key={`${hit.type}-${hit.href}-${i}`}>
+                <ul id="search-listbox" role="listbox">
+                  {state.hits.map((hit, i) => (
+                    <li key={`${hit.type}-${hit.href}`}>
                       <Link
                         href={hit.href}
-                        onClick={close}
-                        onMouseEnter={() => setActive(i)}
-                        className={`flex items-baseline justify-between gap-3 px-4 py-2 text-sm no-underline ${
-                          active === i ? "bg-stone-100" : "hover:bg-stone-50"
-                        }`}
+                        id={`search-opt-${i}`}
                         role="option"
-                        aria-selected={active === i}
+                        aria-selected={state.active === i}
+                        onClick={close}
+                        onMouseEnter={() =>
+                          dispatch({ type: "active", active: i })
+                        }
+                        className={`flex items-baseline justify-between gap-3 px-4 py-2 text-sm no-underline ${
+                          state.active === i ? "bg-stone-100" : "hover:bg-stone-50"
+                        }`}
                       >
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-medium text-neutral-900">

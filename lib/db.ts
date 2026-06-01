@@ -14,7 +14,7 @@ function createDb() {
 
 // Lazy singleton — only connects when first query runs
 let _db: ReturnType<typeof createDb> | null = null;
-export function getDb() {
+function getDb() {
   if (!_db) _db = createDb();
   return _db;
 }

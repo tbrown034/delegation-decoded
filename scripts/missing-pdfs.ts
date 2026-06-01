@@ -5,7 +5,9 @@ import { readdirSync } from "fs";
 
 async function main() {
   const dbRows = await db.execute(sql`SELECT doc_id FROM disclosure_filings`);
-  const inDb = new Set(dbRows.rows.map((r: any) => r.doc_id));
+  const inDb = new Set(
+    (dbRows.rows as { doc_id: string }[]).map((r) => r.doc_id)
+  );
 
   const dir = "/Users/home/Desktop/dev/active/delegation-decoded/data/house-ptrs/pdfs/2026";
   const files = readdirSync(dir).filter((f) => f.endsWith(".pdf"));

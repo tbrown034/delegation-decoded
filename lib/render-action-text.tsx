@@ -17,13 +17,13 @@ const ALLOWED_HOSTS = new Set([
 
 const ANCHOR = /<a\s+href=(?:"|')([^"']+)(?:"|')[^>]*>([^<]*)<\/a>/gi;
 
-export function renderActionText(raw: string | null): ReactNode {
+export function ActionText({ raw }: { raw: string | null }): ReactNode {
   if (!raw) return null;
   const out: ReactNode[] = [];
   let cursor = 0;
   let match: RegExpExecArray | null;
-  ANCHOR.lastIndex = 0;
-  while ((match = ANCHOR.exec(raw)) !== null) {
+  const anchor = new RegExp(ANCHOR);
+  while ((match = anchor.exec(raw)) !== null) {
     if (match.index > cursor) {
       out.push(raw.slice(cursor, match.index));
     }

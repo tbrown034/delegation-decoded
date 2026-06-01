@@ -17,6 +17,7 @@ export default function Error({
         {error.message || "An unexpected error occurred while loading this page."}
       </p>
       <button
+        type="button"
         onClick={() => reset()}
         className="mt-6 rounded bg-neutral-900 px-4 py-2 text-sm text-white transition-colors hover:bg-neutral-800"
       >

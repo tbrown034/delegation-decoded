@@ -90,7 +90,7 @@ function MemberHeader({ member }: { member: MemberData }) {
     >
       <div className="flex items-center gap-3">
         <div
-          className={`relative h-12 w-12 shrink-0 overflow-hidden rounded-full ring-2 ${ring}`}
+          className={`relative size-12 shrink-0 overflow-hidden rounded-full ring-2 ${ring}`}
         >
           {member.photoUrl ? (
             <Image
@@ -112,9 +112,9 @@ function MemberHeader({ member }: { member: MemberData }) {
           </p>
           <p className="text-xs text-neutral-500">
             <span
-              className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${partyDot[member.party] || "bg-neutral-400"}`}
+              className={`mr-1 inline-block size-1.5 rounded-full ${partyDot[member.party] || "bg-neutral-400"}`}
             />
-            {member.party} {seat} — {stateName}
+            {member.party} {seat}, {stateName}
           </p>
         </div>
       </div>
@@ -185,15 +185,15 @@ function FinanceBar({ finance }: { finance: FinanceRecord | null }) {
       </div>
       <div className="mt-1 flex gap-3 text-[10px] text-neutral-400">
         <span>
-          <span className="mr-0.5 inline-block h-1 w-1 rounded-full bg-emerald-600" />
+          <span className="mr-0.5 inline-block size-1 rounded-full bg-emerald-600" />
           Small {Math.round(pctSmall)}%
         </span>
         <span>
-          <span className="mr-0.5 inline-block h-1 w-1 rounded-full bg-blue-500" />
+          <span className="mr-0.5 inline-block size-1 rounded-full bg-blue-500" />
           Large {Math.round(pctLarge)}%
         </span>
         <span>
-          <span className="mr-0.5 inline-block h-1 w-1 rounded-full bg-amber-500" />
+          <span className="mr-0.5 inline-block size-1 rounded-full bg-amber-500" />
           PAC {Math.round(pctPac)}%
         </span>
       </div>
@@ -236,7 +236,7 @@ export function CompareMembers({
       ) : (
         <div className="mb-8 rounded-lg border border-neutral-100 bg-neutral-50 px-6 py-4 text-center">
           <p className="text-xs text-neutral-400">
-            Different chambers — no shared roll call votes to compare
+            Different chambers, no shared roll call votes to compare
           </p>
         </div>
       )}

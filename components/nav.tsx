@@ -21,13 +21,13 @@ export function Nav() {
 
   return (
     <header className="relative border-b border-neutral-200">
-      <nav className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4">
+      <nav className="mx-auto flex max-w-5xl items-center justify-between p-4">
         <Link
           href="/"
           aria-label="Delegation Decoded home"
           className="flex items-center gap-2 no-underline"
         >
-          <span aria-hidden className="inline-flex h-7 w-7 items-center justify-center rounded bg-neutral-900 font-[family-name:var(--font-source-serif)] text-[13px] font-bold tracking-tight text-white">
+          <span aria-hidden className="inline-flex size-7 items-center justify-center rounded bg-neutral-900 font-[family-name:var(--font-source-serif)] text-[13px] font-bold tracking-tight text-white">
             DD
           </span>
           <span className="font-[family-name:var(--font-source-serif)] text-base font-semibold tracking-tight text-neutral-900">

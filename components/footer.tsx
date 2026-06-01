@@ -7,7 +7,7 @@ export function Footer() {
       <div className="mx-auto max-w-5xl px-4 py-10">
         <div className="flex flex-col gap-8 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-center gap-3">
-            <span aria-hidden className="inline-flex h-6 w-6 items-center justify-center rounded bg-neutral-900 font-[family-name:var(--font-source-serif)] text-[11px] font-bold tracking-tight text-white opacity-70">
+            <span aria-hidden className="inline-flex size-6 items-center justify-center rounded bg-neutral-900 font-[family-name:var(--font-source-serif)] text-[11px] font-bold tracking-tight text-white opacity-70">
               DD
             </span>
             <p className="text-xs text-neutral-400">

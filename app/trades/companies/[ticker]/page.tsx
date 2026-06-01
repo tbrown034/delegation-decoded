@@ -7,6 +7,7 @@ import {
   disclosureFilings,
 } from "@/lib/schema";
 import { eq } from "drizzle-orm";
+import { TradesWipNotice } from "@/components/trades-wip-notice";
 
 type Props = { params: Promise<{ ticker: string }> };
 
@@ -150,6 +151,8 @@ export default async function TickerPage({ params }: Props) {
           {sellCount === 1 ? "" : "s"}.
         </p>
       </header>
+
+      <TradesWipNotice />
 
       {/* Multi-row timeline: each member = one horizontal track */}
       <section className="mb-8 overflow-x-auto">

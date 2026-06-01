@@ -7,36 +7,42 @@ function getApiKey(): string {
 }
 
 async function fetchWithRetry(url: string, retries = 4): Promise<Response> {
-  let lastError: unknown;
-  for (let i = 0; i < retries; i++) {
+  async function attempt(i: number): Promise<Response> {
+    let res: Response;
     try {
-      const res = await fetch(url);
-      if (res.ok) return res;
-      if (res.status === 429) {
-        const wait = Math.pow(2, i + 1) * 1000;
-        console.log(`  Rate limited, waiting ${wait}ms...`);
-        await new Promise((r) => setTimeout(r, wait));
-        continue;
-      }
-      // Transient 5xx from upstream — retry with backoff.
-      if (res.status >= 500 && res.status < 600 && i < retries - 1) {
-        await new Promise((r) => setTimeout(r, Math.pow(2, i) * 1000));
-        continue;
-      }
-      if (i === retries - 1) {
-        throw new Error(`Congress API error: ${res.status} ${res.statusText} for ${url}`);
-      }
-      await new Promise((r) => setTimeout(r, 1000));
+      res = await fetch(url);
     } catch (err) {
       // Network-level failure (socket close, DNS, TLS reset) — these
       // surface as thrown TypeErrors with UND_ERR_SOCKET causes from undici.
-      // Treat them like 5xx and retry.
-      lastError = err;
+      // Treat them like 5xx and retry. Only the fetch itself is wrapped, so a
+      // deliberate "give up" throw below propagates instead of being re-caught
+      // and retried (which previously caused an exponential request cascade).
       if (i === retries - 1) throw err;
       await new Promise((r) => setTimeout(r, Math.pow(2, i) * 1000));
+      return attempt(i + 1);
     }
+    if (res.ok) return res;
+    if (res.status === 429) {
+      if (i >= retries - 1) {
+        throw new Error(`Congress API error: ${res.status} ${res.statusText} for ${url}`);
+      }
+      const wait = Math.pow(2, i + 1) * 1000;
+      console.log(`  Rate limited, waiting ${wait}ms...`);
+      await new Promise((r) => setTimeout(r, wait));
+      return attempt(i + 1);
+    }
+    // Transient 5xx from upstream — retry with backoff.
+    if (res.status >= 500 && res.status < 600 && i < retries - 1) {
+      await new Promise((r) => setTimeout(r, Math.pow(2, i) * 1000));
+      return attempt(i + 1);
+    }
+    if (i === retries - 1) {
+      throw new Error(`Congress API error: ${res.status} ${res.statusText} for ${url}`);
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+    return attempt(i + 1);
   }
-  throw lastError ?? new Error("Unreachable");
+  return attempt(0);
 }
 
 export interface CongressBill {
@@ -153,21 +159,4 @@ export async function fetchCosponsors(
   }
 
   return all;
-}
-
-/**
- * Fetch bills sponsored by a specific member.
- */
-export async function fetchMemberBills(
-  bioguideId: string,
-  offset = 0,
-  limit = 250
-): Promise<{ bills: CongressBill[]; total: number }> {
-  const url = `${BASE_URL}/member/${bioguideId}/sponsored-legislation?offset=${offset}&limit=${limit}&format=json&api_key=${getApiKey()}`;
-  const res = await fetchWithRetry(url);
-  const data = await res.json();
-  return {
-    bills: data.sponsoredLegislation || [],
-    total: data.pagination?.count || 0,
-  };
 }

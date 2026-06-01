@@ -28,7 +28,7 @@ export function MemberCoverageCard({ items }: { items: CoverageDetailItem[] }) {
         Data coverage for this member
       </h2>
       <p className="mt-1 max-w-2xl text-[12px] text-neutral-600">
-        Every data source on the site, mapped to this member. A grey dot means the member is not expected to have data for that source — most members do not actively trade individual securities, and not every congressional office publishes an RSS feed.
+        Every data source on the site, mapped to this member. A grey dot means the member is not expected to have data for that source, most members do not actively trade individual securities, and not every congressional office publishes an RSS feed.
       </p>
       <ul className="mt-4 space-y-2">
         {items.map((item) => {

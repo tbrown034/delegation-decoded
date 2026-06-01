@@ -21,7 +21,7 @@ import { count, eq, desc } from "drizzle-orm";
 export const metadata: Metadata = {
   title: "About & Methodology",
   description:
-    "How Delegation Decoded works — data sources, collection methodology, known limitations, and technical details.",
+    "How Delegation Decoded works, data sources, collection methodology, known limitations, and technical details.",
 };
 
 async function getDataStats() {
@@ -79,7 +79,7 @@ export default async function AboutPage() {
             Delegation Decoded is a congressional accountability platform
             organized by state delegation. Each state gets a dashboard tracking
             its senators and representatives across legislation, committee
-            assignments, and campaign finance — drawn directly from official
+            assignments, and campaign finance, drawn directly from official
             government records.
           </p>
           <p className="mt-2">
@@ -135,7 +135,7 @@ export default async function AboutPage() {
                 Canonical member database. Biographical data, party affiliation,
                 state, district, terms of service, social media handles, and
                 cross-reference IDs to other government systems. This is the
-                gold standard reference dataset used across civic tech — it
+                gold standard reference dataset used across civic tech, it
                 provides the bioguide ID that links a member across Congress.gov,
                 FEC, and every other system.
               </p>
@@ -182,8 +182,7 @@ export default async function AboutPage() {
               </p>
               <p className="mt-1 text-xs text-neutral-400">
                 Access: REST API with free key via api.data.gov. Rate limit:
-                1,000 requests/hour. FEC data reflects filings as reported —
-                quarterly filing schedules mean data can lag by weeks or months.
+                1,000 requests/hour. FEC data reflects filings as reported, quarterly filing schedules mean data can lag by weeks or months.
               </p>
             </div>
 
@@ -217,7 +216,7 @@ export default async function AboutPage() {
               <p className="mt-1">
                 STOCK Act Periodic Transaction Reports for House members. The
                 Clerk publishes annual ZIPs of PTR PDFs. Each PDF is parsed
-                with Anthropic Claude Sonnet 4.6 in vision mode — the model
+                with Anthropic Claude Sonnet 4.6 in vision mode, the model
                 reads the rendered form and returns structured JSON: ticker,
                 asset description, owner, transaction type, transaction date,
                 amount band, and a per-row confidence score. Rows below 80%
@@ -240,7 +239,7 @@ export default async function AboutPage() {
               </p>
               <p className="mt-1">
                 STOCK Act PTRs for senators. The Senate filing system serves
-                structured HTML tables — every row already has a discrete
+                structured HTML tables, every row already has a discrete
                 ticker, owner code, asset type, transaction type, and amount
                 band. Parsed deterministically with a cookie-jar + regex
                 pipeline; no LLM required. Faster, free, and reliably high
@@ -263,7 +262,7 @@ export default async function AboutPage() {
                 Official press releases from member office websites. Each
                 member&apos;s site is probed for one of six standard RSS feed
                 paths (`/rss.xml`, `/feed/`, `/news/rss.xml`, etc.) and parsed
-                with a small inline XML reader — no third-party dependencies.
+                with a small inline XML reader, no third-party dependencies.
                 Used to power the press-release timeline and keyword analytics.
               </p>
               <p className="mt-1 text-xs text-neutral-400">
@@ -275,6 +274,19 @@ export default async function AboutPage() {
           </div>
         </section>
 
+        <AboutProcessDetails syncs={syncs} />
+      </div>
+    </div>
+  );
+}
+
+function AboutProcessDetails({
+  syncs,
+}: {
+  syncs: Awaited<ReturnType<typeof getSyncHistory>>;
+}) {
+  return (
+    <>
         {/* Collection process */}
         <section>
           <h2 className="mb-4 font-serif text-lg font-semibold text-neutral-900">
@@ -325,7 +337,7 @@ export default async function AboutPage() {
               with Claude Sonnet 4.6 in vision mode. Senate PTRs come from the
               eFD HTML tables and are parsed deterministically. Both pipelines
               upsert into the same `disclosure_filings` and
-              `stock_transactions` tables and run incrementally — already-seen
+              `stock_transactions` tables and run incrementally, already-seen
               hashes are skipped.
             </li>
             <li>
@@ -399,12 +411,12 @@ export default async function AboutPage() {
             <li>
               STOCK Act PTRs are filed up to 45 days after a transaction.
               Members who fail to file are flagged late but the data still
-              arrives — sometimes with a multi-month lag.
+              arrives, sometimes with a multi-month lag.
             </li>
             <li>
               House PTR rows below 80% parse confidence are flagged for
               review rather than hidden. About 0.05% of current rows are in
-              this state — typically because the PDF is hand-annotated or
+              this state, typically because the PDF is hand-annotated or
               uses an unusual asset description.
             </li>
             <li>
@@ -418,7 +430,7 @@ export default async function AboutPage() {
             </li>
             <li>
               Territory delegates (DC, PR, GU, AS, MP, VI) have limited
-              legislative data — they cannot vote on the House floor.
+              legislative data, they cannot vote on the House floor.
             </li>
             <li>
               The roster is sourced from{" "}
@@ -445,17 +457,17 @@ export default async function AboutPage() {
           <p>
             One pipeline uses AI: House PTR PDFs are parsed with Anthropic
             Claude Sonnet 4.6 in vision mode. The model reads the rendered
-            disclosure form and returns structured JSON — ticker, asset
+            disclosure form and returns structured JSON, ticker, asset
             description, owner, transaction type, transaction date, amount
-            band — plus a per-row confidence score (0–100). Every row is
+            band, plus a per-row confidence score (0–100). Every row is
             stored with its score; rows below 80% are flagged in the UI and
             the user can see exactly which rows the parser was uncertain
             about. Senate PTRs do not use AI: they come back as structured
             HTML and are parsed deterministically.
           </p>
           <p className="mt-2">
-            All other data — bills, sponsorships, votes, finance, committees,
-            members, press releases — traces directly to an official API or
+            All other data, bills, sponsorships, votes, finance, committees,
+            members, press releases, traces directly to an official API or
             community-maintained dataset, with no model in the loop.
           </p>
           <p className="mt-2">
@@ -500,7 +512,6 @@ export default async function AboutPage() {
             </Link>
           </p>
         </section>
-      </div>
-    </div>
+    </>
   );
 }

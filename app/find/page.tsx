@@ -1,11 +1,12 @@
 import Link from "next/link";
+import Image from "next/image";
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { members, states } from "@/lib/schema";
 import { and, eq, or } from "drizzle-orm";
 
 export const metadata: Metadata = {
-  title: "Find your delegation — Delegation Decoded",
+  title: "Find your delegation, Delegation Decoded",
   description:
     "Enter your address to see your two senators and your representative.",
 };
@@ -50,33 +51,28 @@ async function geocode(address: string): Promise<GeocodeResult | null> {
 }
 
 async function lookupDelegation(stateCode: string, district: number | null) {
-  const [stateRow] = await db
-    .select({ name: states.name })
-    .from(states)
-    .where(eq(states.code, stateCode));
-
-  const senators = await db
-    .select({
-      bioguideId: members.bioguideId,
-      fullName: members.fullName,
-      party: members.party,
-      photoUrl: members.photoUrl,
-    })
-    .from(members)
-    .where(
-      and(
-        eq(members.stateCode, stateCode),
-        eq(members.chamber, "senate"),
-        eq(members.inOffice, true)
+  // For at-large states (district=0), Census may return "1" or "0", try both.
+  const [stateRows, senators, repCandidates] = await Promise.all([
+    db.select({ name: states.name }).from(states).where(eq(states.code, stateCode)),
+    db
+      .select({
+        bioguideId: members.bioguideId,
+        fullName: members.fullName,
+        party: members.party,
+        photoUrl: members.photoUrl,
+      })
+      .from(members)
+      .where(
+        and(
+          eq(members.stateCode, stateCode),
+          eq(members.chamber, "senate"),
+          eq(members.inOffice, true)
+        )
       )
-    )
-    .orderBy(members.lastName);
-
-  // For at-large states (district=0), Census may return "1" or "0" — try both.
-  const repCandidates =
+      .orderBy(members.lastName),
     district == null
-      ? []
-      : await db
+      ? Promise.resolve([])
+      : db
           .select({
             bioguideId: members.bioguideId,
             fullName: members.fullName,
@@ -92,7 +88,8 @@ async function lookupDelegation(stateCode: string, district: number | null) {
               eq(members.inOffice, true),
               or(eq(members.district, district), eq(members.district, 0))
             )
-          );
+          ),
+  ]);
 
   // Prefer the exact district match; fall back to at-large (district=0).
   const rep =
@@ -101,7 +98,7 @@ async function lookupDelegation(stateCode: string, district: number | null) {
     null;
 
   return {
-    stateName: stateRow?.name ?? stateCode,
+    stateName: stateRows[0]?.name ?? stateCode,
     senators,
     rep,
   };
@@ -143,7 +140,7 @@ export default async function FindPage({ searchParams }: Props) {
           Find your delegation
         </h1>
         <p className="mt-2 max-w-xl text-sm text-neutral-500">
-          Enter a US street address. We'll match it to a congressional district
+          Enter a US street address. We&apos;ll match it to a congressional district
           via the US Census Geocoder and show your two senators plus your
           representative.
         </p>
@@ -151,12 +148,15 @@ export default async function FindPage({ searchParams }: Props) {
 
       <form action="/find" method="get" className="mb-8 flex gap-2">
         <input
-          type="text"
+          type="search"
           name="address"
           defaultValue={address ?? ""}
           placeholder="1600 Pennsylvania Ave, Washington, DC 20500"
+          aria-label="Street address"
+          autoComplete="street-address"
+          spellCheck={false}
+          enterKeyHint="search"
           className="flex-1 rounded border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-neutral-500 focus:outline-none"
-          autoFocus
           required
         />
         <button
@@ -168,7 +168,10 @@ export default async function FindPage({ searchParams }: Props) {
       </form>
 
       {error && (
-        <div className="rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <div
+          role="alert"
+          className="rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        >
           {error}
         </div>
       )}
@@ -242,7 +245,7 @@ export default async function FindPage({ searchParams }: Props) {
                 </ul>
               ) : (
                 <p className="text-sm text-neutral-500">
-                  We couldn't find a representative on file for {result.stateCode}
+                  We couldn&apos;t find a representative on file for {result.stateCode}
                   {result.district != null ? `-${result.district}` : ""}.
                 </p>
               )}
@@ -253,7 +256,7 @@ export default async function FindPage({ searchParams }: Props) {
 
       {!result && !error && (
         <p className="mt-2 text-xs text-neutral-400">
-          Address never leaves the request — geocoded directly against the
+          Address never leaves the request, geocoded directly against the
           public Census API. Nothing is stored.
         </p>
       )}
@@ -281,14 +284,15 @@ function DelegateCard({
         className="flex items-center gap-3 rounded border border-neutral-200 bg-white p-3 no-underline transition-colors hover:bg-neutral-50"
       >
         {photoUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <Image
             src={photoUrl}
             alt=""
-            className="h-12 w-12 shrink-0 rounded-full bg-neutral-100 object-cover"
+            width={48}
+            height={48}
+            className="size-12 shrink-0 rounded-full bg-neutral-100 object-cover"
           />
         ) : (
-          <div className="h-12 w-12 shrink-0 rounded-full bg-neutral-100" />
+          <div className="size-12 shrink-0 rounded-full bg-neutral-100" />
         )}
         <div className="min-w-0">
           <p className="truncate text-sm font-medium text-neutral-900">

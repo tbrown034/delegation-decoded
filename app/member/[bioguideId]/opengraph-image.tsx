@@ -2,6 +2,7 @@ import { ImageResponse } from "next/og";
 import { db } from "@/lib/db";
 import { eq, sql } from "drizzle-orm";
 import { members, stockTransactions, billSponsorships } from "@/lib/schema";
+import { OgStat } from "@/components/og-stat";
 
 export const runtime = "nodejs";
 export const size = { width: 1200, height: 630 };
@@ -15,7 +16,29 @@ const PARTY_COLOR: Record<string, string> = {
   Independent: "#a855f7",
 };
 
-export default async function OG({ params }: Params) {
+const notFoundStyle = {
+  width: "100%",
+  height: "100%",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "#fff",
+  fontSize: 48,
+  fontFamily: "Georgia, serif",
+} as const;
+
+const memberNameStyle = {
+  display: "flex",
+  marginTop: 12,
+  fontSize: 96,
+  fontWeight: 700,
+  color: "#171717",
+  fontFamily: "Georgia, serif",
+  letterSpacing: -3,
+  lineHeight: 1,
+} as const;
+
+export default async function opengraphImage({ params }: Params) {
   const { bioguideId } = await params;
   const [m] = await db
     .select()
@@ -27,16 +50,7 @@ export default async function OG({ params }: Params) {
     return new ImageResponse(
       (
         <div
-          style={{
-            width: "100%",
-            height: "100%",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: "#fff",
-            fontSize: 48,
-            fontFamily: "Georgia, serif",
-          }}
+          style={notFoundStyle}
         >
           Member not found
         </div>
@@ -45,14 +59,16 @@ export default async function OG({ params }: Params) {
     );
   }
 
-  const [trades] = await db
-    .select({ n: sql<number>`COUNT(*)::int` })
-    .from(stockTransactions)
-    .where(eq(stockTransactions.bioguideId, bioguideId));
-  const [sponsorships] = await db
-    .select({ n: sql<number>`COUNT(*)::int` })
-    .from(billSponsorships)
-    .where(eq(billSponsorships.bioguideId, bioguideId));
+  const [[trades], [sponsorships]] = await Promise.all([
+    db
+      .select({ n: sql<number>`COUNT(*)::int` })
+      .from(stockTransactions)
+      .where(eq(stockTransactions.bioguideId, bioguideId)),
+    db
+      .select({ n: sql<number>`COUNT(*)::int` })
+      .from(billSponsorships)
+      .where(eq(billSponsorships.bioguideId, bioguideId)),
+  ]);
 
   const partyColor = PARTY_COLOR[m.party] || "#404040";
   const districtSuffix = m.district ? `-${m.district}` : "";
@@ -87,16 +103,7 @@ export default async function OG({ params }: Params) {
         </div>
 
         <div
-          style={{
-            display: "flex",
-            marginTop: 12,
-            fontSize: 96,
-            fontWeight: 700,
-            color: "#171717",
-            fontFamily: "Georgia, serif",
-            letterSpacing: -3,
-            lineHeight: 1,
-          }}
+          style={memberNameStyle}
         >
           {m.fullName}
         </div>
@@ -112,8 +119,8 @@ export default async function OG({ params }: Params) {
           }}
         >
           <div style={{ display: "flex", flexDirection: "row", gap: 56 }}>
-            <Stat label="bills sponsored" value={(sponsorships?.n ?? 0).toLocaleString()} />
-            <Stat label="trades disclosed" value={(trades?.n ?? 0).toLocaleString()} />
+            <OgStat label="bills sponsored" value={(sponsorships?.n ?? 0).toLocaleString()} valueSize={56} valueLetterSpacing={-1.5} />
+            <OgStat label="trades disclosed" value={(trades?.n ?? 0).toLocaleString()} valueSize={56} valueLetterSpacing={-1.5} />
           </div>
           <div
             style={{
@@ -134,34 +141,3 @@ export default async function OG({ params }: Params) {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column" }}>
-      <div
-        style={{
-          display: "flex",
-          fontSize: 56,
-          fontWeight: 600,
-          color: "#171717",
-          fontFamily: "Georgia, serif",
-          letterSpacing: -1.5,
-        }}
-      >
-        {value}
-      </div>
-      <div
-        style={{
-          display: "flex",
-          fontSize: 14,
-          color: "#737373",
-          textTransform: "uppercase",
-          letterSpacing: 1.2,
-          marginTop: 4,
-          fontFamily: "system-ui",
-        }}
-      >
-        {label}
-      </div>
-    </div>
-  );
-}

@@ -2,6 +2,7 @@ import { ImageResponse } from "next/og";
 import { db } from "@/lib/db";
 import { count, eq, sql } from "drizzle-orm";
 import { members, stockTransactions, disclosureFilings } from "@/lib/schema";
+import { OgStat } from "@/components/og-stat";
 
 export const runtime = "nodejs";
 export const size = { width: 1200, height: 630 };
@@ -9,18 +10,41 @@ export const contentType = "image/png";
 export const alt =
   "Delegation Decoded — congressional accountability, organized by state.";
 
+const rootStyle = {
+  width: "100%",
+  height: "100%",
+  background: "#ffffff",
+  display: "flex",
+  flexDirection: "column",
+  padding: 64,
+  fontFamily: "Georgia, serif",
+} as const;
+
+const logoStyle = {
+  width: 56,
+  height: 56,
+  background: "#171717",
+  borderRadius: 8,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  color: "#fff",
+  fontSize: 28,
+  fontWeight: 700,
+  letterSpacing: -2,
+} as const;
+
 async function getStats() {
-  const [m] = await db
-    .select({ n: count() })
-    .from(members)
-    .where(eq(members.inOffice, true));
-  const [t] = await db.select({ n: count() }).from(stockTransactions);
-  const [f] = await db.select({ n: count() }).from(disclosureFilings);
-  const [traders] = await db
-    .select({
-      n: sql<number>`COUNT(DISTINCT ${stockTransactions.bioguideId})::int`,
-    })
-    .from(stockTransactions);
+  const [[m], [t], [f], [traders]] = await Promise.all([
+    db.select({ n: count() }).from(members).where(eq(members.inOffice, true)),
+    db.select({ n: count() }).from(stockTransactions),
+    db.select({ n: count() }).from(disclosureFilings),
+    db
+      .select({
+        n: sql<number>`COUNT(DISTINCT ${stockTransactions.bioguideId})::int`,
+      })
+      .from(stockTransactions),
+  ]);
   return {
     members: m?.n ?? 0,
     trades: t?.n ?? 0,
@@ -29,20 +53,12 @@ async function getStats() {
   };
 }
 
-export default async function OG() {
+export default async function opengraphImage() {
   const s = await getStats();
   return new ImageResponse(
     (
       <div
-        style={{
-          width: "100%",
-          height: "100%",
-          background: "#ffffff",
-          display: "flex",
-          flexDirection: "column",
-          padding: 64,
-          fontFamily: "Georgia, serif",
-        }}
+        style={rootStyle}
       >
         <div
           style={{
@@ -54,19 +70,7 @@ export default async function OG() {
         />
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <div
-            style={{
-              width: 56,
-              height: 56,
-              background: "#171717",
-              borderRadius: 8,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#fff",
-              fontSize: 28,
-              fontWeight: 700,
-              letterSpacing: -2,
-            }}
+            style={logoStyle}
           >
             DD
           </div>
@@ -106,10 +110,10 @@ export default async function OG() {
             color: "#404040",
           }}
         >
-          <Stat label="members" value={s.members.toLocaleString()} />
-          <Stat label="trades" value={s.trades.toLocaleString()} />
-          <Stat label="ptr filings" value={s.filings.toLocaleString()} />
-          <Stat label="traders" value={s.traders.toLocaleString()} />
+          <OgStat label="members" value={s.members.toLocaleString()} />
+          <OgStat label="trades" value={s.trades.toLocaleString()} />
+          <OgStat label="ptr filings" value={s.filings.toLocaleString()} />
+          <OgStat label="traders" value={s.traders.toLocaleString()} />
         </div>
       </div>
     ),
@@ -117,31 +121,3 @@ export default async function OG() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column" }}>
-      <div
-        style={{
-          fontSize: 48,
-          fontWeight: 600,
-          color: "#171717",
-          fontFamily: "Georgia, serif",
-          letterSpacing: -1,
-        }}
-      >
-        {value}
-      </div>
-      <div
-        style={{
-          fontSize: 14,
-          color: "#737373",
-          textTransform: "uppercase",
-          letterSpacing: 1.2,
-          marginTop: 4,
-        }}
-      >
-        {label}
-      </div>
-    </div>
-  );
-}

@@ -181,11 +181,11 @@ export function TradesMonthlyBars({ monthly }: { monthly: MonthBucket[] }) {
           ? (() => {
               const idxs = [0, peakIdx, monthly.length - 1];
               const seen = new Set<number>();
-              return idxs
-                .filter((i) => !seen.has(i) && (seen.add(i), true))
-                .map((i) => {
+              return idxs.flatMap((i) => {
+                if (seen.has(i)) return [];
+                seen.add(i);
                   const m = monthly[i];
-                  return (
+                  return [
                     <text
                       key={m.month}
                       x={i * slot + slot / 2}
@@ -197,7 +197,7 @@ export function TradesMonthlyBars({ monthly }: { monthly: MonthBucket[] }) {
                     >
                       {fmtMonthYear(m.month)}
                     </text>
-                  );
+                  ];
                 });
             })()
           : (
@@ -226,16 +226,16 @@ export function TradesMonthlyBars({ monthly }: { monthly: MonthBucket[] }) {
           </div>
           <div className="mt-0.5 flex items-center gap-2 text-neutral-600">
             <span className="flex items-center gap-1">
-              <span className="h-1.5 w-1.5 rounded-sm" style={{ background: DEM }} />
+              <span className="size-1.5 rounded-sm" style={{ background: DEM }} />
               {hoverMonth.dem}
             </span>
             <span className="flex items-center gap-1">
-              <span className="h-1.5 w-1.5 rounded-sm" style={{ background: REP }} />
+              <span className="size-1.5 rounded-sm" style={{ background: REP }} />
               {hoverMonth.rep}
             </span>
             {hoverMonth.ind > 0 && (
               <span className="flex items-center gap-1">
-                <span className="h-1.5 w-1.5 rounded-sm" style={{ background: IND }} />
+                <span className="size-1.5 rounded-sm" style={{ background: IND }} />
                 {hoverMonth.ind}
               </span>
             )}
@@ -249,13 +249,13 @@ export function TradesMonthlyBars({ monthly }: { monthly: MonthBucket[] }) {
 
       <figcaption className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-neutral-400">
         <span className="flex items-center gap-1">
-          <span className="inline-block h-2 w-2 rounded-sm" style={{ background: DEM }} /> Democrat
+          <span className="inline-block size-2 rounded-sm" style={{ background: DEM }} /> Democrat
         </span>
         <span className="flex items-center gap-1">
-          <span className="inline-block h-2 w-2 rounded-sm" style={{ background: REP }} /> Republican
+          <span className="inline-block size-2 rounded-sm" style={{ background: REP }} /> Republican
         </span>
         <span className="flex items-center gap-1">
-          <span className="inline-block h-2 w-2 rounded-sm" style={{ background: IND }} /> Independent
+          <span className="inline-block size-2 rounded-sm" style={{ background: IND }} /> Independent
         </span>
         <span className="text-neutral-300">·</span>
         <span>

@@ -21,7 +21,7 @@ export default function StateLoading() {
                 key={i}
                 className="flex items-center gap-3 py-2.5"
               >
-                <div className="h-9 w-9 rounded-full bg-neutral-100" />
+                <div className="size-9 rounded-full bg-neutral-100" />
                 <div className="h-4 w-40 rounded bg-neutral-100" />
               </div>
             ))}

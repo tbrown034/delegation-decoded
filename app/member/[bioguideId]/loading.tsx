@@ -7,7 +7,7 @@ export default function MemberLoading() {
 
         {/* Header */}
         <div className="mb-10 flex items-start gap-5">
-          <div className="h-20 w-20 shrink-0 rounded-full bg-neutral-100" />
+          <div className="size-20 shrink-0 rounded-full bg-neutral-100" />
           <div className="space-y-2">
             <div className="h-7 w-56 rounded bg-neutral-100" />
             <div className="h-4 w-40 rounded bg-neutral-100" />

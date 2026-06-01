@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
+import type { Metadata } from "next";
 import {
   getAllStatesWithCounts,
   getLatestSync,
@@ -13,6 +14,12 @@ import { PartyBar } from "@/components/party-bar";
 import { StateMap } from "@/components/state-map";
 import { TradesMonthlyBars } from "@/components/trades-monthly-bars";
 
+export const metadata: Metadata = {
+  title: "Delegation Decoded",
+  description:
+    "Congressional accountability tracking organized by state delegation.",
+};
+
 function fmtCoverage(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleDateString("en-US", {
@@ -20,6 +27,25 @@ function fmtCoverage(iso: string): string {
     year: "numeric",
     timeZone: "UTC",
   });
+}
+
+function formatFreshnessAge(completedAt: string | null, nowMs: number): string {
+  if (!completedAt) return "—";
+  const dateMs = new Date(completedAt).getTime();
+  const ageHours = Math.floor((nowMs - dateMs) / (1000 * 60 * 60));
+  if (ageHours < 1) return "< 1 hour ago";
+  if (ageHours < 24) return `${ageHours}h ago`;
+  return `${Math.floor(ageHours / 24)}d ago`;
+}
+
+function isFresh(completedAt: string | null, nowMs: number): boolean {
+  if (!completedAt) return false;
+  const dateMs = new Date(completedAt).getTime();
+  return Math.floor((nowMs - dateMs) / (1000 * 60 * 60)) < 48;
+}
+
+function getCurrentTimeMs(): number {
+  return Date.now();
 }
 
 export default async function Home() {
@@ -36,6 +62,7 @@ export default async function Home() {
   const territories = new Set(["DC", "AS", "GU", "MP", "PR", "VI"]);
   const fiftyStates = statesData.filter((s) => !territories.has(s.code));
   const territoryList = statesData.filter((s) => territories.has(s.code));
+  const nowMs = getCurrentTimeMs();
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10">
@@ -46,7 +73,7 @@ export default async function Home() {
         </h1>
         <p className="mt-3 max-w-lg text-neutral-500">
           Congressional accountability tracking, organized by state delegation.
-          Legislation, committees, and campaign finance — sourced from official
+          Legislation, committees, and campaign finance, sourced from official
           government records.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-xs text-neutral-400">
@@ -77,23 +104,23 @@ export default async function Home() {
         <StateMap states={fiftyStates} />
         <div className="mt-3 flex items-center justify-center gap-4 text-[10px] text-neutral-400">
           <span className="flex items-center gap-1">
-            <span className="inline-block h-2 w-2 rounded-sm bg-blue-600" />
+            <span className="inline-block size-2 rounded-sm bg-blue-600" />
             Strong D
           </span>
           <span className="flex items-center gap-1">
-            <span className="inline-block h-2 w-2 rounded-sm bg-blue-400" />
+            <span className="inline-block size-2 rounded-sm bg-blue-400" />
             Lean D
           </span>
           <span className="flex items-center gap-1">
-            <span className="inline-block h-2 w-2 rounded-sm bg-purple-400" />
+            <span className="inline-block size-2 rounded-sm bg-purple-400" />
             Split
           </span>
           <span className="flex items-center gap-1">
-            <span className="inline-block h-2 w-2 rounded-sm bg-red-400" />
+            <span className="inline-block size-2 rounded-sm bg-red-400" />
             Lean R
           </span>
           <span className="flex items-center gap-1">
-            <span className="inline-block h-2 w-2 rounded-sm bg-red-600" />
+            <span className="inline-block size-2 rounded-sm bg-red-600" />
             Strong R
           </span>
         </div>
@@ -159,8 +186,7 @@ export default async function Home() {
             <span className="font-mono font-medium text-neutral-900">
               {trades.totalFilings}
             </span>{" "}
-            STOCK Act PTRs. Parsed from House Clerk PDFs and Senate eFD HTML —
-            both chambers covered.
+            STOCK Act PTRs. Parsed from House Clerk PDFs and Senate eFD HTML, both chambers covered.
           </p>
           {trades.activeCollectionStart && (
             <p className="mt-1 max-w-2xl text-[12px] text-neutral-500">
@@ -229,7 +255,7 @@ export default async function Home() {
                   className="flex items-start gap-2 border-b border-neutral-100 py-2"
                 >
                   <span
-                    className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${icon}`}
+                    className={`mt-1.5 size-1.5 shrink-0 rounded-full ${icon}`}
                   />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs text-neutral-600">
@@ -254,6 +280,22 @@ export default async function Home() {
         </div>
       )}
 
+      <HomeFreshnessAndTerritories syncSummary={syncSummary} territoryList={territoryList} nowMs={nowMs} />
+    </div>
+  );
+}
+
+function HomeFreshnessAndTerritories({
+  syncSummary,
+  territoryList,
+  nowMs,
+}: {
+  syncSummary: Awaited<ReturnType<typeof getSyncSummary>>;
+  territoryList: Awaited<ReturnType<typeof getAllStatesWithCounts>>;
+  nowMs: number;
+}) {
+  return (
+    <>
       {/* Data Freshness */}
       {syncSummary.length > 0 && (
         <div className="mt-10 border-t border-neutral-100 pt-8">
@@ -285,24 +327,8 @@ export default async function Home() {
                 entityLabels[s.entity_type] || s.entity_type;
               const source =
                 sourceLabels[s.source] || s.source;
-              const date = s.completed_at
-                ? new Date(s.completed_at)
-                : null;
-              const now = new Date();
-              const ageHours = date
-                ? Math.floor(
-                    (now.getTime() - date.getTime()) / (1000 * 60 * 60)
-                  )
-                : null;
-              const ageLabel =
-                ageHours !== null
-                  ? ageHours < 1
-                    ? "< 1 hour ago"
-                    : ageHours < 24
-                      ? `${ageHours}h ago`
-                      : `${Math.floor(ageHours / 24)}d ago`
-                  : "—";
-              const fresh = ageHours !== null && ageHours < 48;
+              const ageLabel = formatFreshnessAge(s.completed_at, nowMs);
+              const fresh = isFresh(s.completed_at, nowMs);
 
               return (
                 <div
@@ -310,7 +336,7 @@ export default async function Home() {
                   className="flex items-start gap-2"
                 >
                   <span
-                    className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${
+                    className={`mt-1 size-1.5 shrink-0 rounded-full ${
                       fresh
                         ? "bg-emerald-500"
                         : "bg-amber-400"
@@ -358,6 +384,6 @@ export default async function Home() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

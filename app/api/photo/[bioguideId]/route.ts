@@ -9,7 +9,10 @@ const CACHE_404 = "public, max-age=86400"; // cache misses for 1 day
 
 async function fetchImage(url: string): Promise<ArrayBuffer | null> {
   try {
-    const res = await fetch(url, { headers: { Accept: "image/*" } });
+    const res = await fetch(url, {
+      headers: { Accept: "image/*" },
+      next: { revalidate: 604800 },
+    });
     if (res.ok && res.headers.get("content-type")?.includes("image")) {
       return res.arrayBuffer();
     }
@@ -60,7 +63,8 @@ export async function GET(
   if (apiKey) {
     try {
       const apiRes = await fetch(
-        `https://api.congress.gov/v3/member/${id}?api_key=${apiKey}`
+        `https://api.congress.gov/v3/member/${id}?api_key=${apiKey}`,
+        { next: { revalidate: 604800 } }
       );
       if (apiRes.ok) {
         const data = await apiRes.json();

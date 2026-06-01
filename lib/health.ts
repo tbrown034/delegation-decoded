@@ -95,8 +95,9 @@ export async function buildHealthReport(): Promise<HealthReport> {
       GROUP BY m.chamber
     `);
     const r = rows.rows as { chamber: string; n: number; total: number }[];
-    const house = r.find((x) => x.chamber === "house")?.n ?? 0;
-    const senate = r.find((x) => x.chamber === "senate")?.n ?? 0;
+    const chamberCounts = new Map(r.map((x) => [x.chamber, x.n]));
+    const house = chamberCounts.get("house") ?? 0;
+    const senate = chamberCounts.get("senate") ?? 0;
     const totalRows = r[0]?.total ?? 0;
     coverage.push({ source, table, house, senate, totalRows });
   }
@@ -369,15 +370,16 @@ async function renderDivergenceDetail(raw: string | null): Promise<string> {
   }
   // raw shape: "K000389: ours=2026-03-30 theirs=2026-04-29 drift=30 | M001157: ..."
   const entries = raw.split("|").map((s) => s.trim());
-  const parsed = entries
-    .map((e) => {
-      const m = e.match(/^([A-Z]\d{6}):\s*ours=(\S+)\s+theirs=(\S+)\s+drift=(-?\d+)/);
-      return m
-        ? { bioguideId: m[1], ours: m[2], theirs: m[3], drift: Number(m[4]) }
-        : null;
-    })
-    .filter((x): x is { bioguideId: string; ours: string; theirs: string; drift: number } => !!x)
-    .filter((x) => x.drift > 0);
+  const parsed = entries.reduce<
+    { bioguideId: string; ours: string; theirs: string; drift: number }[]
+  >((acc, e) => {
+    const m = e.match(/^([A-Z]\d{6}):\s*ours=(\S+)\s+theirs=(\S+)\s+drift=(-?\d+)/);
+    if (m) {
+      const item = { bioguideId: m[1], ours: m[2], theirs: m[3], drift: Number(m[4]) };
+      if (item.drift > 0) acc.push(item);
+    }
+    return acc;
+  }, []);
   if (parsed.length === 0) {
     return "One or more curated traders show newer activity on capitoltrades.com than in our database.";
   }

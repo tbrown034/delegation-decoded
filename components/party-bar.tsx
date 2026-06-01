@@ -49,19 +49,19 @@ export function PartyBar({
         <div className="mt-1.5 flex gap-3 font-mono text-[11px] text-neutral-500">
           {democrat > 0 && (
             <span className="flex items-center gap-1">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-blue-600" />
+              <span className="inline-block size-1.5 rounded-full bg-blue-600" />
               {democrat}D
             </span>
           )}
           {independent > 0 && (
             <span className="flex items-center gap-1">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-purple-500" />
+              <span className="inline-block size-1.5 rounded-full bg-purple-500" />
               {independent}I
             </span>
           )}
           {republican > 0 && (
             <span className="flex items-center gap-1">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-600" />
+              <span className="inline-block size-1.5 rounded-full bg-red-600" />
               {republican}R
             </span>
           )}

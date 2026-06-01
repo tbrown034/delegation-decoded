@@ -18,20 +18,18 @@ export const metadata: Metadata = {
 };
 
 async function getCounts() {
-  const [tradeRow] = await db
-    .select({ n: count() })
-    .from(stockTransactions);
-  const [filingRow] = await db.select({ n: count() }).from(disclosureFilings);
-  const [financeRow] = await db.select({ n: count() }).from(campaignFinance);
-  const [memberRow] = await db
-    .select({ n: count() })
-    .from(members)
-    .where(eq(members.inOffice, true));
-  const [latestFiling] = await db
-    .select({
-      d: sql<string | null>`MAX(${disclosureFilings.filedDate})::text`,
-    })
-    .from(disclosureFilings);
+  const [[tradeRow], [filingRow], [financeRow], [memberRow], [latestFiling]] =
+    await Promise.all([
+      db.select({ n: count() }).from(stockTransactions),
+      db.select({ n: count() }).from(disclosureFilings),
+      db.select({ n: count() }).from(campaignFinance),
+      db.select({ n: count() }).from(members).where(eq(members.inOffice, true)),
+      db
+        .select({
+          d: sql<string | null>`MAX(${disclosureFilings.filedDate})::text`,
+        })
+        .from(disclosureFilings),
+    ]);
   return {
     trades: tradeRow?.n ?? 0,
     filings: filingRow?.n ?? 0,
@@ -64,7 +62,7 @@ export default async function ForJournalistsPage() {
           Use this data in your reporting.
         </h1>
         <p className="mt-3 text-base text-neutral-700">
-          Bulk CSV downloads of every figure on this site, refreshed nightly. No registration, no rate limit, no terms of use beyond the underlying federal disclosures (which carry no copyright under 17 U.S.C. §105).
+          Bulk CSV downloads of every figure on this site, generated live from the database. No registration, no rate limit, no terms of use beyond the underlying federal disclosures (which carry no copyright under 17 U.S.C. §105).
         </p>
       </header>
 
@@ -102,7 +100,7 @@ export default async function ForJournalistsPage() {
           Freshness
         </h2>
         <p>
-          Trades and filings are refreshed daily; campaign finance and committee assignments weekly. The most recent PTR ingested was filed{" "}
+          Trades and filings update daily when the ingest pipeline is healthy; campaign finance and committee assignments weekly. The most recent PTR loaded was filed{" "}
           <span className="font-medium text-neutral-900">
             {fmtDate(c.latestFiling)}
           </span>

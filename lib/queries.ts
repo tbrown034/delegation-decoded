@@ -23,31 +23,31 @@ import { eq, and, desc, sql, count } from "drizzle-orm";
 // ─── State queries ───────────────────────────────────────────────────────────
 
 export async function getAllStatesWithCounts() {
-  const rows = await db
-    .select({
-      code: states.code,
-      name: states.name,
-      numDistricts: states.numDistricts,
-      memberCount: count(members.bioguideId),
-    })
-    .from(states)
-    .leftJoin(
-      members,
-      and(eq(members.stateCode, states.code), eq(members.inOffice, true))
-    )
-    .groupBy(states.code, states.name, states.numDistricts)
-    .orderBy(states.name);
-
-  // Get party breakdowns per state
-  const partyRows = await db
-    .select({
-      stateCode: members.stateCode,
-      party: members.party,
-      count: count(members.bioguideId),
-    })
-    .from(members)
-    .where(eq(members.inOffice, true))
-    .groupBy(members.stateCode, members.party);
+  const [rows, partyRows] = await Promise.all([
+    db
+      .select({
+        code: states.code,
+        name: states.name,
+        numDistricts: states.numDistricts,
+        memberCount: count(members.bioguideId),
+      })
+      .from(states)
+      .leftJoin(
+        members,
+        and(eq(members.stateCode, states.code), eq(members.inOffice, true))
+      )
+      .groupBy(states.code, states.name, states.numDistricts)
+      .orderBy(states.name),
+    db
+      .select({
+        stateCode: members.stateCode,
+        party: members.party,
+        count: count(members.bioguideId),
+      })
+      .from(members)
+      .where(eq(members.inOffice, true))
+      .groupBy(members.stateCode, members.party),
+  ]);
 
   const partyMap = new Map<
     string,
@@ -193,24 +193,26 @@ export async function getMemberBills(bioguideId: string, limit = 20) {
 }
 
 export async function getMemberBillCount(bioguideId: string) {
-  const [sponsored] = await db
-    .select({ count: count() })
-    .from(billSponsorships)
-    .where(
-      and(
-        eq(billSponsorships.bioguideId, bioguideId),
-        eq(billSponsorships.role, "sponsor")
-      )
-    );
-  const [cosponsored] = await db
-    .select({ count: count() })
-    .from(billSponsorships)
-    .where(
-      and(
-        eq(billSponsorships.bioguideId, bioguideId),
-        eq(billSponsorships.role, "cosponsor")
-      )
-    );
+  const [[sponsored], [cosponsored]] = await Promise.all([
+    db
+      .select({ count: count() })
+      .from(billSponsorships)
+      .where(
+        and(
+          eq(billSponsorships.bioguideId, bioguideId),
+          eq(billSponsorships.role, "sponsor")
+        )
+      ),
+    db
+      .select({ count: count() })
+      .from(billSponsorships)
+      .where(
+        and(
+          eq(billSponsorships.bioguideId, bioguideId),
+          eq(billSponsorships.role, "cosponsor")
+        )
+      ),
+  ]);
   return {
     sponsored: sponsored?.count || 0,
     cosponsored: cosponsored?.count || 0,
@@ -347,31 +349,6 @@ export async function getMemberRecentVotes(bioguideId: string, limit = 15) {
     .limit(limit);
 }
 
-export async function getStateRecentVotes(stateCode: string, limit = 10) {
-  // Get distinct recent votes where at least one state member voted
-  return db
-    .select({
-      voteId: votes.voteId,
-      chamber: votes.chamber,
-      voteDate: votes.voteDate,
-      question: votes.question,
-      description: votes.description,
-      result: votes.result,
-      yeas: votes.yeas,
-      nays: votes.nays,
-    })
-    .from(votes)
-    .where(
-      sql`${votes.voteId} IN (
-        SELECT DISTINCT vp.vote_id FROM vote_positions vp
-        JOIN members m ON vp.bioguide_id = m.bioguide_id
-        WHERE m.state_code = ${stateCode.toUpperCase()} AND m.in_office = true
-      )`
-    )
-    .orderBy(desc(votes.voteDate))
-    .limit(limit);
-}
-
 // ─── Event queries ───────────────────────────────────────────────────────────
 
 export async function getStateEvents(stateCode: string, limit = 15) {
@@ -484,6 +461,7 @@ export async function getMemberCoverageDetail(
     [pressRow],
     [tradeRow],
     [filingRow],
+    [memberRow],
   ] = await Promise.all([
     db.select({ n: count() }).from(billSponsorships).where(eq(billSponsorships.bioguideId, bioguideId)),
     db.select({ n: count() }).from(votePositions).where(eq(votePositions.bioguideId, bioguideId)),
@@ -498,13 +476,12 @@ export async function getMemberCoverageDetail(
       .select({ n: count() })
       .from(disclosureFilings)
       .where(eq(disclosureFilings.bioguideId, bioguideId)),
+    db
+      .select({ fecCandidateId: members.fecCandidateId, chamber: members.chamber })
+      .from(members)
+      .where(eq(members.bioguideId, bioguideId))
+      .limit(1),
   ]);
-
-  const [memberRow] = await db
-    .select({ fecCandidateId: members.fecCandidateId, chamber: members.chamber })
-    .from(members)
-    .where(eq(members.bioguideId, bioguideId))
-    .limit(1);
 
   const bills = billsRow?.n ?? 0;
   const votes = voteRow?.n ?? 0;
@@ -592,15 +569,16 @@ export async function getStateCoverage(stateCode: string) {
   const ids = membersList.map((m) => m.bioguideId);
   if (ids.length === 0) return null;
 
-  const [pressRows] = await db
-    .select({ count: sql<number>`count(DISTINCT ${pressReleases.bioguideId})` })
-    .from(pressReleases)
-    .where(sql`${pressReleases.bioguideId} IN ${ids}`);
-
-  const [financeRows] = await db
-    .select({ count: sql<number>`count(DISTINCT ${campaignFinance.bioguideId})` })
-    .from(campaignFinance)
-    .where(sql`${campaignFinance.bioguideId} IN ${ids}`);
+  const [[pressRows], [financeRows]] = await Promise.all([
+    db
+      .select({ count: sql<number>`count(DISTINCT ${pressReleases.bioguideId})` })
+      .from(pressReleases)
+      .where(sql`${pressReleases.bioguideId} IN ${ids}`),
+    db
+      .select({ count: sql<number>`count(DISTINCT ${campaignFinance.bioguideId})` })
+      .from(campaignFinance)
+      .where(sql`${campaignFinance.bioguideId} IN ${ids}`),
+  ]);
 
   return {
     totalMembers: ids.length,

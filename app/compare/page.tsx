@@ -154,7 +154,7 @@ function IntroCard({
         <ul className="mt-2 grid gap-1.5 text-sm text-neutral-600 sm:grid-cols-2">
           {bullets.map((b) => (
             <li key={b} className="flex gap-2">
-              <span className="text-neutral-300">—</span>
+              <span className="text-neutral-300">•</span>
               <span>{b}</span>
             </li>
           ))}
@@ -190,7 +190,7 @@ function DelegationIntro() {
       bullets={[
         "Senators and House members side-by-side",
         "Bills sponsored and cosponsored",
-        "Vote tallies — yea, nay, present",
+        "Vote tallies, yea, nay, present",
         "FEC totals from the most recent cycle",
         "Senator-vs-senator voting agreement",
         "Committee assignments",
@@ -210,7 +210,7 @@ function DelegationIntro() {
 function MembersIntro() {
   return (
     <IntroCard
-      lede="Pick any two members of Congress — same party, opposite ends of the country, doesn't matter. The comparison handles the rest."
+      lede="Pick any two members of Congress, same party, opposite ends of the country, doesn't matter. The comparison handles the rest."
       bullets={[
         "Bills sponsored and cosponsored",
         "Vote breakdown across the cycle",

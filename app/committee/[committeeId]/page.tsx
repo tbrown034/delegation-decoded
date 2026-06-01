@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
-import { committees, committeeAssignments, members } from "@/lib/schema";
+import { committees } from "@/lib/schema";
 import { eq, sql } from "drizzle-orm";
 
 type Props = { params: Promise<{ committeeId: string }> };
@@ -31,33 +31,32 @@ async function getCommittee(committeeId: string) {
     .limit(1);
   if (!committee) return null;
 
-  const parent = committee.parentId
-    ? (
-        await db
+  // Pull most recent assignment per member (latest congress)
+  const [parentRows, subcommittees, assignmentRows] = await Promise.all([
+    committee.parentId
+      ? db
           .select()
           .from(committees)
           .where(eq(committees.committeeId, committee.parentId))
           .limit(1)
-      )[0]
-    : null;
-
-  const subcommittees = await db
-    .select()
-    .from(committees)
-    .where(eq(committees.parentId, committeeId))
-    .orderBy(committees.name);
-
-  // Pull most recent assignment per member (latest congress)
-  const assignmentRows = await db.execute(sql`
-    SELECT DISTINCT ON (m.bioguide_id)
-      m.bioguide_id, m.full_name, m.party, m.state_code, m.district, m.chamber,
-      ca.role, ca.congress
-    FROM committee_assignments ca
-    JOIN members m ON m.bioguide_id = ca.bioguide_id
-    WHERE ca.committee_id = ${committeeId}
-      AND m.in_office = true
-    ORDER BY m.bioguide_id, ca.congress DESC
-  `);
+      : Promise.resolve([]),
+    db
+      .select()
+      .from(committees)
+      .where(eq(committees.parentId, committeeId))
+      .orderBy(committees.name),
+    db.execute(sql`
+      SELECT DISTINCT ON (m.bioguide_id)
+        m.bioguide_id, m.full_name, m.party, m.state_code, m.district, m.chamber,
+        ca.role, ca.congress
+      FROM committee_assignments ca
+      JOIN members m ON m.bioguide_id = ca.bioguide_id
+      WHERE ca.committee_id = ${committeeId}
+        AND m.in_office = true
+      ORDER BY m.bioguide_id, ca.congress DESC
+    `),
+  ]);
+  const parent = parentRows[0] ?? null;
 
   type AssignmentRow = {
     bioguide_id: string;

@@ -29,6 +29,10 @@ const SELL_COLOR = "#dc2626";
 
 const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+function getCurrentTimeMs(): number {
+  return Date.now();
+}
+
 export function TradeTimeline({ trades, height = 220 }: Props) {
   const [hoverId, setHoverId] = useState<number | null>(null);
 
@@ -107,7 +111,7 @@ export function TradeTimeline({ trades, height = 220 }: Props) {
     );
   }
 
-  const todayMs = Date.now();
+  const todayMs = getCurrentTimeMs();
   const todayIso = new Date(todayMs).toISOString().slice(0, 10);
   const todayX =
     todayMs >= layout.minT && todayMs <= layout.maxT
@@ -227,20 +231,20 @@ export function TradeTimeline({ trades, height = 220 }: Props) {
       <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-[11px] text-neutral-600">
         <LegendItem>
           <span
-            className="block h-2.5 w-2.5 rounded-full"
+            className="block size-2.5 rounded-full"
             style={{ backgroundColor: BUY_COLOR, opacity: 0.85 }}
           />
           Purchase ({buys.length})
         </LegendItem>
         <LegendItem>
           <span
-            className="block h-2.5 w-2.5 rounded-full"
+            className="block size-2.5 rounded-full"
             style={{ backgroundColor: SELL_COLOR, opacity: 0.85 }}
           />
           Sale ({sells.length})
         </LegendItem>
         <LegendItem>
-          <span className="block h-2 w-2 rounded-full bg-amber-500" />
+          <span className="block size-2 rounded-full bg-amber-500" />
           Filed late
         </LegendItem>
         <span className="ml-auto font-mono text-neutral-400">

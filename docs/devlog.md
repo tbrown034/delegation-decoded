@@ -103,3 +103,125 @@ Site review and cleanup pass to ship the project as a portfolio piece. Pruned th
 - Homepage trade chart peaks at 1,406 in Jan '26, range Mar '25–Apr '26.
 
 ---
+
+## 2026-04-28 — Portfolio shipping pass: observability, journalist-facing exports, search, OG, SEO, transparency
+
+**Session summary:**
+A long single-session sprint to take the project from "feature-complete" to "presentable to a hiring manager." Built a unified pipeline-health system with a public /health page, gave the site a documentation surface for journalists with bulk CSV downloads, made every page generate a branded OG card, added Cmd-K global search, audited every route for mobile correctness, added a daily divergence audit against CapitolTrades, promoted bills and committees to first-class routes, stripped leftover dark-mode classes after the branding-parity pass, and reframed the homepage trades chart to be honest about what we actually cover.
+
+**Health pipeline (`lib/health.ts`, `scripts/health-check.ts`, `app/health/page.tsx`):**
+- One source of truth for pipeline status: per-source coverage matrix, sync-log freshness with per-source staleness thresholds, stuck-run detection, PTR parse counts, low-confidence trade count, rolled up to ok/warn/crit.
+- Same `buildHealthReport()` powers the CLI gate (used as the final step in both daily and weekly GitHub Actions, exits 1 on crit) and the public /health route.
+- Both workflows now have failure-alert steps that open or comment on a single rolling `ingest-failure` issue rather than spamming new ones.
+- `scripts/cleanup-stuck-runs.ts` flips sync_log rows stuck >6h in `running` to `failed`. Read-only by default; `--apply` writes. Cleaned 4 historical zombies on first run.
+
+**Branding shell (rhyme with capitol-releases & open-cabinet):**
+- DM Sans + DM Mono + Source Serif 4 via next/font, 3-px neutral-800 accent bar at the top of every page, mobile hamburger nav with active-state highlighting, stone-50 footer with attribution + GitHub source/issues/contact links. Auto dark mode dropped for parity. Found and fixed a globals.css regression where the CSS variables were overriding next/font's font definitions.
+- Footer Health link gained a 6 px live status dot (green/amber/red) backed by `unstable_cache(60s)`, gracefully degrading to neutral grey if the DB query throws.
+
+**Trades transparency:**
+- /trades hero gained a "Coverage panel" explaining what window is in scope, how many of 538 active members reported activity, and why the rest didn't (blind trusts / index funds / no PTR filed).
+- /trades/methodology got a Coverage Window section computed live from the DB (1st–99th percentile of tx_date to clip outliers) and a "How this compares to other trackers" section calling out CapitolTrades and Quiver. Updated outdated language about Senate parsing being "in progress."
+- Spot-checked Khanna/McCaul/Cisneros against CapitolTrades; verified dates align within a single PTR.
+
+**Audit / observability:**
+- `scripts/coverage-audit.ts` — chamber × source matrix.
+- `scripts/compare-trades.ts` — top traders for the active window.
+- `scripts/audit/divergence.ts` — fetches public CapitolTrades politician pages for a curated set of high-volume traders, parses the max non-future date, compares to ours. Drift >4d warns; >10d fails. Logs to sync_log under `source='capitoltrades_divergence'` and surfaces in /health. First run flagged 5/5 curated members 10–31 days behind — root cause was a stalled PTR ingest from an Anthropic credit-balance issue, not a bug. Wired into the daily workflow as `continue-on-error: true` so it observes without blocking.
+
+**Journalist-facing exports:**
+- `/for-journalists` landing page with row counts, freshness window, citation guidance, statutory amount-range explainer, contact.
+- `/api/data/trades.csv`, `/api/data/filings.csv`, `/api/data/finance.csv` — streaming CSVs with `Content-Disposition: attachment`. Trades CSV joins members + filings + parsed line items and includes a back-link to the source PDF for every row. `lib/csv.ts` centralises RFC 4180-ish quoting.
+- Verified row counts: 4,354 trade rows, 216 filings, 2,811 finance rows.
+
+**OG / social cards:**
+- 1200×630 PNGs via `next/og` for /, /state/[code], /member/[bioguideId], /trades/companies/[ticker]. State cards show senate/house/trades counts plus a party-split dot row; member cards use the party color for the accent bar; ticker cards set the symbol in display type with buy/sell breakdown.
+- Hit and worked around Satori's strictness: every div with multiple children needs explicit `display: flex` + `flexDirection`, and JSX text nodes mixing literals with interpolations must be collapsed to a single template-literal child or wrapped in a flex div. `flexDirection: "row"` everywhere.
+- Set `metadataBase` on the root layout so OG/Twitter URLs resolve to the live host instead of localhost.
+
+**Cmd-K global search (`lib/search.ts`, `app/api/search`, `components/search.tsx`):**
+- Cross-entity search across members, tickers, states, bills, committees. Plain ILIKE + a CASE-based ranking (exact > prefix > substring) — skipped pg_trgm so this ships without a schema migration.
+- Client combobox lives in nav, opens on Cmd/Ctrl-K or click, debounces at 120 ms, supports Up/Down/Enter, closes on Escape or backdrop click.
+
+**First-class bill + committee pages:**
+- `/bill/[billId]` shows title, sponsor, cosponsors with party split, latest action.
+- `/committee/[committeeId]` shows roster sorted by role (chair → ranking member → vice chair → member alphabetical), parent + subcommittee links, official-site link.
+- Both wired into search.
+
+**SEO infra:**
+- `app/sitemap.ts` generates entries for every state, every active member, every distinct ticker.
+- `app/robots.ts` allows everything except /api/, points to sitemap.
+- `app/feed.xml/route.ts` — RSS of the 50 most recent disclosed trades with names, action verb, ticker, amount range, and a back-link to the source PDF in the `<source>` element.
+
+**Per-member coverage card (`components/member-coverage-card.tsx`):**
+- Bottom of every /member/[bioguideId] page lists every data source with one of three states (tracked, not applicable, investigating). The "not applicable" copy explains *why* a zero is the expected pattern (no RSS feed, no PTR filed, etc.) so a casual visitor reads it as transparency instead of as "the site is broken."
+
+**Mobile responsive sweep:**
+- Audited every route at 606 px viewport. Caught one real bug on /state/[code]: the `grid gap-10 lg:grid-cols-3` layout fell back to an implicit grid where `min-width: auto` on grid items let long member names and bill titles push the column to 1,139 px (vs viewport 606). Fixed with explicit `grid-cols-1` at default + `min-w-0` on the col-span-2 child. Truncate utility on bill titles now takes effect.
+
+**Dark-mode cleanup:**
+- 252 leftover `dark:` Tailwind classes across 27 files removed via a perl pass that matches dark: classes only inside Tailwind class-string contexts. Symmetric diff: 252 deletions, 252 insertions of the same line minus the variant. (First pass was over-aggressive and ate adjacent quoted whitespace; reverted and redid with safer regex.)
+
+**Honest trades chart (final pass):**
+- Original chart was a 14-month rolling window of tx_date. First fix anchored to the earliest PTR `filed_date` (Jan 2025), but feedback called this out as still misleading: 5 PTRs scattered across 2025 are late-filed amendments, not continuous coverage. 210 PTRs filed Jan–Apr 2026 is the real active window.
+- Final fix: anchor to first month with ≥5 PTRs filed, with a one-month lookback so December 2025 trades disclosed in January 2026 PTRs remain visible. Lead-in copy now reads "Active collection began Jan 2026 (5 earlier PTRs from late-filed amendments not shown)."
+- Bars converted to a Client Component with a hover tooltip showing month + per-party counts + total. Non-zero months get a 3-unit minimum bar height so sparse data reads as "data exists" instead of empty space. Non-hovered bars dim to 40% so the active selection stands out.
+
+**Verification across the day:**
+- `pnpm tsc --noEmit` clean.
+- `next build` passes; route table shows /bill/[billId], /committee/[committeeId], /for-journalists, /health, /api/data/*.csv, /feed.xml, /sitemap.xml, /robots.txt, plus four opengraph-image variants.
+- All routes scrollWidth ≤ viewport at 606 px.
+- 13 commits pushed. Vercel auto-deploy in flight.
+
+**Files added (selection):**
+- `lib/health.ts`, `lib/search.ts`, `lib/csv.ts`
+- `app/health/page.tsx`, `app/for-journalists/page.tsx`, `app/bill/[billId]/page.tsx`, `app/committee/[committeeId]/page.tsx`
+- `app/sitemap.ts`, `app/robots.ts`, `app/feed.xml/route.ts`
+- `app/api/search/route.ts`, `app/api/data/{trades,filings,finance}.csv/route.ts`
+- `app/opengraph-image.tsx` + per-route variants
+- `components/search.tsx`, `components/member-coverage-card.tsx`, `components/health-dot.tsx`
+- `scripts/health-check.ts`, `scripts/cleanup-stuck-runs.ts`, `scripts/coverage-audit.ts`, `scripts/compare-trades.ts`, `scripts/audit/divergence.ts`
+- `docs/ship-plan.md` (today's planning doc)
+
+**Real findings worth keeping:**
+- Anthropic credit balance hit zero mid-PTR-ingest April 25–26, leaving a batch of April PTR PDFs unprocessed. Surfaced via the new health gate and the divergence audit before being noticed manually.
+- House Clerk 2026 manifest currently has no Khanna PTR newer than April 7. CapitolTrades shows him trading on April 9 — meaning either CapitolTrades reads from a more aggressive feed than the public ZIP, or the next manifest update will land in the next 24–48h. Logged but not fixable on our side.
+- The 2 review-status filings are McCaul (TX-10, doc 8221326) and Cisneros (CA-31, doc 20033762) — vision parser flagged them for human review; surfaced with a warning badge in the UI.
+
+---
+
+## 2026-05-31 — Review verification, ingest recovery, and honesty pass
+
+**Session summary:**
+Picked up a timed-out external agent's react-doctor refactor pass, verified it, ran a full code + UI/UX review, then traced and recovered a 5-week ingest outage and made the trades surface honest about its state. Nothing merged to main — all on branch `fix/review-findings`, pushed for review.
+
+**Verified the inherited refactor pass:**
+- `pnpm lint` clean, `next build` clean, and every refactored route returns 200 via a server-side curl sweep with zero dev-log errors. The refactors are server components, so render-or-500 was the real risk and it's clear.
+- The agent reported "react-doctor 100/100"; that was the `--verbose --diff` metric, not the absolute score. Absolute project score is ~98 (was ~85 before edits) — the giant member page, em-dashes in JSX, and label-association warnings persist. No regression from this session.
+
+**Code review — found and fixed:**
+- `scripts/lib/congress-api.ts` — retry recursion bug: the recursive `attempt()` calls and the terminal "give up" `throw` both sat inside the same `try`, so a deep throw was re-caught by the parent's network-error `catch` and retried. A persistent 5xx/429 fired ~15 requests (2^retries−1) instead of 4. Fixed by wrapping only `fetch()` in the try; proven 4-not-15 with a counter harness. (`fec-api.ts` was fine — no try/catch.)
+- `components/search.tsx` — the useReducer refactor dropped the combobox a11y: restored `role=listbox/option` + `aria-selected`, added `role=combobox`/`aria-expanded`/`aria-controls`/`aria-activedescendant`, an `aria-live` results region, and `overscroll-contain`.
+- `components/compare-picker.tsx` — em-dash→comma refactor dropped a `{" "}`, rendering "(D),Sen."; restored the space.
+- `components/data-coverage.tsx` — per-source status was color-only (`statusLabel.text` computed but never rendered); added an sr-only status word and `aria-hidden` on the dot.
+- `app/find/page.tsx` — added `autoComplete="street-address"`, `spellCheck={false}`, `type=search`, and `role="alert"` on the error.
+- `lib/press-analytics.ts` — reverted an unnecessary precompiled-regex phrase match back to `.includes()` (the patterns are plain substrings).
+
+**UI/UX review (Web Interface Guidelines) — logged, not all fixed:** `/trades` renders every trading member unvirtualized after loading all transactions into memory (top perf risk); raw ISO dates render in several feeds/tables instead of `Intl.DateTimeFormat`, inconsistent with the same files' own formatted dates; charts (`trade-timeline`, `trades-monthly-bars`) are mouse-only; numeric columns lack `tabular-nums`.
+
+**Ingest outage — root cause and recovery (the big one):**
+- Daily + weekly workflows had been red for 5 weeks. Root cause: the `ANTHROPIC_API_KEY` **GitHub Actions secret** (used by the House PTR vision parse) returns 401 `authentication_error`. It is separate from `.env.local` and Vercel env — updating those does not fix CI. The `health-check.ts` gate (auth-failure CRIT + ≥3-failures-in-14-days CRIT) reds the whole pipeline off that one source.
+- Found the real data gap: the local manifest cache `data/house-ptrs/2026FD.zip` was frozen at **April 25** — the exact credit-balance outage logged in the prior entry. Every "catch-up" since read that stale list and skipped everything. The live manifest has **223 PTRs vs the cached 164**.
+- Moved the stale zip aside and re-ran with the user's new working key: **50 filings recovered**. House latest filing **April 24 → May 28**; House filing count **169 → 224**.
+- **4 filings still failing on `Connection error`** — the heaviest traders (Khanna 9115822, McCaul 9115820, Cisneros 20034500, Moskowitz 20034274). Their PTRs are enormous (Khanna 2,100+ trades) and the vision request drops. These are the residual CapitolTrades drift; retrying best-effort.
+
+**Honesty pass (portfolio safety):**
+- `/for-journalists` claimed "refreshed nightly/daily" while House data was 5 weeks stale — softened to honest, key-agnostic wording pointing to `/health`.
+- Added a `TradesWipNotice` component (amber "Work in progress" note) to all three trades pages (`/trades`, `/trades/[bioguideId]`, `/trades/companies/[ticker]`).
+
+**Still open / handed back to the user:**
+- Rotate the `ANTHROPIC_API_KEY` **GitHub Actions** secret (still dated May 22) — `gh secret set ANTHROPIC_API_KEY` — so nightly runs stay green and future new PTRs parse. Without it the recurring failure returns on the next new filing.
+- `/health` will self-clear to green over ~14 days as the historical failures age out of the window.
+- Stray untracked `pnpm-workspace.yaml` (pnpm supply-chain settings) — origin unknown, left out of the commit.
+
+---

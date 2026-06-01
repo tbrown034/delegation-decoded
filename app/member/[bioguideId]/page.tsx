@@ -37,7 +37,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!member) return { title: "Member Not Found" };
   const stateName = STATE_BY_CODE[member.stateCode]?.name || member.stateCode;
   return {
-    title: `${member.fullName} — ${stateName}`,
+    title: `${member.fullName}, ${stateName}`,
     description: `${member.fullName}, ${member.party} ${member.chamber === "senate" ? "Senator" : "Representative"} from ${stateName}. Committees, legislation, and campaign finance.`,
   };
 }
@@ -110,7 +110,7 @@ export default async function MemberPage({ params }: Props) {
       {/* Header */}
       <div className="mb-10 flex items-start gap-5">
         <div
-          className={`relative h-20 w-20 shrink-0 overflow-hidden rounded-full ring-2 ${ringClass}`}
+          className={`relative size-20 shrink-0 overflow-hidden rounded-full ring-2 ${ringClass}`}
         >
           {member.photoUrl ? (
             <Image
@@ -133,7 +133,7 @@ export default async function MemberPage({ params }: Props) {
           </h1>
           <p className="mt-0.5 text-sm text-neutral-500">
             {member.party} {chamber}
-            {district ? `, ${district}` : ""} — {stateName}
+            {district ? `, ${district}` : ""}, {stateName}
           </p>
           {/* Key stats */}
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-0.5 font-mono text-xs text-neutral-400">
@@ -282,16 +282,16 @@ export default async function MemberPage({ params }: Props) {
             </div>
             <div className="mt-1.5 flex gap-3 font-mono text-[10px] text-neutral-400">
               <span>
-                <span className="mr-0.5 inline-block h-1.5 w-1.5 rounded-full bg-emerald-600" />
+                <span className="mr-0.5 inline-block size-1.5 rounded-full bg-emerald-600" />
                 {voteSummary.yea} yea
               </span>
               <span>
-                <span className="mr-0.5 inline-block h-1.5 w-1.5 rounded-full bg-rose-600" />
+                <span className="mr-0.5 inline-block size-1.5 rounded-full bg-rose-600" />
                 {voteSummary.nay} nay
               </span>
               {voteSummary.notVoting > 0 && (
                 <span>
-                  <span className="mr-0.5 inline-block h-1.5 w-1.5 rounded-full bg-neutral-300" />
+                  <span className="mr-0.5 inline-block size-1.5 rounded-full bg-neutral-300" />
                   {voteSummary.notVoting} missed
                 </span>
               )}
@@ -308,7 +308,7 @@ export default async function MemberPage({ params }: Props) {
                 className="flex items-center gap-2.5 border-b border-neutral-100 py-2 last:border-0"
               >
                 <span
-                  className={`h-2 w-2 shrink-0 rounded-full ${
+                  className={`size-2 shrink-0 rounded-full ${
                     v.position === "yea"
                       ? "bg-emerald-600"
                       : v.position === "nay"
@@ -444,15 +444,15 @@ export default async function MemberPage({ params }: Props) {
                       </div>
                       <div className="mt-1 flex flex-wrap gap-x-3 font-mono text-[10px] text-neutral-400">
                         <span>
-                          <span className="mr-0.5 inline-block h-1.5 w-1.5 rounded-full bg-emerald-600" />
+                          <span className="mr-0.5 inline-block size-1.5 rounded-full bg-emerald-600" />
                           Small donors {fmt(smallAmt)}
                         </span>
                         <span>
-                          <span className="mr-0.5 inline-block h-1.5 w-1.5 rounded-full bg-blue-500" />
+                          <span className="mr-0.5 inline-block size-1.5 rounded-full bg-blue-500" />
                           Large individual {fmt(largeAmt)}
                         </span>
                         <span>
-                          <span className="mr-0.5 inline-block h-1.5 w-1.5 rounded-full bg-amber-500" />
+                          <span className="mr-0.5 inline-block size-1.5 rounded-full bg-amber-500" />
                           PACs {fmt(pacAmt)}
                         </span>
                       </div>
@@ -487,9 +487,9 @@ export default async function MemberPage({ params }: Props) {
             Top Contributors
           </h2>
           <div>
-            {contributors.map((c, i) => (
+            {contributors.map((c) => (
               <div
-                key={i}
+                key={`${c.contributorName}-${c.totalAmount}`}
                 className="flex items-baseline justify-between border-b border-neutral-100 py-1.5 last:border-0"
               >
                 <span className="truncate text-sm text-neutral-700">
@@ -570,15 +570,15 @@ export default async function MemberPage({ params }: Props) {
             </h2>
             <div className="mb-2 flex gap-3 text-[10px] text-neutral-400">
               <span className="flex items-center gap-1">
-                <span className="inline-block h-1.5 w-1.5 rounded-full bg-sky-500" />
+                <span className="inline-block size-1.5 rounded-full bg-sky-500" />
                 Statements
               </span>
               <span className="flex items-center gap-1">
-                <span className="inline-block h-1.5 w-1.5 rounded-full bg-blue-600" />
+                <span className="inline-block size-1.5 rounded-full bg-blue-600" />
                 Legislation
               </span>
               <span className="flex items-center gap-1">
-                <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-600" />
+                <span className="inline-block size-1.5 rounded-full bg-emerald-600" />
                 Votes
               </span>
             </div>
@@ -589,7 +589,7 @@ export default async function MemberPage({ params }: Props) {
                   className="flex items-start gap-2.5 border-b border-neutral-100 py-2 last:border-0"
                 >
                   <span
-                    className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${typeColor[item.type]}`}
+                    className={`mt-1.5 size-1.5 shrink-0 rounded-full ${typeColor[item.type]}`}
                   />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm text-neutral-700">
@@ -676,13 +676,13 @@ export default async function MemberPage({ params }: Props) {
           Service History
         </h2>
         <div>
-          {memberTerms.map((t, i) => (
+          {memberTerms.map((t) => (
             <div
-              key={i}
+              key={`${t.chamber}-${t.startDate}-${t.endDate ?? "present"}-${t.district ?? "statewide"}`}
               className="flex items-center gap-3 border-b border-neutral-100 py-2 text-sm last:border-0"
             >
               <span
-                className={`h-1.5 w-1.5 rounded-full ${
+                className={`size-1.5 rounded-full ${
                   t.isCurrent
                     ? "bg-green-600"
                     : "bg-neutral-200"
@@ -693,7 +693,7 @@ export default async function MemberPage({ params }: Props) {
                 {t.district ? `, Dist. ${t.district}` : ""}
               </span>
               <span className="font-mono text-xs text-neutral-400">
-                {t.startDate} — {t.endDate || "present"}
+                {t.startDate}, {t.endDate || "present"}
               </span>
               <span className="text-xs text-neutral-300">
                 {t.party}

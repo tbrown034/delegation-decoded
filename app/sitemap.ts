@@ -11,16 +11,18 @@ export const revalidate = 3600;
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
 
-  const stateRows = await db.select({ code: states.code }).from(states);
-  const memberRows = await db
-    .select({ bioguideId: members.bioguideId, updatedAt: members.updatedAt })
-    .from(members)
-    .where(eq(members.inOffice, true));
-  const tickerRows = await db
-    .select({ ticker: stockTransactions.ticker })
-    .from(stockTransactions)
-    .where(sql`${stockTransactions.ticker} IS NOT NULL`)
-    .groupBy(stockTransactions.ticker);
+  const [stateRows, memberRows, tickerRows] = await Promise.all([
+    db.select({ code: states.code }).from(states),
+    db
+      .select({ bioguideId: members.bioguideId, updatedAt: members.updatedAt })
+      .from(members)
+      .where(eq(members.inOffice, true)),
+    db
+      .select({ ticker: stockTransactions.ticker })
+      .from(stockTransactions)
+      .where(sql`${stockTransactions.ticker} IS NOT NULL`)
+      .groupBy(stockTransactions.ticker),
+  ]);
 
   const staticRoutes: MetadataRoute.Sitemap = [
     { url: `${BASE_URL}/`, lastModified: now, changeFrequency: "daily", priority: 1.0 },

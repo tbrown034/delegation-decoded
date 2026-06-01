@@ -13,39 +13,38 @@ export const metadata: Metadata = {
 };
 
 async function getCoverage() {
-  const [tx] = await db
-    .select({
-      total: sql<number>`COUNT(*)::int`,
-      traders: sql<number>`COUNT(DISTINCT ${stockTransactions.bioguideId})::int`,
-    })
-    .from(stockTransactions);
-
   // Use the 1st–99th percentile of tx_date as the "active" window so a single
   // late-filed amendment from 2023 or a future-dated filer typo doesn't widen
   // the displayed range to multiple years.
-  const [txWindow] = await db.execute<{
-    p1: string | null;
-    p99: string | null;
-  }>(sql`
-    SELECT
-      to_char(percentile_disc(0.01) WITHIN GROUP (ORDER BY tx_date), 'YYYY-MM-DD') AS p1,
-      to_char(percentile_disc(0.99) WITHIN GROUP (ORDER BY tx_date), 'YYYY-MM-DD') AS p99
-    FROM stock_transactions
-    WHERE tx_date IS NOT NULL
-  `).then((r) => r.rows as { p1: string | null; p99: string | null }[]);
-
-  const [filings] = await db
-    .select({
-      total: sql<number>`COUNT(*)::int`,
-      latest: sql<string | null>`MAX(${disclosureFilings.filedDate})::text`,
-      earliest: sql<string | null>`MIN(${disclosureFilings.filedDate})::text`,
-    })
-    .from(disclosureFilings);
-
-  const [active] = await db
-    .select({ n: sql<number>`COUNT(*)::int` })
-    .from(members)
-    .where(eq(members.inOffice, true));
+  const [[tx], [txWindow], [filings], [active]] = await Promise.all([
+    db
+      .select({
+        total: sql<number>`COUNT(*)::int`,
+        traders: sql<number>`COUNT(DISTINCT ${stockTransactions.bioguideId})::int`,
+      })
+      .from(stockTransactions),
+    db.execute<{
+      p1: string | null;
+      p99: string | null;
+    }>(sql`
+      SELECT
+        to_char(percentile_disc(0.01) WITHIN GROUP (ORDER BY tx_date), 'YYYY-MM-DD') AS p1,
+        to_char(percentile_disc(0.99) WITHIN GROUP (ORDER BY tx_date), 'YYYY-MM-DD') AS p99
+      FROM stock_transactions
+      WHERE tx_date IS NOT NULL
+    `).then((r) => r.rows as { p1: string | null; p99: string | null }[]),
+    db
+      .select({
+        total: sql<number>`COUNT(*)::int`,
+        latest: sql<string | null>`MAX(${disclosureFilings.filedDate})::text`,
+        earliest: sql<string | null>`MIN(${disclosureFilings.filedDate})::text`,
+      })
+      .from(disclosureFilings),
+    db
+      .select({ n: sql<number>`COUNT(*)::int` })
+      .from(members)
+      .where(eq(members.inOffice, true)),
+  ]);
 
   return {
     firstTx: txWindow?.p1 ?? null,

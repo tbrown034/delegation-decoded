@@ -69,6 +69,7 @@ export function ComparePicker({
         {modes.map((m) => (
           <button
             key={m.value}
+            type="button"
             onClick={() => handleModeChange(m.value)}
             className={`rounded-md px-3.5 py-1.5 text-xs font-medium transition-colors ${
               mode === m.value
@@ -85,10 +86,14 @@ export function ComparePicker({
       <div className="mt-5">
         {mode === "delegation" && (
           <div className="flex items-center gap-3">
-            <label className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+            <label
+              htmlFor="compare-state"
+              className="text-xs font-medium uppercase tracking-wide text-neutral-400"
+            >
               State
             </label>
             <select
+              id="compare-state"
               value={selectedState || ""}
               onChange={(e) =>
                 navigate({ mode: "delegation", state: e.target.value })
@@ -98,7 +103,7 @@ export function ComparePicker({
               <option value="">Select a state</option>
               {states.map((s) => (
                 <option key={s.code} value={s.code}>
-                  {s.code} — {s.name}
+                  {s.code}, {s.name}
                 </option>
               ))}
             </select>
@@ -108,10 +113,14 @@ export function ComparePicker({
         {mode === "members" && (
           <div className="flex flex-wrap items-end gap-4">
             <div>
-              <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-neutral-400">
+              <label
+                htmlFor="compare-member-a"
+                className="mb-1 block text-xs font-medium uppercase tracking-wide text-neutral-400"
+              >
                 Member A
               </label>
               <select
+                id="compare-member-a"
                 value={selectedA || ""}
                 onChange={(e) =>
                   navigate({
@@ -127,7 +136,7 @@ export function ComparePicker({
                   <optgroup key={code} label={code}>
                     {mems.map((m) => (
                       <option key={m.bioguideId} value={m.bioguideId}>
-                        {m.fullName} ({m.party[0]}) —{" "}
+                        {m.fullName} ({m.party[0]}),{" "}
                         {m.chamber === "senate"
                           ? "Sen."
                           : m.district
@@ -141,10 +150,14 @@ export function ComparePicker({
             </div>
             <span className="pb-1.5 text-sm text-neutral-300">vs.</span>
             <div>
-              <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-neutral-400">
+              <label
+                htmlFor="compare-member-b"
+                className="mb-1 block text-xs font-medium uppercase tracking-wide text-neutral-400"
+              >
                 Member B
               </label>
               <select
+                id="compare-member-b"
                 value={selectedB || ""}
                 onChange={(e) =>
                   navigate({
@@ -160,7 +173,7 @@ export function ComparePicker({
                   <optgroup key={code} label={code}>
                     {mems.map((m) => (
                       <option key={m.bioguideId} value={m.bioguideId}>
-                        {m.fullName} ({m.party[0]}) —{" "}
+                        {m.fullName} ({m.party[0]}),{" "}
                         {m.chamber === "senate"
                           ? "Sen."
                           : m.district
@@ -178,10 +191,14 @@ export function ComparePicker({
         {mode === "states" && (
           <div className="flex flex-wrap items-end gap-4">
             <div>
-              <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-neutral-400">
+              <label
+                htmlFor="compare-state-a"
+                className="mb-1 block text-xs font-medium uppercase tracking-wide text-neutral-400"
+              >
                 State A
               </label>
               <select
+                id="compare-state-a"
                 value={selectedA || ""}
                 onChange={(e) =>
                   navigate({
@@ -195,17 +212,21 @@ export function ComparePicker({
                 <option value="">Select a state</option>
                 {states.map((s) => (
                   <option key={s.code} value={s.code}>
-                    {s.code} — {s.name}
+                    {s.code}, {s.name}
                   </option>
                 ))}
               </select>
             </div>
             <span className="pb-1.5 text-sm text-neutral-300">vs.</span>
             <div>
-              <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-neutral-400">
+              <label
+                htmlFor="compare-state-b"
+                className="mb-1 block text-xs font-medium uppercase tracking-wide text-neutral-400"
+              >
                 State B
               </label>
               <select
+                id="compare-state-b"
                 value={selectedB || ""}
                 onChange={(e) =>
                   navigate({
@@ -219,7 +240,7 @@ export function ComparePicker({
                 <option value="">Select a state</option>
                 {states.map((s) => (
                   <option key={s.code} value={s.code}>
-                    {s.code} — {s.name}
+                    {s.code}, {s.name}
                   </option>
                 ))}
               </select>

@@ -8,6 +8,7 @@ import {
 } from "@/lib/disclosure-queries";
 import { STATE_BY_CODE } from "@/lib/states";
 import { TradeTimeline } from "@/components/trade-timeline";
+import { TradesWipNotice } from "@/components/trades-wip-notice";
 
 type Props = { params: Promise<{ bioguideId: string }> };
 
@@ -80,6 +81,8 @@ export default async function MemberTradesPage({ params }: Props) {
           {stateName} · STOCK Act Periodic Transaction Reports
         </p>
       </header>
+
+      <TradesWipNotice />
 
       {summary.totalTransactions === 0 ? (
         <div className="rounded border border-dashed border-neutral-300 p-6 text-sm text-neutral-500">

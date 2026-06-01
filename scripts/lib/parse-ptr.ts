@@ -165,8 +165,8 @@ export async function parsePtr(
       if (BOGUS_TICKERS.has(tx.ticker)) {
         tx.ticker = null;
       } else {
-        const inBrackets = new RegExp(`\\[${tx.ticker}\\]`).test(tx.assetDescription);
-        const inParens = new RegExp(`\\(${tx.ticker}\\)`).test(tx.assetDescription);
+        const inBrackets = tx.assetDescription.split(`[${tx.ticker}]`).length > 1;
+        const inParens = tx.assetDescription.split(`(${tx.ticker})`).length > 1;
         if (inBrackets && !inParens) tx.ticker = null;
       }
     }
