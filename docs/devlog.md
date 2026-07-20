@@ -225,3 +225,22 @@ Picked up a timed-out external agent's react-doctor refactor pass, verified it, 
 - Stray untracked `pnpm-workspace.yaml` (pnpm supply-chain settings) — origin unknown, left out of the commit.
 
 ---
+## 2026-07-19/20 — Overnight loop: ask hardening round 2, seat charts, 2026 candidates
+
+**Session Summary:**
+- Shipped the full Round 2 worklist from docs/ask-security-review.md (commit 9c5cbf1): gate ordering (validate real states/districts, per-IP limit, cache, then global model budget), cross-site guards in lib/request-guards.ts, POST no-store locate with Census timeout, stop-reason branching, 12-tool/45s budgets, evidence-checked link sanitizing.
+- New find_member tool ended the "how much has AOC raised" dead end; prompt now forbids reply invitations, redirects voting logistics to vote.gov, and refuses endorsements with a factual substitute.
+- Loading UX rebuilt from research (five background agents: security, abuse patterns, UX, challenger data sources, 2026 primary calendar): optimistic pending card, honest timer-based escalation copy, cancel, personalized chips, examples dropdown, singular-pronoun nudge, neutral 429 states with Retry-After minutes.
+- Homepage "Congress at a glance": State map / House / Senate toggle with hemicycle seat charts (dd250fc). The Senate chart immediately exposed 101 sitting senators in the DB.
+- Root cause: members ingest never retired anyone. Added a retirement pass with a size guard; first run retired G000359 (Graham, died Jul 11), S001157 (Scott, died Apr 22), C001127 (Cherfilus-McCormick, resigned Apr 21). Members ingest moved weekly -> daily. Flushed ask_cache so no cached answer cites a deceased member.
+- Freshness panel now shows true table depth (Finance 2,811, Votes 344,961) instead of last-run batch size. Hero corrected to "535 voting members"; /about roster copy computes sitting/vacant counts from the DB at render time (7c81c96, per pre-push review).
+- 2026 candidates pipeline (eb14bb5): election_candidates table, FEC Form 2 ingest (statutory filter), daily CI step, get_race_candidates ask tool with a departed-incumbent cross-check — "who is running against Lindsey Graham" now leads with his death and names the current officeholders. Senate filers loaded (281); House lands with first CI run (FEC_API_KEY is CI-only).
+- Member pages: "The 2026 race" card for seats on the ballot (be471ba). State pages: pre-scoped ask bar; "Checked:" citations click through to source pages (1a54b88).
+- Eval grew from 6 to 13 cases (nickname cross-state, vote.gov redirect, opinion bait, injection, race filers); 12/12 behavioral passes on Haiku 4.5.
+
+**Notable Changes:**
+- Two Opus reviews gated the work (mid-loop diff review; full pre-push review). Verdicts: ship / fix-first, with the fix-first item (hardcoded /about roster snapshot) resolved in 7c81c96.
+- Seven commits, 9c5cbf1..7c81c96, each behind a clean next build. Not pushed.
+- Still user-gated: push, rename (yourdelegation.com / knowyourdelegation.com / delegationwatch.org available Jul 19), House Clerk PTR key rotation (dead ~87 days), Anthropic Console spend cap, Vercel WAF.
+
+---
