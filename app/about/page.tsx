@@ -440,11 +440,14 @@ function AboutProcessDetails({
               >
                 @unitedstates/congress-legislators
               </a>
-              , which currently lists 536 of the 538 voting House districts +
-              100 Senate seats. A handful of sitting House members are missing
-              from that upstream feed (CA-01, CA-14, TX-23 as of this writing).
-              Those member pages return 404 until the upstream JSON catches up
-              or a secondary backfill is wired in.
+              . Congress has 435 voting House seats, 100 Senate seats, and six
+              non-voting delegate seats. As of mid-July 2026, four House seats
+              are vacant pending special elections — GA-13 after the
+              incumbent&apos;s death, and TX-23, CA-14, and FL-20 after
+              resignations — so the site tracks 537 sitting members. Vacant
+              seats have no member page until a successor is sworn in; members
+              who die or leave office are marked out of office on the next
+              nightly sync.
             </li>
           </ul>
         </section>
