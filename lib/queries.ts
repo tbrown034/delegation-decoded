@@ -857,25 +857,81 @@ export async function getLatestSync() {
 }
 
 export async function getSyncSummary() {
-  // Get the most recent successful sync per source+entity_type.
+  // Freshness age comes from the most recent successful sync that actually
+  // wrote rows (i.e. when the data last changed), but the displayed count is
+  // the real table depth — sync_log's records_count is the last run's
+  // incremental batch size, which made a 2,811-row finance table render as
+  // "1 records" on the homepage.
   // Audit-type rows (e.g. capitoltrades_divergence) aren't data sources,
   // they're meta-checks — exclude them so they don't render in the
   // homepage freshness panel as if they were.
-  const rows = await db.execute(sql`
-    SELECT DISTINCT ON (source, entity_type)
-      source, entity_type, records_count, completed_at
-    FROM sync_log
-    WHERE status = 'success'
-      AND records_count > 0
-      AND entity_type <> 'audit'
-    ORDER BY source, entity_type, completed_at DESC
-  `);
-  return rows.rows as {
-    source: string;
-    entity_type: string;
-    records_count: number;
-    completed_at: string;
-  }[];
+  const [rows, depthRows] = await Promise.all([
+    db.execute(sql`
+      SELECT DISTINCT ON (source, entity_type)
+        source, entity_type, records_count, completed_at
+      FROM sync_log
+      WHERE status = 'success'
+        AND records_count > 0
+        AND entity_type <> 'audit'
+      ORDER BY source, entity_type, completed_at DESC
+    `),
+    db.execute(sql`
+      SELECT
+        (SELECT COUNT(*) FROM members WHERE in_office = true) AS members,
+        (SELECT COUNT(*) FROM committee_assignments) AS committees,
+        (SELECT COUNT(*) FROM bills) AS bills,
+        (SELECT COUNT(*) FROM campaign_finance) AS campaign_finance,
+        (SELECT COUNT(*) FROM vote_positions) AS votes,
+        (SELECT COUNT(*) FROM press_releases) AS press_releases,
+        (SELECT COUNT(*) FROM stock_transactions) AS disclosures
+    `),
+  ]);
+  const depths = (depthRows.rows?.[0] ?? {}) as Record<string, unknown>;
+  return (
+    rows.rows as {
+      source: string;
+      entity_type: string;
+      records_count: number;
+      completed_at: string;
+    }[]
+  ).map((r) => ({
+    ...r,
+    records_count: Number(depths[r.entity_type] ?? r.records_count),
+  }));
+}
+
+// Party composition per chamber for the homepage hemicycle. Voting seats
+// only: territory and DC delegates sit in the House but do not vote, so the
+// 435/100 seat math excludes them. Anything not D or R buckets as
+// independent; the remainder against the seat count is shown as vacant.
+export async function getChamberComposition() {
+  const rows = (await db.execute(sql`
+    SELECT chamber, party, COUNT(*)::int AS n
+    FROM members
+    WHERE in_office = true
+      AND state_code NOT IN ('DC', 'AS', 'GU', 'MP', 'PR', 'VI')
+    GROUP BY chamber, party
+  `)) as unknown as {
+    rows: { chamber: string; party: string; n: number }[];
+  };
+
+  const empty = () => ({ democrat: 0, republican: 0, independent: 0, vacant: 0 });
+  const comp = { house: empty(), senate: empty() };
+  for (const r of rows.rows ?? []) {
+    const side = r.chamber === "senate" ? comp.senate : comp.house;
+    if (r.party === "Democrat") side.democrat += Number(r.n);
+    else if (r.party === "Republican") side.republican += Number(r.n);
+    else side.independent += Number(r.n);
+  }
+  comp.house.vacant = Math.max(
+    0,
+    435 - comp.house.democrat - comp.house.republican - comp.house.independent
+  );
+  comp.senate.vacant = Math.max(
+    0,
+    100 - comp.senate.democrat - comp.senate.republican - comp.senate.independent
+  );
+  return comp;
 }
 
 export async function getTotalMemberCount() {

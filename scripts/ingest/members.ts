@@ -132,6 +132,36 @@ async function main() {
       }
     }
 
+    // Retire members who left the current-legislators file (death,
+    // resignation, expulsion). Upserts alone never flip in_office off, which
+    // left Lindsey Graham as a third sitting SC senator after his death in
+    // July 2026. The size guard keeps a truncated upstream fetch from
+    // mass-retiring Congress.
+    if (legislators.length > 500) {
+      const currentIds = legislators.map((l) => l.id.bioguide);
+      const retired = await db
+        .update(members)
+        .set({ inOffice: false, updatedAt: new Date() })
+        .where(
+          sql`in_office = true AND bioguide_id NOT IN (${sql.join(
+            currentIds.map((id) => sql`${id}`),
+            sql`, `
+          )})`
+        )
+        .returning({ bioguideId: members.bioguideId });
+      if (retired.length > 0) {
+        console.log(
+          `Retired ${retired.length} member(s) no longer in office: ${retired
+            .map((r) => r.bioguideId)
+            .join(", ")}`
+        );
+      }
+    } else {
+      console.warn(
+        `Skipping retirement pass: only ${legislators.length} legislators fetched.`
+      );
+    }
+
     // Update sync log
     await db
       .update(syncLog)

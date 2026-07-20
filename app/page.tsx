@@ -8,9 +8,11 @@ import {
   getTotalMemberCount,
   getRecentEvents,
   getSyncSummary,
+  getChamberComposition,
 } from "@/lib/queries";
 import { PartyBar } from "@/components/party-bar";
 import { StateMap } from "@/components/state-map";
+import { CongressViews } from "@/components/congress-views";
 import AskClient from "@/components/ask-client";
 
 export const metadata: Metadata = {
@@ -39,12 +41,13 @@ function getCurrentTimeMs(): number {
 }
 
 export default async function Home() {
-  const [statesData, latestSync, totalMembers, recentEvents, syncSummary] = await Promise.all([
+  const [statesData, latestSync, totalMembers, recentEvents, syncSummary, composition] = await Promise.all([
     getAllStatesWithCounts(),
     getLatestSync(),
     getTotalMemberCount(),
     getRecentEvents(8),
     getSyncSummary(),
+    getChamberComposition(),
   ]);
 
   // Trades and press releases are intentionally quiet surfaces now — their
@@ -69,7 +72,7 @@ export default async function Home() {
           The US Congress — House and Senate
         </p>
         <h1 className="font-serif text-4xl font-semibold tracking-tight sm:text-5xl">
-          538 members. 50 delegations.
+          535 voting members. 50 delegations.
         </h1>
         <p className="mt-3 max-w-lg text-neutral-500">
           Set your location and ask about your members of Congress in plain
@@ -113,11 +116,11 @@ export default async function Home() {
         <AskClient />
       </div>
 
-      {/* Geographic Map */}
+      {/* Congress at a glance: state cartogram / House / Senate seat charts */}
       <div className="mb-10">
         <div className="mb-4 flex items-baseline justify-between">
           <h2 className="text-xs font-medium uppercase tracking-wide text-neutral-400">
-            Or browse by state
+            Congress at a glance
           </h2>
           <Link
             href="/find"
@@ -126,29 +129,37 @@ export default async function Home() {
             Find yours by address →
           </Link>
         </div>
-        <StateMap states={fiftyStates} />
-        <div className="mt-3 flex items-center justify-center gap-4 text-[10px] text-neutral-400">
-          <span className="flex items-center gap-1">
-            <span className="inline-block size-2 rounded-sm bg-blue-600" />
-            Strong D
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="inline-block size-2 rounded-sm bg-blue-400" />
-            Lean D
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="inline-block size-2 rounded-sm bg-purple-400" />
-            Split
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="inline-block size-2 rounded-sm bg-red-400" />
-            Lean R
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="inline-block size-2 rounded-sm bg-red-600" />
-            Strong R
-          </span>
-        </div>
+        <CongressViews
+          house={composition.house}
+          senate={composition.senate}
+          statesView={
+            <>
+              <StateMap states={fiftyStates} />
+              <div className="mt-3 flex items-center justify-center gap-4 text-[10px] text-neutral-400">
+                <span className="flex items-center gap-1">
+                  <span className="inline-block size-2 rounded-sm bg-blue-600" />
+                  Strong D
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="inline-block size-2 rounded-sm bg-blue-400" />
+                  Lean D
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="inline-block size-2 rounded-sm bg-purple-400" />
+                  Split
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="inline-block size-2 rounded-sm bg-red-400" />
+                  Lean R
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="inline-block size-2 rounded-sm bg-red-600" />
+                  Strong R
+                </span>
+              </div>
+            </>
+          }
+        />
       </div>
 
       {/* All States List */}
