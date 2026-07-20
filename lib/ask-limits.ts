@@ -7,7 +7,8 @@ import { sql } from "drizzle-orm";
 // cache live there instead of adding Redis. Fixed windows are accurate
 // enough at this traffic level; the global daily cap is the spend backstop.
 
-const IP_HOURLY_LIMIT = 15;
+const IP_HOURLY_LIMIT = 20;
+const LOCATE_IP_HOURLY_LIMIT = 30;
 const GLOBAL_DAILY_LIMIT = 400;
 const CACHE_TTL_HOURS = 24;
 
@@ -25,9 +26,30 @@ export interface RateDecision {
   reason?: string;
 }
 
-export async function checkAndCountRequest(ip: string): Promise<RateDecision> {
-  const ipBucket = `ip:${hashIp(ip)}`;
+// Per-IP limits and the global model budget are separate on purpose: an IP
+// that is already blocked (or a request that fails validation upstream) must
+// never advance the global counter, or a single hostile IP could burn the
+// day's budget for everyone without spending a model token.
 
+async function bumpCounter(
+  bucket: string,
+  window: "hour" | "day"
+): Promise<number> {
+  const rows = (await db.execute(sql`
+    INSERT INTO ask_rate_limits (bucket, window_start, count)
+    VALUES (${bucket}, date_trunc(${window}, now()), 1)
+    ON CONFLICT (bucket, window_start)
+    DO UPDATE SET count = ask_rate_limits.count + 1
+    RETURNING count
+  `)) as unknown as { rows: { count: number }[] };
+  return Number(rows.rows?.[0]?.count ?? 0);
+}
+
+// First gate, hit on every request before any other work.
+export async function checkIpLimit(
+  ip: string,
+  kind: "ask" | "locate" = "ask"
+): Promise<RateDecision> {
   // Opportunistic cleanup: stale windows and expired cache rows go on ~2% of
   // requests, so no cron is needed for these two small tables.
   if (Math.random() < 0.02) {
@@ -39,39 +61,30 @@ export async function checkAndCountRequest(ip: string): Promise<RateDecision> {
     ).catch(() => {});
   }
 
-  const rows = (await db.execute(sql`
-    WITH ip_hit AS (
-      INSERT INTO ask_rate_limits (bucket, window_start, count)
-      VALUES (${ipBucket}, date_trunc('hour', now()), 1)
-      ON CONFLICT (bucket, window_start)
-      DO UPDATE SET count = ask_rate_limits.count + 1
-      RETURNING count
-    ),
-    global_hit AS (
-      INSERT INTO ask_rate_limits (bucket, window_start, count)
-      VALUES ('global', date_trunc('day', now()), 1)
-      ON CONFLICT (bucket, window_start)
-      DO UPDATE SET count = ask_rate_limits.count + 1
-      RETURNING count
-    )
-    SELECT (SELECT count FROM ip_hit) AS ip_count,
-           (SELECT count FROM global_hit) AS global_count
-  `)) as unknown as { rows: { ip_count: number; global_count: number }[] };
+  const prefix = kind === "locate" ? "loc" : "ip";
+  const limit = kind === "locate" ? LOCATE_IP_HOURLY_LIMIT : IP_HOURLY_LIMIT;
+  const count = await bumpCounter(`${prefix}:${hashIp(ip)}`, "hour");
+  if (count > limit) {
+    return {
+      allowed: false,
+      reason:
+        kind === "locate"
+          ? "Too many location lookups from your connection this hour. Try again in a bit."
+          : `That's ${limit} questions in an hour — the limit that keeps this free. Try again in a bit.`,
+    };
+  }
+  return { allowed: true };
+}
 
-  const row = rows.rows?.[0];
-  if (!row) return { allowed: true };
-
-  if (Number(row.global_count) > GLOBAL_DAILY_LIMIT) {
+// Second gate, hit only when a request is actually about to spend model
+// tokens — after validation, the IP check, and a cache miss.
+export async function countModelCall(): Promise<RateDecision> {
+  const count = await bumpCounter("global", "day");
+  if (count > GLOBAL_DAILY_LIMIT) {
     return {
       allowed: false,
       reason:
         "The assistant has hit its daily budget. It resets at midnight UTC — the rest of the site is unaffected.",
-    };
-  }
-  if (Number(row.ip_count) > IP_HOURLY_LIMIT) {
-    return {
-      allowed: false,
-      reason: `That's ${IP_HOURLY_LIMIT} questions in an hour — the limit that keeps this free. Try again in a bit.`,
     };
   }
   return { allowed: true };

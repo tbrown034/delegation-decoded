@@ -8,6 +8,7 @@ import {
   getMemberBills,
   getMemberCommittees,
   getMemberTerms,
+  findMembersByName,
 } from "./queries";
 
 // Tool surface for /api/ask. Every tool wraps a read query from lib/queries.ts
@@ -16,9 +17,25 @@ import {
 
 export const askTools: Anthropic.Tool[] = [
   {
+    name: "find_member",
+    description:
+      "Call this to resolve ANY current member of Congress by name to their bioguide_id, state, party, chamber, and district — especially members outside the reader's delegation. Works on full names, last names, and partial fragments. Expand nicknames to real names before searching (AOC = Ocasio-Cortez, Bernie = Sanders). If a search returns nothing, retry once with a shorter fragment of the last name before concluding the member is not in the current Congress.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description:
+            "Member name or fragment, e.g. 'Ocasio-Cortez', 'Sanders', 'Pelosi'",
+        },
+      },
+      required: ["name"],
+    },
+  },
+  {
     name: "get_delegation",
     description:
-      "Call this when you need the roster of a state's congressional delegation: every current senator and representative with party, chamber, district, and bioguide_id. Also use it to resolve a member's name to a bioguide_id before calling any member-level tool.",
+      "Call this when you need the roster of a state's congressional delegation: every current senator and representative with party, chamber, district, and bioguide_id. Use find_member instead when you have a person's name but not their state.",
     input_schema: {
       type: "object",
       properties: {
@@ -33,7 +50,7 @@ export const askTools: Anthropic.Tool[] = [
   {
     name: "get_member_votes",
     description:
-      "Call this when the question involves how a member voted: recent roll-call votes with the member's position (yea/nay), plus lifetime yea/nay/missed totals. Source: House Clerk and Senate roll-call XML.",
+      "Call this when the question involves how a member voted: recent roll-call votes with the member's position (yea/nay), plus yea/nay/missed totals for the votes this site has ingested (the current 119th Congress, not the member's whole career). Source: House Clerk and Senate roll-call XML.",
     input_schema: {
       type: "object",
       properties: {
@@ -49,7 +66,7 @@ export const askTools: Anthropic.Tool[] = [
   {
     name: "get_member_finance",
     description:
-      "Call this when the question involves campaign money: total raised, individual vs PAC receipts, small-dollar share, and top contributors by organization. Source: FEC campaign finance filings.",
+      "Call this when the question involves campaign money: per-cycle total raised, individual vs PAC receipts, the small-dollar (under $200) dollar total, and top contributors by organization (each tagged with its cycle). Source: FEC campaign finance filings.",
     input_schema: {
       type: "object",
       properties: {
@@ -113,13 +130,35 @@ export interface ToolTraceEntry {
   input: Record<string, unknown>;
 }
 
+// Bioguide IDs are one letter + six digits. Anything else from the model is
+// an invented parameter; fail it fast instead of running a doomed query.
+const BIOGUIDE_RE = /^[A-Z][0-9]{6}$/;
+
 export async function executeAskTool(
   name: string,
   input: Record<string, unknown>
 ): Promise<unknown> {
-  const bioguideId = typeof input.bioguide_id === "string" ? input.bioguide_id : "";
+  const bioguideId =
+    typeof input.bioguide_id === "string" ? input.bioguide_id.trim() : "";
+  if ("bioguide_id" in input && !BIOGUIDE_RE.test(bioguideId)) {
+    return {
+      error: `Invalid bioguide_id "${bioguideId}". Use find_member or get_delegation to get a real one.`,
+    };
+  }
 
   switch (name) {
+    case "find_member": {
+      const q = typeof input.name === "string" ? input.name : "";
+      const rows = await findMembersByName(q);
+      return rows.map((m) => ({
+        bioguide_id: m.bioguide_id,
+        name: m.full_name,
+        party: m.party,
+        state: m.state_code,
+        chamber: m.chamber,
+        district: m.district,
+      }));
+    }
     case "get_delegation": {
       const stateCode =
         typeof input.state_code === "string" ? input.state_code.toUpperCase() : "";

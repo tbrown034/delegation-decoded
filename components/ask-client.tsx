@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import type { ReactNode } from "react";
@@ -38,11 +38,42 @@ const SUGGESTIONS = [
   "Who represents me in Congress?",
   "How did my representative vote recently?",
   "Who are my senators' top campaign contributors?",
-  "What bills has my delegation introduced lately?",
-  "Who are North Dakota's senators?",
+];
+
+const MORE_EXAMPLES: { group: string; items: string[] }[] = [
+  {
+    group: "Votes",
+    items: [
+      "How did my senators vote this month?",
+      "Has my representative missed many votes?",
+    ],
+  },
+  {
+    group: "Money",
+    items: [
+      "Who are my senators' top campaign contributors?",
+      "How much of my representative's money comes from PACs?",
+      "How much has AOC raised?",
+    ],
+  },
+  {
+    group: "Bills & committees",
+    items: [
+      "What bills has my delegation introduced lately?",
+      "What committees does my representative sit on?",
+    ],
+  },
+  {
+    group: "Other states",
+    items: [
+      "Who are North Dakota's senators?",
+      "Compare my senators' fundraising to Bernie Sanders'.",
+    ],
+  },
 ];
 
 const TOOL_LABELS: Record<string, string> = {
+  find_member: "member lookup",
   get_delegation: "delegation roster",
   get_member_votes: "roll-call votes",
   get_member_finance: "FEC campaign finance",
@@ -53,8 +84,14 @@ const TOOL_LABELS: Record<string, string> = {
 
 const ALLOWED_HOSTS = ["congress.gov", "www.congress.gov", "fec.gov", "www.fec.gov"];
 
+// Exact allowlist for internal links: entity routes only. This rejects
+// protocol-relative tricks like //evil.example and /\evil.example, which
+// a bare startsWith("/") check lets through.
+const INTERNAL_HREF_RE =
+  /^\/(member|bill|state|committee)\/[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
 // Minimal renderer for the model's constrained markdown: paragraphs,
-// [text](href) links (internal or allow-listed official hosts), **bold**.
+// [text](href) links (entity routes or allow-listed official hosts), **bold**.
 function renderAnswer(text: string): ReactNode[] {
   return text
     .split(/\n{2,}/)
@@ -76,7 +113,7 @@ function renderInline(text: string, keyBase: number): ReactNode[] {
     if (match.index > last) nodes.push(text.slice(last, match.index));
     if (match[1] !== undefined) {
       const href = match[2];
-      if (href.startsWith("/")) {
+      if (INTERNAL_HREF_RE.test(href)) {
         nodes.push(
           <Link key={`${keyBase}-${k++}`} href={href} className="font-medium text-neutral-900 underline decoration-neutral-300 underline-offset-2 hover:decoration-neutral-800">
             {match[1]}
@@ -116,6 +153,44 @@ const partyColor = (party: string) =>
       ? "text-red-700"
       : "text-neutral-700";
 
+// Honest wait status: time-based escalation copy only. It never names a
+// record type it cannot know is being read — no fabricated progress.
+function PendingStatus() {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setSeconds((s) => s + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const copy =
+    seconds < 8
+      ? "Checking official records..."
+      : seconds < 20
+        ? "Still checking - this one needs several lookups..."
+        : `Still working (${seconds}s). Lookups stop at 45 seconds.`;
+  return (
+    <span className="inline-flex items-center gap-2 text-sm text-neutral-500">
+      <span className="size-2 animate-pulse rounded-full bg-neutral-400" aria-hidden />
+      <span role="status">{copy}</span>
+    </span>
+  );
+}
+
+// A question built on a bare SINGULAR pronoun with no name is guaranteed to
+// fail on a backend where every question stands alone. Plural pronouns stay
+// allowed - "who are their top donors?" validly means the located delegation,
+// which the model always receives. Catch the doomed shape client-side and
+// teach it instead of burning a model call.
+const DANGLING_REFERENT_RE =
+  /\b(he|she|his|her|hers|him|that (bill|vote|member)|what about)\b/i;
+
+function hasDanglingReferent(q: string): boolean {
+  if (!DANGLING_REFERENT_RE.test(q)) return false;
+  if (/\b(my|me|our)\b/i.test(q)) return false;
+  // A capitalized word mid-question is probably a name; give it the benefit
+  // of the doubt.
+  return !/\s[A-Z][a-z]/.test(q);
+}
+
 export default function AskClient() {
   const [locationInput, setLocationInput] = useState("");
   const [located, setLocated] = useState<Located | null>(null);
@@ -123,10 +198,17 @@ export default function AskClient() {
   const [locateError, setLocateError] = useState<string | null>(null);
 
   const [question, setQuestion] = useState("");
-  const [asking, setAsking] = useState(false);
+  const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
   const [askError, setAskError] = useState<string | null>(null);
+  const [rateLimitNote, setRateLimitNote] = useState<string | null>(null);
+  const [budgetExhausted, setBudgetExhausted] = useState(false);
+  const [referentNudge, setReferentNudge] = useState(false);
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
+  const [showExamples, setShowExamples] = useState(false);
   const askInputRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const asking = pendingQuestion !== null;
 
   async function locate(e: React.FormEvent) {
     e.preventDefault();
@@ -134,7 +216,11 @@ export default function AskClient() {
     setLocating(true);
     setLocateError(null);
     try {
-      const r = await fetch(`/api/ask/locate?q=${encodeURIComponent(locationInput.trim())}`);
+      const r = await fetch("/api/ask/locate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ q: locationInput.trim() }),
+      });
       const json = await r.json();
       if (!r.ok) {
         setLocateError(json.error ?? "Lookup failed.");
@@ -153,14 +239,26 @@ export default function AskClient() {
 
   async function ask(q: string) {
     const trimmed = q.trim();
-    if (!trimmed || !located || asking) return;
-    setAsking(true);
+    if (!trimmed || !located || asking || budgetExhausted) return;
+    if (hasDanglingReferent(trimmed)) {
+      setReferentNudge(true);
+      setQuestion(trimmed);
+      askInputRef.current?.focus();
+      return;
+    }
+    setReferentNudge(false);
+    setPendingQuestion(trimmed);
     setAskError(null);
+    setRateLimitNote(null);
     setQuestion("");
+    setShowExamples(false);
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
       const r = await fetch("/api/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           question: trimmed,
           stateCode: located.stateCode,
@@ -168,16 +266,34 @@ export default function AskClient() {
         }),
       });
       const json = await r.json();
+      if (r.status === 429) {
+        // A working limit is not an error: neutral styling, and the daily
+        // budget puts the whole surface to sleep rather than inviting retries.
+        setRateLimitNote(json.error ?? "Limit reached. Try again later.");
+        if ((json.error ?? "").includes("daily budget")) setBudgetExhausted(true);
+        setQuestion(trimmed);
+        return;
+      }
       if (!r.ok) {
         setAskError(json.error ?? "The lookup failed. Try again.");
         return;
       }
       setExchanges((prev) => [...prev, { question: trimmed, answer: json.answer, trace: json.trace ?? [], cached: json.cached === true }]);
-    } catch {
-      setAskError("The lookup failed. Check your connection and try again.");
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        // Reader cancelled; restore the question so it isn't lost.
+        setQuestion(trimmed);
+      } else {
+        setAskError("The lookup failed. Check your connection and try again.");
+      }
     } finally {
-      setAsking(false);
+      abortRef.current = null;
+      setPendingQuestion(null);
     }
+  }
+
+  function cancelAsk() {
+    abortRef.current?.abort();
   }
 
   const senators = located?.members.filter((m) => m.chamber === "senate") ?? [];
@@ -188,6 +304,18 @@ export default function AskClient() {
         null)
       : null;
   const focusMembers = rep ? [...senators, rep] : senators;
+
+  // Chips with real names outperform generic ones, and they teach the
+  // "name the member" question shape this stateless backend needs.
+  const suggestions = [
+    "Who represents me in Congress?",
+    rep
+      ? `How did ${rep.fullName} vote recently?`
+      : "How did my representative vote recently?",
+    senators[0]
+      ? `Who are ${senators[0].fullName}'s top campaign contributors?`
+      : SUGGESTIONS[2],
+  ];
 
   return (
     <div>
@@ -278,39 +406,119 @@ export default function AskClient() {
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           placeholder={
-            located
-              ? `Ask about the ${located.stateName} delegation...`
-              : "Set a location first, then ask..."
+            budgetExhausted
+              ? "The assistant is done for today — records below still work"
+              : located
+                ? `Ask about the ${located.stateName} delegation — or any member of Congress`
+                : "Set a location first, then ask..."
           }
           aria-label="Your question"
           maxLength={400}
-          disabled={!located}
+          disabled={!located || budgetExhausted}
           enterKeyHint="send"
           className="flex-1 rounded border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-neutral-500 focus:outline-none disabled:bg-neutral-50 disabled:text-neutral-400"
         />
         <button
           type="submit"
-          disabled={!located || asking || !question.trim()}
+          disabled={!located || asking || budgetExhausted || !question.trim()}
           className="rounded bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-50"
         >
           {asking ? "Checking..." : "Ask"}
         </button>
       </form>
 
-      {located && exchanges.length === 0 && !asking && (
-        <ul className="mt-3 flex flex-wrap gap-2">
-          {SUGGESTIONS.map((s) => (
-            <li key={s}>
-              <button
-                type="button"
-                onClick={() => ask(s)}
-                className="rounded-full border border-neutral-200 bg-white px-3 py-1 text-xs text-neutral-600 hover:border-neutral-400 hover:text-neutral-900"
-              >
-                {s}
-              </button>
-            </li>
-          ))}
-        </ul>
+      {located && !budgetExhausted && (
+        <p className="mt-2 text-xs text-neutral-400">
+          Answers come only from official records — votes, bills, campaign
+          money, committees. Each question stands alone.
+        </p>
+      )}
+
+      {referentNudge && (
+        <div className="mt-3 rounded border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-700">
+          Questions don&apos;t carry over, so &quot;he&quot; or &quot;she&quot; has
+          nothing to point at. Name the member instead
+          {senators[0] ? ` — like "${senators[0].fullName}'s top donors".` : "."}
+        </div>
+      )}
+
+      {rateLimitNote && (
+        <div className="mt-3 rounded border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-700">
+          {rateLimitNote}
+          {budgetExhausted && located && (
+            <span>
+              {" "}Every record it reads is still browsable:{" "}
+              <Link href={`/state/${located.stateCode}`} className="font-medium underline decoration-stone-300 underline-offset-2">
+                the {located.stateName} delegation page
+              </Link>
+              .
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Example questions: chips before the first answer, a compact
+          dropdown after, so exploration never disappears. */}
+      {located && (
+        <div className="mt-3">
+          {exchanges.length === 0 && !asking && (
+            <ul className="flex flex-wrap gap-2">
+              {SUGGESTIONS.map((s) => (
+                <li key={s}>
+                  <button
+                    type="button"
+                    onClick={() => ask(s)}
+                    className="rounded-full border border-neutral-200 bg-white px-3 py-1 text-xs text-neutral-600 hover:border-neutral-400 hover:text-neutral-900"
+                  >
+                    {s}
+                  </button>
+                </li>
+              ))}
+              <li>
+                <button
+                  type="button"
+                  onClick={() => setShowExamples((v) => !v)}
+                  aria-expanded={showExamples}
+                  className="rounded-full border border-dashed border-neutral-300 bg-white px-3 py-1 text-xs text-neutral-500 hover:border-neutral-400 hover:text-neutral-900"
+                >
+                  {showExamples ? "Fewer examples" : "More examples"}
+                </button>
+              </li>
+            </ul>
+          )}
+          {exchanges.length > 0 && !asking && (
+            <button
+              type="button"
+              onClick={() => setShowExamples((v) => !v)}
+              aria-expanded={showExamples}
+              className="text-xs text-neutral-400 underline decoration-neutral-300 underline-offset-2 hover:text-neutral-700"
+            >
+              {showExamples ? "Hide example questions" : "Example questions"}
+            </button>
+          )}
+          {showExamples && !asking && (
+            <div className="mt-2 grid gap-3 rounded border border-neutral-200 bg-neutral-50 px-4 py-3 sm:grid-cols-2">
+              {MORE_EXAMPLES.map((g) => (
+                <div key={g.group}>
+                  <p className="text-xs uppercase tracking-wide text-neutral-400">{g.group}</p>
+                  <ul className="mt-1 space-y-1">
+                    {g.items.map((s) => (
+                      <li key={s}>
+                        <button
+                          type="button"
+                          onClick={() => ask(s)}
+                          className="text-left text-xs text-neutral-600 underline decoration-neutral-300 underline-offset-2 hover:text-neutral-900"
+                        >
+                          {s}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {askError && (
@@ -319,14 +527,25 @@ export default function AskClient() {
         </div>
       )}
 
-      {asking && (
-        <div className="mt-4 rounded border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-500">
-          Checking official records...
-        </div>
-      )}
-
-      {exchanges.length > 0 && (
+      {(asking || exchanges.length > 0) && (
         <ol className="mt-6 space-y-4">
+          {/* The pending question echoes immediately so the reader sees it
+              landed; the status line stages honestly while the loop runs. */}
+          {asking && (
+            <li className="rounded border border-neutral-200 bg-white p-4">
+              <p className="text-sm font-medium text-neutral-900">{pendingQuestion}</p>
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <PendingStatus />
+                <button
+                  type="button"
+                  onClick={cancelAsk}
+                  className="text-xs text-neutral-400 underline decoration-neutral-300 underline-offset-2 hover:text-neutral-700"
+                >
+                  Cancel
+                </button>
+              </div>
+            </li>
+          )}
           {[...exchanges].reverse().map((ex, i) => (
             <li key={exchanges.length - i} className="rounded border border-neutral-200 bg-white p-4">
               <p className="text-sm font-medium text-neutral-900">{ex.question}</p>
@@ -337,6 +556,7 @@ export default function AskClient() {
                   : "Answered from the delegation roster. "}
                 Answers draw only on official records in this site&apos;s database.
                 {ex.cached && " Served from today's cache."}
+                {" "}Each question is answered on its own — name the member you mean.
               </p>
             </li>
           ))}

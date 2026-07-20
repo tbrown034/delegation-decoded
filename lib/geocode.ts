@@ -20,7 +20,17 @@ export async function geocodeAddress(
   url.searchParams.set("layers", "all");
   url.searchParams.set("format", "json");
 
-  const r = await fetch(url, { cache: "no-store" });
+  // The Census geocoder has no SLA; a hung upstream must not hold our
+  // function open for its full duration.
+  let r: Response;
+  try {
+    r = await fetch(url, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(6000),
+    });
+  } catch {
+    return null;
+  }
   if (!r.ok) return null;
   const json = await r.json();
   const match = json?.result?.addressMatches?.[0];

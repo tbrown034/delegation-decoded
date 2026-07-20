@@ -118,6 +118,41 @@ export async function getMemberTerms(bioguideId: string) {
     .orderBy(desc(terms.startDate));
 }
 
+// Name search across every sitting member, for /ask questions about members
+// outside the reader's delegation ("how much has AOC raised"). Exact and
+// prefix matches outrank substring hits; ILIKE keeps it migration-free.
+export async function findMembersByName(query: string, limit = 8) {
+  const q = query.trim().toLowerCase();
+  if (q.length < 2) return [];
+  const like = `%${q}%`;
+  const prefix = `${q}%`;
+  const rows = (await db.execute(sql`
+    SELECT bioguide_id, full_name, party, state_code, district, chamber,
+      CASE
+        WHEN LOWER(full_name) = ${q} THEN 100
+        WHEN LOWER(last_name) = ${q} THEN 95
+        WHEN LOWER(full_name) LIKE ${prefix} THEN 80
+        WHEN LOWER(last_name) LIKE ${prefix} THEN 75
+        ELSE 50
+      END AS rank
+    FROM members
+    WHERE in_office = true
+      AND (LOWER(full_name) LIKE ${like} OR LOWER(last_name) LIKE ${like})
+    ORDER BY rank DESC, last_name ASC
+    LIMIT ${Math.min(Math.max(limit, 1), 12)}
+  `)) as unknown as {
+    rows: {
+      bioguide_id: string;
+      full_name: string;
+      party: string;
+      state_code: string;
+      district: number | null;
+      chamber: string;
+    }[];
+  };
+  return rows.rows ?? [];
+}
+
 // ─── Committee queries ───────────────────────────────────────────────────────
 
 export async function getMemberCommittees(bioguideId: string) {
