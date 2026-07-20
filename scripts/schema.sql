@@ -272,6 +272,33 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_events_identity
   ON events (event_type, COALESCE(related_id, ''), COALESCE(state_code, ''), COALESCE(bioguide_id, ''));
 
 -- =============================================================================
+-- Election candidates (FEC statements of candidacy, Form 2)
+-- Statutory candidates only: candidate_status = 'C' and has_raised_funds,
+-- the standard newsroom cut that drops paper filers. Not a ballot list —
+-- ballot access is a state function; disclose that wherever this surfaces.
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS election_candidates (
+  candidate_id         VARCHAR(20) PRIMARY KEY,
+  name                 TEXT NOT NULL,
+  party                TEXT,
+  office               CHAR(1) NOT NULL,            -- 'H' or 'S'
+  state_code           CHAR(2) NOT NULL,
+  district             INTEGER,                     -- NULL for Senate, 0 for at-large
+  election_year        INTEGER NOT NULL,
+  incumbent_challenge  CHAR(1),                     -- 'I' incumbent, 'C' challenger, 'O' open seat
+  candidate_status     CHAR(1),
+  has_raised_funds     BOOLEAN,
+  total_receipts       BIGINT,
+  first_file_date      DATE,
+  last_file_date       DATE,
+  fec_load_date        DATE,
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_candidates_race
+  ON election_candidates(state_code, office, district, election_year);
+
+-- =============================================================================
 -- /ask assistant: rate-limit counters + answer cache
 -- =============================================================================
 

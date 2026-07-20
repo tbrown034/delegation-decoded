@@ -9,6 +9,7 @@ import {
   getMemberCommittees,
   getMemberTerms,
   findMembersByName,
+  getRaceCandidates,
 } from "./queries";
 
 // Tool surface for /api/ask. Every tool wraps a read query from lib/queries.ts
@@ -101,6 +102,31 @@ export const askTools: Anthropic.Tool[] = [
         bioguide_id: { type: "string" },
       },
       required: ["bioguide_id"],
+    },
+  },
+  {
+    name: "get_race_candidates",
+    description:
+      "Call this when the question involves who is RUNNING in a 2026 congressional race: everyone who has filed FEC candidacy paperwork (Form 2) for a given seat, with party, incumbent/challenger status, and money raised. This is a FILING list from the FEC, not the ballot — state deadlines and primaries decide the ballot, and this data does not include primary results. For Senate races, first confirm the seat is even up in 2026 via get_member_terms.",
+    input_schema: {
+      type: "object",
+      properties: {
+        state_code: {
+          type: "string",
+          description: "Two-letter state code, e.g. SC",
+        },
+        office: {
+          type: "string",
+          enum: ["H", "S"],
+          description: "H for a House district race, S for a Senate race",
+        },
+        district: {
+          type: "integer",
+          description:
+            "House district number (0 for at-large). Omit for Senate races.",
+        },
+      },
+      required: ["state_code", "office"],
     },
   },
   {
@@ -234,6 +260,71 @@ export async function executeAskTool(
         end: t.endDate,
         is_current: t.isCurrent,
       }));
+    }
+    case "get_race_candidates": {
+      const stateCode =
+        typeof input.state_code === "string" ? input.state_code.toUpperCase() : "";
+      const office = input.office === "S" ? "S" : "H";
+      const district =
+        typeof input.district === "number" && Number.isInteger(input.district)
+          ? input.district
+          : null;
+      const [result, delegation] = await Promise.all([
+        getRaceCandidates(stateCode, office, district),
+        getMembersByState(stateCode),
+      ]);
+      if (!result.hasData) {
+        return {
+          error:
+            "Candidate data has not been ingested yet. Do NOT say nobody is running — say this site's candidate data is not loaded and point the reader to fec.gov.",
+        };
+      }
+      // FEC filings outlive the filer: a member who died or resigned after
+      // filing still shows as the race's incumbent (Lindsey Graham, July
+      // 2026). Cross-check "incumbent" filers against who actually sits in
+      // the seat today, by FEC id first and first-initial + last name second
+      // (initials survive Tim/Timothy nicknames).
+      const sitting = delegation.filter((m) =>
+        office === "S"
+          ? m.chamber === "senate"
+          : m.chamber === "house" &&
+            (district == null || m.district === district)
+      );
+      const sittingFecIds = new Set(
+        sitting.map((m) => m.fecCandidateId).filter(Boolean)
+      );
+      const sittingNameKeys = new Set(
+        sitting.map(
+          (m) =>
+            `${m.firstName?.[0]?.toLowerCase() ?? ""}|${m.lastName?.toLowerCase() ?? ""}`
+        )
+      );
+      const isSitting = (c: { candidate_id: string; name: string }) => {
+        if (sittingFecIds.has(c.candidate_id)) return true;
+        const parts = c.name.trim().split(/\s+/);
+        if (parts.length < 2) return false;
+        const key = `${parts[0][0].toLowerCase()}|${parts[parts.length - 1].toLowerCase()}`;
+        return sittingNameKeys.has(key);
+      };
+      return {
+        note: "FEC filings, not the ballot. Primaries may have already narrowed this list; this data has no primary results.",
+        current_officeholders: sitting.map((m) => m.fullName),
+        candidates: result.candidates.map((c) => ({
+          name: c.name,
+          party: c.party,
+          status:
+            c.incumbent_challenge === "I"
+              ? isSitting(c)
+                ? "incumbent"
+                : "filed as incumbent but NO LONGER IN OFFICE (died or resigned after filing)"
+              : c.incumbent_challenge === "O"
+                ? "open-seat candidate"
+                : "challenger",
+          total_raised: c.total_receipts,
+          first_filed: c.first_file_date,
+          fec_candidate_id: c.candidate_id,
+        })),
+      };
     }
     case "get_member_committees": {
       const rows = await getMemberCommittees(bioguideId);

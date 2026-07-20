@@ -56,11 +56,12 @@ Each of /, /state/[code], /member/[bioguideId], /trades/companies/[ticker] also 
 ```
 scripts/ingest/
   seed-states.ts          50 states + DC + 5 territories (FIPS codes)
-  members.ts              @unitedstates → members + terms + photos
+  members.ts              @unitedstates → members + terms + photos (daily; retires members missing from the current file — deaths/resignations)
   committees.ts           @unitedstates → committees + assignments
   bills.ts                Congress.gov API → bills + sponsorships
   votes.ts                Clerk House XML + Senate XML → roll calls + positions
   finance.ts              FEC API → campaign_finance + top_contributors
+  candidates.ts           FEC Form 2 filings → election_candidates (2026 races, statutory candidates only; daily). /ask's get_race_candidates cross-checks FEC "incumbent" filers against sitting members so a departed filer is never presented as the officeholder.
   disclosures-house.ts    House Clerk PTR PDFs → Sonnet vision parse
   disclosures-senate.ts   Senate eFD HTML tables → deterministic parse
   press-releases.ts       Member office RSS feeds → press_releases

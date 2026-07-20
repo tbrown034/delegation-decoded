@@ -118,6 +118,51 @@ export async function getMemberTerms(bioguideId: string) {
     .orderBy(desc(terms.startDate));
 }
 
+// 2026 candidates who have filed FEC paperwork for a given race. This is a
+// filing list, not a ballot: state deadlines and primaries decide the ballot.
+// Callers must check hasData to tell "no filers for this race" apart from
+// "candidate data has not been ingested yet" — the two mean opposite things.
+export async function getRaceCandidates(
+  stateCode: string,
+  office: "H" | "S",
+  district: number | null,
+  electionYear = 2026
+) {
+  const rows = (await db.execute(sql`
+    SELECT candidate_id, name, party, office, state_code, district,
+           incumbent_challenge, total_receipts, first_file_date, last_file_date
+    FROM election_candidates
+    WHERE state_code = ${stateCode.toUpperCase()}
+      AND office = ${office}
+      AND election_year = ${electionYear}
+      AND (${office} = 'S' OR district IS NOT DISTINCT FROM ${district})
+    ORDER BY total_receipts DESC NULLS LAST, name ASC
+  `)) as unknown as {
+    rows: {
+      candidate_id: string;
+      name: string;
+      party: string | null;
+      office: string;
+      state_code: string;
+      district: number | null;
+      incumbent_challenge: string | null;
+      total_receipts: number | null;
+      first_file_date: string | null;
+      last_file_date: string | null;
+    }[];
+  };
+  // Per-office guard: a Senate-only (or House-only) ingest must not make the
+  // other chamber's races read as "nobody has filed".
+  const total = (await db.execute(
+    sql`SELECT COUNT(*)::int AS n FROM election_candidates
+        WHERE election_year = ${electionYear} AND office = ${office}`
+  )) as unknown as { rows: { n: number }[] };
+  return {
+    hasData: Number(total.rows?.[0]?.n ?? 0) > 0,
+    candidates: rows.rows ?? [],
+  };
+}
+
 // Name search across every sitting member, for /ask questions about members
 // outside the reader's delegation ("how much has AOC raised"). Exact and
 // prefix matches outrank substring hits; ILIKE keeps it migration-free.

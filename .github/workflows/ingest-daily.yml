@@ -1,7 +1,9 @@
 # Runs every day at 6 AM UTC (midnight CT / 1 AM ET)
-# Ingests bills, votes, and PTR disclosures — the data that changes daily
-# when Congress is in session. Also regenerates the activity feed and runs
-# the health gate after ingestion.
+# Ingests members, bills, votes, 2026 candidates, and PTR disclosures — the
+# data that changes daily when Congress is in session. Also regenerates the
+# activity feed and runs the health gate after ingestion.
+# Members moved here from weekly after Lindsey Graham's July 2026 death sat
+# in the data for a week: deaths and resignations can't wait for Sunday.
 
 name: Daily data ingestion
 
@@ -31,11 +33,26 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Ingest members
+        run: npx tsx scripts/ingest/members.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
       - name: Ingest bills
         run: npx tsx scripts/ingest/bills.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           CONGRESS_API_KEY: ${{ secrets.CONGRESS_API_KEY }}
+
+      # 2026 election candidates (FEC Form 2 filers). FEC refreshes nightly;
+      # challenger lists move fast in primary season.
+      - name: Ingest election candidates
+        if: always()
+        continue-on-error: true
+        run: npx tsx scripts/ingest/candidates.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          FEC_API_KEY: ${{ secrets.FEC_API_KEY }}
 
       - name: Ingest votes
         run: npx tsx scripts/ingest/votes.ts

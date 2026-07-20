@@ -74,6 +74,7 @@ const MORE_EXAMPLES: { group: string; items: string[] }[] = [
 
 const TOOL_LABELS: Record<string, string> = {
   find_member: "member lookup",
+  get_race_candidates: "FEC candidate filings",
   get_delegation: "delegation roster",
   get_member_votes: "roll-call votes",
   get_member_finance: "FEC campaign finance",

@@ -1,5 +1,7 @@
 # Runs every Sunday at 7 AM UTC (1 AM CT / 2 AM ET)
-# Ingests slower-changing data: members, committees, campaign finance, press releases.
+# Ingests slower-changing data: committees, campaign finance, press releases.
+# Members now ingest daily (deaths and resignations can't wait for Sunday);
+# the run here is a belt-and-suspenders second pass.
 # Also regenerates AI delegation briefs and runs the health gate after ingestion.
 
 name: Weekly data ingestion

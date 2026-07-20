@@ -584,3 +584,38 @@ export const syncLog = pgTable(
   },
   (table) => [index("idx_sync_source").on(table.source, table.entityType)]
 );
+
+// =============================================================================
+// Election Candidates (FEC Form 2 statements of candidacy)
+// =============================================================================
+
+export const electionCandidates = pgTable(
+  "election_candidates",
+  {
+    candidateId: varchar("candidate_id", { length: 20 }).primaryKey(),
+    name: text("name").notNull(),
+    party: text("party"),
+    office: char("office", { length: 1 }).notNull(),
+    stateCode: char("state_code", { length: 2 }).notNull(),
+    district: integer("district"),
+    electionYear: integer("election_year").notNull(),
+    incumbentChallenge: char("incumbent_challenge", { length: 1 }),
+    candidateStatus: char("candidate_status", { length: 1 }),
+    hasRaisedFunds: boolean("has_raised_funds"),
+    totalReceipts: bigint("total_receipts", { mode: "number" }),
+    firstFileDate: date("first_file_date"),
+    lastFileDate: date("last_file_date"),
+    fecLoadDate: date("fec_load_date"),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("idx_candidates_race").on(
+      table.stateCode,
+      table.office,
+      table.district,
+      table.electionYear
+    ),
+  ]
+);

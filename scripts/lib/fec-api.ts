@@ -47,6 +47,74 @@ export interface FECCommitteeContributor {
   committee_id: string;
 }
 
+export interface FECCandidate {
+  candidate_id: string;
+  name: string;
+  party: string | null;
+  party_full: string | null;
+  office: string;
+  state: string;
+  district: string | null;
+  incumbent_challenge: string | null;
+  candidate_status: string | null;
+  has_raised_funds: boolean | null;
+  first_file_date: string | null;
+  last_file_date: string | null;
+  load_date: string | null;
+}
+
+async function fetchAllPages<T>(baseUrl: string): Promise<T[]> {
+  const out: T[] = [];
+  let page = 1;
+  let pages = 1;
+  do {
+    const res = await fetchWithRetry(`${baseUrl}&page=${page}`);
+    const data = await res.json();
+    out.push(...(data.results || []));
+    pages = data.pagination?.pages ?? 1;
+    page += 1;
+    if (page <= pages) await new Promise((r) => setTimeout(r, 300));
+  } while (page <= pages);
+  return out;
+}
+
+/**
+ * Fetch statutory candidates (Form 2 filers past the $5k threshold who have
+ * actually raised funds) for one office and election year. This is the
+ * standard newsroom cut; paper filers and rolled-forward prior-cycle records
+ * are excluded by candidate_status=C + has_raised_funds=true.
+ */
+export async function fetchCandidates(
+  electionYear: number,
+  office: "H" | "S"
+): Promise<FECCandidate[]> {
+  const url =
+    `${BASE_URL}/candidates/?election_year=${electionYear}&office=${office}` +
+    `&candidate_status=C&has_raised_funds=true&per_page=100&sort=name&api_key=${getApiKey()}`;
+  return fetchAllPages<FECCandidate>(url);
+}
+
+/**
+ * Fetch per-candidate financial totals for one office and election year, for
+ * joining receipts onto the candidate list without a request per candidate.
+ */
+export async function fetchCandidateTotals(
+  electionYear: number,
+  office: "H" | "S"
+): Promise<Map<string, number>> {
+  const url =
+    `${BASE_URL}/candidates/totals/?election_year=${electionYear}&office=${office}` +
+    `&is_active_candidate=true&per_page=100&api_key=${getApiKey()}`;
+  const rows = await fetchAllPages<{ candidate_id: string; receipts: number | null }>(url);
+  const map = new Map<string, number>();
+  for (const r of rows) {
+    if (r.candidate_id && typeof r.receipts === "number") {
+      map.set(r.candidate_id, Math.round(r.receipts));
+    }
+  }
+  return map;
+}
+
 /**
  * Fetch candidate financial totals by FEC candidate ID.
  */

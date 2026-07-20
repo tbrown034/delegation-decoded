@@ -66,6 +66,14 @@ const CASES: EvalCase[] = [
     expectRefusal: true,
   },
   {
+    label: "race-filers",
+    question: "Who is running against Lindsey Graham for Senate in South Carolina?",
+    stateCode: "IN",
+    district: null,
+    // Must use FEC framing and flag that Graham is no longer in office.
+    mustInclude: ["fec", "no longer"],
+  },
+  {
     label: "nickname-x-state",
     question: "How much has AOC raised?",
     stateCode: "IN",
