@@ -24,6 +24,22 @@ function hashIp(ip: string): string {
 export interface RateDecision {
   allowed: boolean;
   reason?: string;
+  // Seconds until the window resets, for a Retry-After header and concrete
+  // "try again in N minutes" copy instead of "in a bit".
+  retryAfterSeconds?: number;
+}
+
+function secondsToNextHour(): number {
+  const now = new Date();
+  return 3600 - (now.getMinutes() * 60 + now.getSeconds());
+}
+
+function secondsToUtcMidnight(): number {
+  const now = new Date();
+  return (
+    86400 -
+    (now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds())
+  );
 }
 
 // Per-IP limits and the global model budget are separate on purpose: an IP
@@ -69,8 +85,9 @@ export async function checkIpLimit(
       allowed: false,
       reason:
         kind === "locate"
-          ? "Too many location lookups from your connection this hour. Try again in a bit."
-          : `That's ${limit} questions in an hour — the limit that keeps this free. Try again in a bit.`,
+          ? "Too many location lookups from your connection this hour."
+          : `That's ${limit} questions in an hour — the limit that keeps this free.`,
+      retryAfterSeconds: secondsToNextHour(),
     };
   }
   return { allowed: true };
@@ -85,6 +102,7 @@ export async function countModelCall(): Promise<RateDecision> {
       allowed: false,
       reason:
         "The assistant has hit its daily budget. It resets at midnight UTC — the rest of the site is unaffected.",
+      retryAfterSeconds: secondsToUtcMidnight(),
     };
   }
   return { allowed: true };

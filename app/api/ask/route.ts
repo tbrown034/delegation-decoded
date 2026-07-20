@@ -75,7 +75,15 @@ export async function POST(request: NextRequest) {
 
   const rate = await checkIpLimit(clientIp(request), "ask");
   if (!rate.allowed) {
-    return Response.json({ error: rate.reason }, { status: 429 });
+    return Response.json(
+      { error: rate.reason },
+      {
+        status: 429,
+        headers: rate.retryAfterSeconds
+          ? { "Retry-After": String(rate.retryAfterSeconds) }
+          : undefined,
+      }
+    );
   }
 
   // Cache: repeat questions (suggestion chips especially) cost nothing and
@@ -91,7 +99,15 @@ export async function POST(request: NextRequest) {
 
   const budget = await countModelCall();
   if (!budget.allowed) {
-    return Response.json({ error: budget.reason }, { status: 429 });
+    return Response.json(
+      { error: budget.reason },
+      {
+        status: 429,
+        headers: budget.retryAfterSeconds
+          ? { "Retry-After": String(budget.retryAfterSeconds) }
+          : undefined,
+      }
+    );
   }
 
   try {

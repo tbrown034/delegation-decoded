@@ -85,6 +85,30 @@ const TOOL_LABELS: Record<string, string> = {
 
 const ALLOWED_HOSTS = ["congress.gov", "www.congress.gov", "fec.gov", "www.fec.gov"];
 
+// Where a "Checked:" footer chip should point: the page that holds the data
+// the tool read. Citations the reader can actually click beat bare assertions.
+function traceHref(t: TraceEntry): string | null {
+  const id =
+    typeof t.input.bioguide_id === "string" ? t.input.bioguide_id : null;
+  const st =
+    typeof t.input.state_code === "string"
+      ? t.input.state_code.toUpperCase()
+      : null;
+  switch (t.tool) {
+    case "get_delegation":
+    case "get_race_candidates":
+      return st && /^[A-Z]{2}$/.test(st) ? `/state/${st}` : null;
+    case "get_member_votes":
+    case "get_member_finance":
+    case "get_member_bills":
+    case "get_member_terms":
+    case "get_member_committees":
+      return id && /^[A-Z][0-9]{6}$/.test(id) ? `/member/${id}` : null;
+    default:
+      return null;
+  }
+}
+
 // Exact allowlist for internal links: entity routes only. This rejects
 // protocol-relative tricks like //evil.example and /\evil.example, which
 // a bare startsWith("/") check lets through.
@@ -192,9 +216,16 @@ function hasDanglingReferent(q: string): boolean {
   return !/\s[A-Z][a-z]/.test(q);
 }
 
-export default function AskClient() {
+export default function AskClient({
+  initialLocated,
+}: {
+  // When set (state pages), the surface is pre-scoped: no location bar, no
+  // delegation card — the page around it already shows the roster.
+  initialLocated?: Located;
+} = {}) {
+  const fixedLocation = Boolean(initialLocated);
   const [locationInput, setLocationInput] = useState("");
-  const [located, setLocated] = useState<Located | null>(null);
+  const [located, setLocated] = useState<Located | null>(initialLocated ?? null);
   const [locating, setLocating] = useState(false);
   const [locateError, setLocateError] = useState<string | null>(null);
 
@@ -268,9 +299,15 @@ export default function AskClient() {
       });
       const json = await r.json();
       if (r.status === 429) {
-        // A working limit is not an error: neutral styling, and the daily
-        // budget puts the whole surface to sleep rather than inviting retries.
-        setRateLimitNote(json.error ?? "Limit reached. Try again later.");
+        // A working limit is not an error: neutral styling, a concrete
+        // retry time, and the daily budget puts the whole surface to sleep
+        // rather than inviting retries.
+        const retryAfter = parseInt(r.headers.get("Retry-After") ?? "", 10);
+        const wait =
+          Number.isFinite(retryAfter) && retryAfter > 0
+            ? ` Try again in about ${Math.max(1, Math.ceil(retryAfter / 60))} minutes.`
+            : "";
+        setRateLimitNote(`${json.error ?? "Limit reached."}${wait}`);
         if ((json.error ?? "").includes("daily budget")) setBudgetExhausted(true);
         setQuestion(trimmed);
         return;
@@ -320,7 +357,8 @@ export default function AskClient() {
 
   return (
     <div>
-      {/* Bar 1: location */}
+      {/* Bar 1: location (hidden when the page pre-scopes the location) */}
+      {!fixedLocation && (
       <form onSubmit={locate} className="flex gap-2">
         <input
           type="search"
@@ -342,6 +380,7 @@ export default function AskClient() {
           {locating ? "Locating..." : "Set location"}
         </button>
       </form>
+      )}
 
       {locateError && (
         <div role="alert" className="mt-3 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -349,7 +388,7 @@ export default function AskClient() {
         </div>
       )}
 
-      {located && (
+      {located && !fixedLocation && (
         <div className="mt-4 rounded border border-neutral-200 bg-neutral-50 px-4 py-3">
           <p className="text-xs uppercase tracking-wide text-neutral-400">
             Your delegation
@@ -464,7 +503,7 @@ export default function AskClient() {
         <div className="mt-3">
           {exchanges.length === 0 && !asking && (
             <ul className="flex flex-wrap gap-2">
-              {SUGGESTIONS.map((s) => (
+              {suggestions.map((s) => (
                 <li key={s}>
                   <button
                     type="button"
@@ -552,9 +591,37 @@ export default function AskClient() {
               <p className="text-sm font-medium text-neutral-900">{ex.question}</p>
               <div className="mt-3">{renderAnswer(ex.answer)}</div>
               <p className="mt-3 border-t border-neutral-100 pt-2 text-xs text-neutral-400">
-                {ex.trace.length > 0
-                  ? `Checked: ${[...new Set(ex.trace.map((t) => TOOL_LABELS[t.tool] ?? t.tool))].join(", ")}. `
-                  : "Answered from the delegation roster. "}
+                {ex.trace.length > 0 ? (
+                  <>
+                    Checked:{" "}
+                    {[
+                      ...ex.trace
+                        .reduce((m, t) => {
+                          const label = TOOL_LABELS[t.tool] ?? t.tool;
+                          if (!m.has(label) || !m.get(label))
+                            m.set(label, traceHref(t));
+                          return m;
+                        }, new Map<string, string | null>())
+                        .entries(),
+                    ].map(([label, href], i, arr) => (
+                      <span key={label}>
+                        {href ? (
+                          <Link
+                            href={href}
+                            className="underline decoration-neutral-200 underline-offset-2 hover:text-neutral-700"
+                          >
+                            {label}
+                          </Link>
+                        ) : (
+                          label
+                        )}
+                        {i < arr.length - 1 ? ", " : ". "}
+                      </span>
+                    ))}
+                  </>
+                ) : (
+                  "Answered from the delegation roster. "
+                )}
                 Answers draw only on official records in this site&apos;s database.
                 {ex.cached && " Served from today's cache."}
                 {" "}Each question is answered on its own — name the member you mean.

@@ -15,6 +15,7 @@ import { MemberCard } from "@/components/member-card";
 import { PartyBar } from "@/components/party-bar";
 import { StateCoverageNote } from "@/components/data-coverage";
 import { effectiveTotal, fmt } from "@/lib/finance";
+import AskClient from "@/components/ask-client";
 
 type Props = {
   params: Promise<{ code: string }>;
@@ -149,6 +150,35 @@ export default async function StatePage({ params }: Props) {
           </p>
         </div>
       )}
+
+      {/* Ask, pre-scoped to this delegation */}
+      <div className="mb-10 rounded-lg border border-neutral-200 bg-stone-50 p-5">
+        <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <span className="rounded-full border border-neutral-300 bg-white px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-neutral-600">
+            AI lookup
+          </span>
+          <p className="text-sm text-neutral-500">
+            Ask about the {state.name} delegation — grounded in official
+            records, cites what it checked.
+          </p>
+        </div>
+        <AskClient
+          initialLocated={{
+            stateCode: state.code,
+            stateName: state.name,
+            district: null,
+            matchedAddress: null,
+            members: membersList.map((m) => ({
+              bioguideId: m.bioguideId,
+              fullName: m.fullName,
+              party: m.party,
+              chamber: m.chamber,
+              district: m.district,
+              photoUrl: m.photoUrl,
+            })),
+          }}
+        />
+      </div>
 
       {/* Two-column layout: delegation + sidebar */}
       <div className="grid grid-cols-1 gap-10 lg:grid-cols-3">
