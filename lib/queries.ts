@@ -928,7 +928,9 @@ export async function getSyncSummary() {
         (SELECT COUNT(*) FROM campaign_finance) AS campaign_finance,
         (SELECT COUNT(*) FROM vote_positions) AS votes,
         (SELECT COUNT(*) FROM press_releases) AS press_releases,
-        (SELECT COUNT(*) FROM stock_transactions) AS disclosures
+        (SELECT COUNT(*) FROM stock_transactions) AS disclosures,
+        (SELECT COUNT(*) FROM stock_transactions) AS ptr,
+        (SELECT COUNT(*) FROM election_candidates) AS candidates
     `),
   ]);
   const depths = (depthRows.rows?.[0] ?? {}) as Record<string, unknown>;

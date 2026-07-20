@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getTotalMemberCount } from "@/lib/queries";
+import { getTotalMemberCount, getChamberComposition } from "@/lib/queries";
 import { db } from "@/lib/db";
 import {
   bills,
@@ -60,11 +60,13 @@ async function getSyncHistory() {
 }
 
 export default async function AboutPage() {
-  const [totalMembers, stats, syncs] = await Promise.all([
+  const [totalMembers, stats, syncs, composition] = await Promise.all([
     getTotalMemberCount(),
     getDataStats(),
     getSyncHistory(),
+    getChamberComposition(),
   ]);
+  const vacantSeats = composition.house.vacant + composition.senate.vacant;
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
@@ -274,7 +276,11 @@ export default async function AboutPage() {
           </div>
         </section>
 
-        <AboutProcessDetails syncs={syncs} />
+        <AboutProcessDetails
+          syncs={syncs}
+          totalMembers={totalMembers}
+          vacantSeats={vacantSeats}
+        />
       </div>
     </div>
   );
@@ -282,8 +288,12 @@ export default async function AboutPage() {
 
 function AboutProcessDetails({
   syncs,
+  totalMembers,
+  vacantSeats,
 }: {
   syncs: Awaited<ReturnType<typeof getSyncHistory>>;
+  totalMembers: number;
+  vacantSeats: number;
 }) {
   return (
     <>
@@ -452,13 +462,18 @@ function AboutProcessDetails({
                 @unitedstates/congress-legislators
               </a>
               . Congress has 435 voting House seats, 100 Senate seats, and six
-              non-voting delegate seats. As of mid-July 2026, four House seats
-              are vacant pending special elections — GA-13 after the
-              incumbent&apos;s death, and TX-23, CA-14, and FL-20 after
-              resignations — so the site tracks 537 sitting members. Vacant
-              seats have no member page until a successor is sworn in; members
-              who die or leave office are marked out of office on the next
-              nightly sync.
+              non-voting delegate seats. The site currently tracks{" "}
+              {totalMembers} sitting members
+              {vacantSeats > 0 && (
+                <>
+                  , with {vacantSeats} voting seat{vacantSeats === 1 ? "" : "s"}{" "}
+                  vacant pending special elections
+                </>
+              )}
+              . These numbers are computed from the live database, not written
+              by hand. Vacant seats have no member page until a successor is
+              sworn in; members who die or leave office are marked out of
+              office on the next nightly sync.
             </li>
           </ul>
         </section>
