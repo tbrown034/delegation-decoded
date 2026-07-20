@@ -31,6 +31,7 @@ interface Exchange {
   question: string;
   answer: string;
   trace: TraceEntry[];
+  cached?: boolean;
 }
 
 const SUGGESTIONS = [
@@ -171,7 +172,7 @@ export default function AskClient() {
         setAskError(json.error ?? "The lookup failed. Try again.");
         return;
       }
-      setExchanges((prev) => [...prev, { question: trimmed, answer: json.answer, trace: json.trace ?? [] }]);
+      setExchanges((prev) => [...prev, { question: trimmed, answer: json.answer, trace: json.trace ?? [], cached: json.cached === true }]);
     } catch {
       setAskError("The lookup failed. Check your connection and try again.");
     } finally {
@@ -334,6 +335,7 @@ export default function AskClient() {
                 <p className="mt-3 border-t border-neutral-100 pt-2 text-xs text-neutral-400">
                   Checked:{" "}
                   {[...new Set(ex.trace.map((t) => TOOL_LABELS[t.tool] ?? t.tool))].join(", ")}. Answers draw only on official records in this site&apos;s database.
+                  {ex.cached && " Served from today's cache."}
                 </p>
               )}
             </li>

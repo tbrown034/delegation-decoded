@@ -455,11 +455,22 @@ function AboutProcessDetails({
             AI transparency
           </h2>
           <p>
-            One pipeline uses AI: House PTR PDFs are parsed with Anthropic
-            Claude Sonnet 4.6 in vision mode. The model reads the rendered
-            disclosure form and returns structured JSON, ticker, asset
-            description, owner, transaction type, transaction date, amount
-            band, plus a per-row confidence score (0–100). Every row is
+            The <Link href="/ask" className="text-neutral-900 underline decoration-neutral-300 underline-offset-2 hover:decoration-neutral-500">Ask</Link>{" "}
+            feature uses Anthropic Claude to answer questions, but the model
+            never answers from its own knowledge. It can only call this
+            site&apos;s own database queries — the same ones that render every
+            page — and compose an answer from what they return. If the data
+            can&apos;t answer, it is instructed to say so rather than guess.
+            Each answer lists which records were checked, and every member and
+            bill it names links to the underlying page so you can verify.
+            Questions are rate-limited and common answers are cached for a day.
+          </p>
+          <p className="mt-2">
+            One ingestion pipeline uses AI: House PTR PDFs are parsed with
+            Anthropic Claude Sonnet 4.6 in vision mode. The model reads the
+            rendered disclosure form and returns structured JSON, ticker,
+            asset description, owner, transaction type, transaction date,
+            amount band, plus a per-row confidence score (0–100). Every row is
             stored with its score; rows below 80% are flagged in the UI and
             the user can see exactly which rows the parser was uncertain
             about. Senate PTRs do not use AI: they come back as structured
@@ -467,7 +478,7 @@ function AboutProcessDetails({
           </p>
           <p className="mt-2">
             All other data, bills, sponsorships, votes, finance, committees,
-            members, press releases, traces directly to an official API or
+            members, traces directly to an official API or
             community-maintained dataset, with no model in the loop.
           </p>
           <p className="mt-2">

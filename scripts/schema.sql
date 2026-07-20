@@ -252,3 +252,44 @@ CREATE INDEX IF NOT EXISTS idx_tx_member ON stock_transactions(bioguide_id);
 CREATE INDEX IF NOT EXISTS idx_tx_ticker ON stock_transactions(ticker);
 CREATE INDEX IF NOT EXISTS idx_tx_date ON stock_transactions(tx_date);
 CREATE INDEX IF NOT EXISTS idx_tx_review ON stock_transactions(needs_review) WHERE needs_review = true;
+
+-- =============================================================================
+-- Events dedupe guard
+-- generate-events.ts relies on ON CONFLICT DO NOTHING, but the table shipped
+-- without a natural-key constraint, so every run re-inserted the same rows.
+-- The DELETE clears historic duplicates (keeps the oldest row) and must run
+-- before the unique index can build; both are idempotent.
+-- =============================================================================
+
+DELETE FROM events e USING events d
+  WHERE e.id > d.id
+    AND e.event_type = d.event_type
+    AND COALESCE(e.related_id, '') = COALESCE(d.related_id, '')
+    AND COALESCE(e.state_code, '') = COALESCE(d.state_code, '')
+    AND COALESCE(e.bioguide_id, '') = COALESCE(d.bioguide_id, '');
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_events_identity
+  ON events (event_type, COALESCE(related_id, ''), COALESCE(state_code, ''), COALESCE(bioguide_id, ''));
+
+-- =============================================================================
+-- /ask assistant: rate-limit counters + answer cache
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS ask_rate_limits (
+  bucket        TEXT NOT NULL,
+  window_start  TIMESTAMPTZ NOT NULL,
+  count         INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (bucket, window_start)
+);
+
+CREATE TABLE IF NOT EXISTS ask_cache (
+  question_norm  TEXT NOT NULL,
+  state_code     CHAR(2) NOT NULL,
+  district       INTEGER NOT NULL DEFAULT -1,
+  answer         TEXT NOT NULL,
+  trace          JSONB,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (question_norm, state_code, district)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ask_cache_created ON ask_cache(created_at);
