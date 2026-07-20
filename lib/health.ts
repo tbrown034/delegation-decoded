@@ -47,6 +47,14 @@ export type HealthReport = {
   checks: HealthCheck[];
 };
 
+// Sources deliberately paused. Their historical failures stop tripping the
+// crit alarms, but the pause itself renders as a visible warn so it is never
+// silent. Remove the entry to resume normal alerting.
+const PAUSED_SOURCES: Record<string, string> = {
+  "disclosures-clerk.house.gov":
+    "House PTR ingest paused July 20, 2026: the upstream API key is rejected and the scheduled job is disabled pending key rotation. Already-ingested trades remain published; Senate PTR ingest is unaffected.",
+};
+
 // Per-source thresholds for staleness (in hours).
 // Beyond `warn`, the source is yellow. Beyond `crit`, red.
 const STALENESS: Record<string, { warn: number; crit: number }> = {
@@ -266,11 +274,25 @@ export async function buildHealthReport(): Promise<HealthReport> {
     });
   }
 
+  // Paused sources: surface the pause itself, and keep their old failures
+  // out of the alarms below — a deliberate pause is not an incident.
+  const activeFailures = recentFailures.filter(
+    (r) => !(r.source in PAUSED_SOURCES)
+  );
+  for (const [src, note] of Object.entries(PAUSED_SOURCES)) {
+    checks.push({
+      id: `paused-${src}`,
+      level: "warn",
+      title: `${SOURCE_LABELS[src] ?? src} ingest paused`,
+      detail: note,
+    });
+  }
+
   // Dedicated alert for upstream-API auth failures so they don't get
   // buried in the generic recent-failures detail. Looks across the last
   // 14 days of failures for any auth-shape error and reports it with
   // the offending source called out.
-  const authFailures = recentFailures.filter((r) =>
+  const authFailures = activeFailures.filter((r) =>
     /\b(?:401|403)\b.*(?:authentication_error|invalid[_ -]?(?:x-)?api[_ -]?key|invalid[_ -]?token|API_KEY_INVALID)/i.test(
       r.errorMessage ?? ""
     )
@@ -289,12 +311,12 @@ export async function buildHealthReport(): Promise<HealthReport> {
   }
 
   // Recent failures.
-  if (recentFailures.length > 0) {
+  if (activeFailures.length > 0) {
     checks.push({
       id: "recent-failures",
-      level: recentFailures.length >= 3 ? "crit" : "warn",
-      title: `${recentFailures.length} failed sync run${recentFailures.length === 1 ? "" : "s"} in the last 14 days`,
-      detail: await renderRecentFailuresDetail(recentFailures.slice(0, 3)),
+      level: activeFailures.length >= 3 ? "crit" : "warn",
+      title: `${activeFailures.length} failed sync run${activeFailures.length === 1 ? "" : "s"} in the last 14 days`,
+      detail: await renderRecentFailuresDetail(activeFailures.slice(0, 3)),
     });
   }
 

@@ -69,13 +69,16 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-      - name: Ingest House PTR disclosures
-        if: always()
-        continue-on-error: true
-        run: npx tsx scripts/ingest/disclosures-house.ts
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      # PAUSED July 20, 2026: disclosures-clerk.house.gov rejects the current
+      # API key (failing since ~Apr 25). Re-enable after rotating the secret.
+      # lib/health.ts surfaces this pause as a visible warn on /health.
+      # - name: Ingest House PTR disclosures
+      #   if: always()
+      #   continue-on-error: true
+      #   run: npx tsx scripts/ingest/disclosures-house.ts
+      #   env:
+      #     DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      #     ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: Generate events feed
         if: always()
