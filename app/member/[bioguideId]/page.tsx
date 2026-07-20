@@ -15,6 +15,7 @@ import {
   getMemberCoverage,
   getMemberCoverageDetail,
   getMemberActivityData,
+  getRaceCandidates,
 } from "@/lib/queries";
 import { MemberCoverageCard } from "@/components/member-coverage-card";
 import { STATE_BY_CODE } from "@/lib/states";
@@ -48,7 +49,7 @@ export default async function MemberPage({ params }: Props) {
   const member = await getMemberByBioguideId(bioguideId);
   if (!member) notFound();
 
-  const [memberTerms, memberCommittees, memberBills, billCounts, finance, contributors, voteSummary, recentVotes, coverage, coverageDetail, activityData] =
+  const [memberTerms, memberCommittees, memberBills, billCounts, finance, contributors, voteSummary, recentVotes, coverage, coverageDetail, activityData, race] =
     await Promise.all([
       getMemberTerms(bioguideId),
       getMemberCommittees(bioguideId),
@@ -61,6 +62,11 @@ export default async function MemberPage({ params }: Props) {
       getMemberCoverage(bioguideId),
       getMemberCoverageDetail(bioguideId),
       getMemberActivityData(bioguideId),
+      getRaceCandidates(
+        member.stateCode,
+        member.chamber === "senate" ? "S" : "H",
+        member.chamber === "house" ? (member.district ?? 0) : null
+      ),
     ]);
 
   const stateName = STATE_BY_CODE[member.stateCode]?.name || member.stateCode;
@@ -76,6 +82,14 @@ export default async function MemberPage({ params }: Props) {
   const topCommittees = memberCommittees.filter((c) => !c.parentId);
   const subCommittees = memberCommittees.filter((c) => c.parentId);
   const latestFinance = finance[0] || null;
+
+  // Every House seat is on the 2026 ballot; a Senate seat is up when its
+  // current term ends in January 2027.
+  const currentTerm = memberTerms.find((t) => t.isCurrent);
+  const seatUp2026 =
+    member.chamber === "house" ||
+    (currentTerm?.endDate ?? "").startsWith("2027");
+  const raceFilers = seatUp2026 && race.hasData ? race.candidates : [];
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
@@ -345,6 +359,66 @@ export default async function MemberPage({ params }: Props) {
             </a>
             , a companion project.
           </div>
+        </section>
+      )}
+
+      {/* The 2026 race: FEC filers for this seat */}
+      {raceFilers.length > 0 && (
+        <section className="mb-10">
+          <h2 className="mb-1 font-serif text-lg font-semibold">
+            The 2026 race
+          </h2>
+          <p className="mb-3 text-xs text-neutral-500">
+            Candidates who have filed FEC candidacy paperwork for this seat.
+            Filing is not ballot access — state deadlines and primaries set
+            the ballot, and primary results are not shown here.
+            {member.chamber === "senate" &&
+              " Senate filings are statewide; if the state has a concurrent special election, filers for both seats appear together."}
+          </p>
+          <ul className="divide-y divide-neutral-100 rounded border border-neutral-200 bg-white">
+            {raceFilers.slice(0, 8).map((c) => (
+              <li
+                key={c.candidate_id}
+                className="flex items-baseline justify-between gap-3 px-4 py-2.5"
+              >
+                <div className="min-w-0">
+                  <span className="text-sm font-medium text-neutral-900">
+                    {c.name}
+                  </span>
+                  <span className="ml-2 text-xs text-neutral-500">
+                    {c.party
+                      ? c.party
+                          .replace(" PARTY", "")
+                          .toLowerCase()
+                          .replace(/^\w/, (ch) => ch.toUpperCase())
+                      : "No party listed"}
+                    {c.incumbent_challenge === "I" &&
+                      c.candidate_id !== member.fecCandidateId && (
+                        <span className="ml-1 text-amber-700">
+                          · filed as incumbent
+                        </span>
+                      )}
+                    {c.candidate_id === member.fecCandidateId && (
+                      <span className="ml-1">· this member</span>
+                    )}
+                  </span>
+                </div>
+                <span className="shrink-0 font-mono text-xs text-neutral-500">
+                  {c.total_receipts ? `${fmt(c.total_receipts)} raised` : "—"}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {raceFilers.length > 8 && (
+            <p className="mt-2 text-xs text-neutral-400">
+              Plus {raceFilers.length - 8} more filer
+              {raceFilers.length - 8 === 1 ? "" : "s"} with smaller totals.
+            </p>
+          )}
+          <p className="mt-2 text-[11px] text-neutral-400">
+            Source: FEC statements of candidacy (Form 2), statutory candidates
+            who have raised funds. Synced daily.
+          </p>
         </section>
       )}
 

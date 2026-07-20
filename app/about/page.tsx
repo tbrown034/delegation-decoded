@@ -332,6 +332,17 @@ function AboutProcessDetails({
               record.
             </li>
             <li>
+              <strong className="text-neutral-900">Ingest 2026 candidates.</strong>{" "}
+              FEC statements of candidacy (Form 2) are synced daily, filtered
+              to statutory candidates who have raised funds — the standard cut
+              that drops paper filers. This is a filing list, not a ballot:
+              state deadlines and primaries decide ballot access, primary
+              results are not ingested, and a filer who later died or resigned
+              can still appear in FEC data — the site cross-checks filed
+              incumbents against the current member roster and flags anyone no
+              longer in office.
+            </li>
+            <li>
               <strong className="text-neutral-900">Ingest disclosures.</strong>{" "}
               House PTR PDFs are downloaded from the Clerk, hashed, and parsed
               with Claude Sonnet 4.6 in vision mode. Senate PTRs come from the

@@ -131,6 +131,8 @@ const REFUSAL_MARKERS = [
   "outside what",
   "can't say who",
   "cannot say who",
+  "not loaded",
+  "not yet loaded",
   // Opinion-bait and injection refusals
   "won't",
   "endorse",

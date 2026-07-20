@@ -52,13 +52,19 @@ function titleWord(w: string): string {
     .replace(/^Mc(\w)/, (_, c: string) => `Mc${c.toUpperCase()}`);
 }
 
+const DROP_TITLES = new Set(["DR", "MR", "MRS", "MS", "REV", "HON", "MISS"]);
+
 function normalizeCandidateName(raw: string): string {
   const commaAt = raw.indexOf(",");
   const flipped =
     commaAt === -1
       ? raw
       : `${raw.slice(commaAt + 1).trim()} ${raw.slice(0, commaAt).trim()}`;
-  return flipped.split(/\s+/).map(titleWord).join(" ");
+  return flipped
+    .split(/\s+/)
+    .filter((w) => !DROP_TITLES.has(w.toUpperCase().replace(/\./g, "")))
+    .map(titleWord)
+    .join(" ");
 }
 
 async function main() {
