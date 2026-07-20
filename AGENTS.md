@@ -15,15 +15,18 @@ Congressional accountability tracking organized by state delegation. 538 members
 - Next.js 16 (App Router only, Server Components by default), React 19, TypeScript
 - Tailwind CSS 4
 - Neon serverless Postgres + Drizzle ORM
-- Anthropic Sonnet 4.6 for House PTR vision parsing only
+- Anthropic API: Opus 4.8 powers the /ask grounded lookup; Sonnet 4.6 for House PTR vision parsing
 - Deployed on Vercel
 - pnpm preferred
 
 ## Routes
 
 ```
-/                            home: 50-state grid, trades summary, activity feed, data freshness
+/                            home: AI ask bars (location + question), 50-state grid, activity feed, data freshness
 /about                       methodology, sources, limitations, AI transparency
+/ask                         location-first natural-language lookup (Claude tool calling over lib/queries)
+/api/ask                     grounded tool-loop endpoint (POST: question + stateCode)
+/api/ask/locate              state name/code or address → delegation resolution
 /find                        Census-Geocoder address-to-delegation lookup
 /compare                     side-by-side state delegation comparison
 /state/[code]                full delegation dashboard

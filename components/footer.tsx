@@ -19,14 +19,14 @@ export function Footer() {
             <Link href="/" className="transition-colors hover:text-neutral-900">
               States
             </Link>
+            <Link href="/ask" className="transition-colors hover:text-neutral-900">
+              Ask
+            </Link>
             <Link href="/find" className="transition-colors hover:text-neutral-900">
               Find mine
             </Link>
             <Link href="/compare" className="transition-colors hover:text-neutral-900">
               Compare
-            </Link>
-            <Link href="/trades" className="transition-colors hover:text-neutral-900">
-              Trades
             </Link>
             <Link href="/for-journalists" className="transition-colors hover:text-neutral-900">
               For journalists

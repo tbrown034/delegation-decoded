@@ -11,44 +11,7 @@ export const metadata: Metadata = {
     "Enter your address to see your two senators and your representative.",
 };
 
-interface GeocodeResult {
-  matchedAddress: string;
-  stateCode: string;
-  district: number | null;
-}
-
-async function geocode(address: string): Promise<GeocodeResult | null> {
-  const url = new URL(
-    "https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress"
-  );
-  url.searchParams.set("address", address);
-  url.searchParams.set("benchmark", "Public_AR_Current");
-  url.searchParams.set("vintage", "Current_Current");
-  url.searchParams.set("layers", "all");
-  url.searchParams.set("format", "json");
-
-  const r = await fetch(url, { cache: "no-store" });
-  if (!r.ok) return null;
-  const json = await r.json();
-  const match = json?.result?.addressMatches?.[0];
-  if (!match) return null;
-
-  const stateCode = match.addressComponents?.state ?? null;
-  if (!stateCode) return null;
-
-  const cdKey = Object.keys(match.geographies ?? {}).find((k) =>
-    k.includes("Congressional Districts")
-  );
-  const cd = cdKey ? match.geographies[cdKey]?.[0] : null;
-  const baseName = cd?.BASENAME ?? null;
-  const district = baseName != null ? parseInt(baseName, 10) : null;
-
-  return {
-    matchedAddress: match.matchedAddress as string,
-    stateCode,
-    district: Number.isFinite(district) ? district : null,
-  };
-}
+import { geocodeAddress, type GeocodeResult } from "@/lib/geocode";
 
 async function lookupDelegation(stateCode: string, district: number | null) {
   // For at-large states (district=0), Census may return "1" or "0", try both.
@@ -124,7 +87,7 @@ export default async function FindPage({ searchParams }: Props) {
   let error: string | null = null;
 
   if (address) {
-    result = await geocode(address);
+    result = await geocodeAddress(address);
     if (!result) {
       error =
         "We couldn't match that address. Try a complete street address like \"1600 Pennsylvania Ave, Washington, DC 20500\".";

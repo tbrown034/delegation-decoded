@@ -12,8 +12,6 @@ import {
   getMemberTopContributors,
   getMemberVoteSummary,
   getMemberRecentVotes,
-  getMemberPressReleases,
-  getMemberPressReleaseCount,
   getMemberCoverage,
   getMemberCoverageDetail,
   getMemberActivityData,
@@ -22,10 +20,7 @@ import { MemberCoverageCard } from "@/components/member-coverage-card";
 import { STATE_BY_CODE } from "@/lib/states";
 import { effectiveTotal, fmt } from "@/lib/finance";
 import { MemberCoverageBar } from "@/components/data-coverage";
-import {
-  buildActivityTimeline,
-  extractKeywords,
-} from "@/lib/press-analytics";
+import { buildActivityTimeline } from "@/lib/press-analytics";
 
 type Props = {
   params: Promise<{ bioguideId: string }>;
@@ -53,7 +48,7 @@ export default async function MemberPage({ params }: Props) {
   const member = await getMemberByBioguideId(bioguideId);
   if (!member) notFound();
 
-  const [memberTerms, memberCommittees, memberBills, billCounts, finance, contributors, voteSummary, recentVotes, memberPressReleases, pressReleaseCount, coverage, coverageDetail, activityData] =
+  const [memberTerms, memberCommittees, memberBills, billCounts, finance, contributors, voteSummary, recentVotes, coverage, coverageDetail, activityData] =
     await Promise.all([
       getMemberTerms(bioguideId),
       getMemberCommittees(bioguideId),
@@ -63,8 +58,6 @@ export default async function MemberPage({ params }: Props) {
       getMemberTopContributors(bioguideId),
       getMemberVoteSummary(bioguideId),
       getMemberRecentVotes(bioguideId, 15),
-      getMemberPressReleases(bioguideId, 10),
-      getMemberPressReleaseCount(bioguideId),
       getMemberCoverage(bioguideId),
       getMemberCoverageDetail(bioguideId),
       getMemberActivityData(bioguideId),
@@ -336,63 +329,24 @@ export default async function MemberPage({ params }: Props) {
         </section>
       )}
 
-      {/* Press Releases */}
-      <section className="mb-10">
-        <h2 className="mb-3 font-serif text-lg font-semibold">
-          Press Releases
-          {pressReleaseCount > 0 && (
-            <span className="ml-2 font-mono text-xs font-normal text-neutral-400">
-              {pressReleaseCount} via RSS
-            </span>
-          )}
-        </h2>
-        {memberPressReleases.length === 0 ? (
-          <p className="text-xs italic text-neutral-400">
-            No RSS feed found for this office. Press releases may be available
-            on the{" "}
-            {member.websiteUrl ? (
-              <a
-                href={member.websiteUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-neutral-500 underline decoration-neutral-300 underline-offset-2"
-              >
-                member&apos;s official site
-              </a>
-            ) : (
-              "member's official site"
-            )}
-            .
-          </p>
-        ) : (
-          <div>
-            {memberPressReleases.map((pr) => (
-              <div
-                key={pr.id}
-                className="border-b border-neutral-100 py-2 last:border-0"
-              >
-                <a
-                  href={pr.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm text-neutral-900 underline decoration-neutral-300 underline-offset-2 hover:decoration-neutral-500"
-                >
-                  {pr.title}
-                </a>
-                {pr.publishedAt && (
-                  <span className="ml-2 font-mono text-[11px] text-neutral-300">
-                    {new Date(pr.publishedAt).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                    })}
-                  </span>
-                )}
-              </div>
-            ))}
+      {/* Statements bridge — press archiving lives at Capitol Releases */}
+      {member.chamber === "senate" && (
+        <section className="mb-10">
+          <div className="rounded border border-neutral-200 bg-stone-50 px-4 py-3 text-sm text-neutral-600">
+            Official statements and press releases from {member.fullName} are
+            archived, searchable, and updated daily at{" "}
+            <a
+              href="https://capitolreleases.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-neutral-900 underline decoration-neutral-300 underline-offset-2 hover:decoration-neutral-800"
+            >
+              Capitol Releases
+            </a>
+            , a companion project.
           </div>
-        )}
-      </section>
+        </section>
+      )}
 
       {/* Campaign Finance */}
       {finance.length > 0 && (
@@ -545,7 +499,7 @@ export default async function MemberPage({ params }: Props) {
       {/* Activity Timeline */}
       {(() => {
         const timeline = buildActivityTimeline(
-          activityData.pressReleases,
+          [],
           activityData.bills,
           activityData.votes
         ).slice(0, 30);
@@ -569,10 +523,6 @@ export default async function MemberPage({ params }: Props) {
               Activity Timeline
             </h2>
             <div className="mb-2 flex gap-3 text-[10px] text-neutral-400">
-              <span className="flex items-center gap-1">
-                <span className="inline-block size-1.5 rounded-full bg-sky-500" />
-                Statements
-              </span>
               <span className="flex items-center gap-1">
                 <span className="inline-block size-1.5 rounded-full bg-blue-600" />
                 Legislation
@@ -636,36 +586,6 @@ export default async function MemberPage({ params }: Props) {
                 </div>
               ))}
             </div>
-          </section>
-        );
-      })()}
-
-      {/* Messaging Topics */}
-      {(() => {
-        const titles = activityData.pressReleases.map((pr) => pr.title);
-        const keywords = extractKeywords(titles, 10);
-        if (keywords.length === 0) return null;
-        return (
-          <section className="mb-10">
-            <h2 className="mb-3 font-serif text-lg font-semibold">
-              Messaging Topics
-            </h2>
-            <div className="flex flex-wrap gap-1.5">
-              {keywords.map((kw) => (
-                <span
-                  key={kw.term}
-                  className="inline-flex items-center gap-1 rounded-full border border-neutral-200 px-2.5 py-1 text-xs text-neutral-600"
-                >
-                  {kw.term}
-                  <span className="font-mono text-[10px] text-neutral-300">
-                    {kw.count}
-                  </span>
-                </span>
-              ))}
-            </div>
-            <p className="mt-2 text-[10px] italic text-neutral-400">
-              Extracted from {titles.length} press release titles
-            </p>
           </section>
         );
       })()}

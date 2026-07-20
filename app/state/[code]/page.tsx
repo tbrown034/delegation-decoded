@@ -9,12 +9,8 @@ import {
   getStateDelegationFinance,
   getStateEvents,
   getStateBrief,
-  getStatePressReleases,
   getStateCoverage,
-  getStatePressRankings,
-  getStatePressReleaseTitles,
 } from "@/lib/queries";
-import { extractKeywords } from "@/lib/press-analytics";
 import { MemberCard } from "@/components/member-card";
 import { PartyBar } from "@/components/party-bar";
 import { StateCoverageNote } from "@/components/data-coverage";
@@ -45,7 +41,7 @@ export default async function StatePage({ params }: Props) {
   const state = await getStateByCode(code);
   if (!state) notFound();
 
-  const [membersList, committeeCoverage, recentBills, financeData, stateEvents, brief, statePressReleases, coverageStats, pressRankings, pressTitles] =
+  const [membersList, committeeCoverage, recentBills, financeData, stateEvents, brief, coverageStats] =
     await Promise.all([
       getMembersByState(code),
       getStateCommitteeCoverage(code),
@@ -53,10 +49,7 @@ export default async function StatePage({ params }: Props) {
       getStateDelegationFinance(code),
       getStateEvents(code, 12),
       getStateBrief(code),
-      getStatePressReleases(code, 8),
       getStateCoverage(code),
-      getStatePressRankings(code),
-      getStatePressReleaseTitles(code),
     ]);
 
   const senators = membersList.filter((m) => m.chamber === "senate");
@@ -97,8 +90,6 @@ export default async function StatePage({ params }: Props) {
   const financeList = Array.from(financeByMember.values()).sort(
     (a, b) => effectiveTotal(b) - effectiveTotal(a)
   );
-
-  const messagingKeywords = extractKeywords(pressTitles, 12);
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
@@ -290,25 +281,19 @@ export default async function StatePage({ params }: Props) {
           )}
         </div>
 
-        <StateSidebar statePressReleases={statePressReleases} messagingKeywords={messagingKeywords} pressRankings={pressRankings} pressTitleCount={pressTitles.length} financeList={financeList} committeeMap={committeeMap} coverageStats={coverageStats} />
+        <StateSidebar senatorNames={senators.map((s) => s.fullName)} financeList={financeList} committeeMap={committeeMap} coverageStats={coverageStats} />
       </div>
     </div>
   );
 }
 
 function StateSidebar({
-  statePressReleases,
-  messagingKeywords,
-  pressRankings,
-  pressTitleCount,
+  senatorNames,
   financeList,
   committeeMap,
   coverageStats,
 }: {
-  statePressReleases: Awaited<ReturnType<typeof getStatePressReleases>>;
-  messagingKeywords: ReturnType<typeof extractKeywords>;
-  pressRankings: Awaited<ReturnType<typeof getStatePressRankings>>;
-  pressTitleCount: number;
+  senatorNames: string[];
   financeList: Awaited<ReturnType<typeof getStateDelegationFinance>>;
   committeeMap: Map<string, { name: string; members: Awaited<ReturnType<typeof getStateCommitteeCoverage>> }>;
   coverageStats: Awaited<ReturnType<typeof getStateCoverage>>;
@@ -317,114 +302,25 @@ function StateSidebar({
     <>
         {/* Sidebar */}
         <div className="space-y-8">
-          {/* Press Releases */}
-          {statePressReleases.length > 0 && (
+          {/* Statements bridge — press archiving lives at Capitol Releases */}
+          {senatorNames.length > 0 && (
             <section>
               <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-neutral-400">
                 Statements & releases
               </h2>
-              <div>
-                {statePressReleases.map((pr) => (
-                  <div
-                    key={pr.id}
-                    className="border-b border-neutral-100 py-2 last:border-0"
-                  >
-                    <a
-                      href={pr.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-neutral-700 underline decoration-neutral-200 underline-offset-2 hover:decoration-neutral-400"
-                    >
-                      {pr.title}
-                    </a>
-                    <p className="mt-0.5 text-[10px] text-neutral-400">
-                      <span
-                        className={`mr-0.5 inline-block h-1 w-1 rounded-full ${PARTY_DOT[pr.memberParty] || "bg-neutral-400"}`}
-                      />
-                      {pr.memberName}
-                      {pr.publishedAt && (
-                        <span className="ml-1 font-mono">
-                          {new Date(pr.publishedAt).toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                          })}
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* Messaging Topics */}
-          {messagingKeywords.length > 0 && (
-            <section>
-              <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-neutral-400">
-                What they&apos;re talking about
-              </h2>
-              <div className="flex flex-wrap gap-1.5">
-                {messagingKeywords.map((kw) => (
-                  <span
-                    key={kw.term}
-                    className="inline-flex items-center gap-1 rounded-full border border-neutral-200 px-2.5 py-1 text-xs text-neutral-600"
-                  >
-                    {kw.term}
-                    <span className="font-mono text-[10px] text-neutral-300">
-                      {kw.count}
-                    </span>
-                  </span>
-                ))}
-              </div>
-              <p className="mt-2 text-[10px] italic text-neutral-400">
-                Extracted from {pressTitleCount} press release titles via
-                RSS
+              <p className="text-xs leading-relaxed text-neutral-500">
+                Official statements from {senatorNames.join(" and ")} are
+                archived and searchable at{" "}
+                <a
+                  href="https://capitolreleases.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-neutral-700 underline decoration-neutral-300 underline-offset-2 hover:decoration-neutral-600"
+                >
+                  Capitol Releases
+                </a>
+                , a companion project.
               </p>
-            </section>
-          )}
-
-          {/* Messaging Volume */}
-          {pressRankings.some((r) => r.releaseCount > 0) && (
-            <section>
-              <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-neutral-400">
-                Messaging volume
-              </h2>
-              <div>
-                {pressRankings.map((r) => {
-                  const maxCount = pressRankings[0]?.releaseCount || 1;
-                  const pct =
-                    maxCount > 0 ? (r.releaseCount / maxCount) * 100 : 0;
-                  const dotColor = PARTY_DOT[r.party] || "bg-neutral-400";
-
-                  return (
-                    <Link
-                      key={r.bioguideId}
-                      href={`/member/${r.bioguideId}`}
-                      className="group block border-b border-neutral-100 py-1.5 no-underline last:border-0"
-                    >
-                      <div className="flex items-baseline justify-between">
-                        <span className="flex items-center gap-1 text-xs text-neutral-600 group-hover:text-neutral-900">
-                          <span
-                            className={`inline-block h-1.5 w-1.5 rounded-full ${dotColor}`}
-                          />
-                          {r.fullName}
-                        </span>
-                        <span className="font-mono text-[11px] text-neutral-400">
-                          {r.releaseCount > 0 ? r.releaseCount : "—"}
-                        </span>
-                      </div>
-                      {r.releaseCount > 0 && (
-                        <div className="mt-0.5 h-1 w-full overflow-hidden rounded-sm bg-neutral-100">
-                          <div
-                            className="h-full rounded-sm bg-neutral-400"
-                            style={{ width: `${Math.max(pct, 3)}%` }}
-                          />
-                        </div>
-                      )}
-                    </Link>
-                  );
-                })}
-              </div>
             </section>
           )}
 
@@ -521,7 +417,6 @@ function StateSidebar({
           {coverageStats && (
             <StateCoverageNote
               totalMembers={coverageStats.totalMembers}
-              membersWithPressReleases={coverageStats.membersWithPressReleases}
               membersWithFinance={coverageStats.membersWithFinance}
             />
           )}

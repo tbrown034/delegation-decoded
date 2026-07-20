@@ -47,13 +47,11 @@ export function MemberCoverageBar({ coverage }: MemberCoverageBarProps) {
 
 interface StateCoverageNoteProps {
   totalMembers: number;
-  membersWithPressReleases: number;
   membersWithFinance: number;
 }
 
 export function StateCoverageNote({
   totalMembers,
-  membersWithPressReleases,
   membersWithFinance,
 }: StateCoverageNoteProps) {
   const notes: string[] = [];
@@ -61,11 +59,6 @@ export function StateCoverageNote({
   if (membersWithFinance < totalMembers) {
     notes.push(
       `Campaign finance: ${membersWithFinance}/${totalMembers} members (FEC data availability varies by filing schedule)`
-    );
-  }
-  if (membersWithPressReleases < totalMembers) {
-    notes.push(
-      `Press releases: ${membersWithPressReleases}/${totalMembers} members (via RSS — not all offices publish feeds)`
     );
   }
 

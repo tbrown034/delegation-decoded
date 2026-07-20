@@ -1,0 +1,39 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import AskClient from "@/components/ask-client";
+
+export const metadata: Metadata = {
+  title: "Ask about your delegation, Delegation Decoded",
+  description:
+    "Set your state or address, then ask plain-language questions about your members of Congress: votes, bills, committees, and campaign money, answered only from official records.",
+};
+
+export default function AskPage() {
+  return (
+    <div className="mx-auto max-w-3xl px-4 py-10">
+      <div className="mb-6">
+        <h1 className="font-serif text-3xl font-semibold tracking-tight sm:text-4xl">
+          Ask about your delegation
+        </h1>
+        <p className="mt-2 max-w-xl text-sm text-neutral-500">
+          Set your state or address, then ask in plain language. Answers come
+          only from official records already in this site&apos;s database:
+          Congress.gov, House and Senate roll calls, and FEC filings. If the
+          records can&apos;t answer, it says so.
+        </p>
+      </div>
+
+      <AskClient />
+
+      <p className="mt-10 text-xs text-neutral-400">
+        The assistant cannot browse the web or answer from general knowledge.
+        Every claim links back to a member, bill, or filing you can verify. Read
+        more about our sources on the{" "}
+        <Link href="/about" className="underline hover:text-neutral-600">
+          methodology page
+        </Link>
+        .
+      </p>
+    </div>
+  );
+}

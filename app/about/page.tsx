@@ -488,6 +488,31 @@ function AboutProcessDetails({
           </div>
         </section>
 
+        <section>
+          <h2 className="mb-4 font-serif text-lg font-semibold text-neutral-900">
+            For journalists & site health
+          </h2>
+          <p>
+            Reporters can bulk-download every dataset as CSV, with freshness
+            timestamps and reporting tips, on the{" "}
+            <Link
+              href="/for-journalists"
+              className="text-neutral-900 underline decoration-neutral-300 underline-offset-2 hover:decoration-neutral-500"
+            >
+              For Journalists
+            </Link>{" "}
+            page. The full pipeline status — per-source coverage, sync history,
+            and any active issues — is public at{" "}
+            <Link
+              href="/health"
+              className="text-neutral-900 underline decoration-neutral-300 underline-offset-2 hover:decoration-neutral-500"
+            >
+              /health
+            </Link>
+            .
+          </p>
+        </section>
+
         {/* Contact */}
         <section className="border-t border-neutral-100 pt-8">
           <p>

@@ -7,12 +7,9 @@ import { Search } from "./search";
 
 const links = [
   { href: "/", label: "States" },
-  { href: "/find", label: "Find mine" },
+  { href: "/ask", label: "Ask" },
   { href: "/compare", label: "Compare" },
-  { href: "/trades", label: "Trades" },
-  { href: "/for-journalists", label: "For journalists" },
-  { href: "/health", label: "Health" },
-  { href: "/about", label: "About & Methodology" },
+  { href: "/about", label: "About" },
 ];
 
 export function Nav() {

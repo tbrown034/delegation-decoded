@@ -9,25 +9,15 @@ import {
   getRecentEvents,
   getSyncSummary,
 } from "@/lib/queries";
-import { getTradesHomeSummary } from "@/lib/disclosure-queries";
 import { PartyBar } from "@/components/party-bar";
 import { StateMap } from "@/components/state-map";
-import { TradesMonthlyBars } from "@/components/trades-monthly-bars";
+import AskClient from "@/components/ask-client";
 
 export const metadata: Metadata = {
   title: "Delegation Decoded",
   description:
     "Congressional accountability tracking organized by state delegation.",
 };
-
-function fmtCoverage(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleDateString("en-US", {
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-}
 
 function formatFreshnessAge(completedAt: string | null, nowMs: number): string {
   if (!completedAt) return "—";
@@ -49,14 +39,21 @@ function getCurrentTimeMs(): number {
 }
 
 export default async function Home() {
-  const [statesData, latestSync, totalMembers, recentEvents, syncSummary, trades] = await Promise.all([
+  const [statesData, latestSync, totalMembers, recentEvents, syncSummary] = await Promise.all([
     getAllStatesWithCounts(),
     getLatestSync(),
     getTotalMemberCount(),
     getRecentEvents(8),
     getSyncSummary(),
-    getTradesHomeSummary(),
   ]);
+
+  // Trades and press releases are intentionally quiet surfaces now — their
+  // pipelines still run, but the homepage leads with the near-complete
+  // official-API data (members, votes, bills, money, committees).
+  const quietEntities = new Set(["press_releases", "disclosures", "ptr", "audit"]);
+  const visibleSummary = syncSummary.filter(
+    (s) => !quietEntities.has(s.entity_type)
+  );
 
   // Split out territories from states for display
   const territories = new Set(["DC", "AS", "GU", "MP", "PR", "VI"]);
@@ -68,20 +65,23 @@ export default async function Home() {
     <div className="mx-auto max-w-5xl px-4 py-10">
       {/* Headline */}
       <div className="mb-10">
+        <p className="mb-2 font-mono text-[11px] uppercase tracking-widest text-neutral-400">
+          The US Congress — House and Senate
+        </p>
         <h1 className="font-serif text-4xl font-semibold tracking-tight sm:text-5xl">
           538 members. 50 delegations.
         </h1>
         <p className="mt-3 max-w-lg text-neutral-500">
-          Congressional accountability tracking, organized by state delegation.
-          Legislation, committees, and campaign finance, sourced from official
-          government records.
+          Set your location and ask about your members of Congress in plain
+          language — votes, bills, committees, and campaign money, answered
+          only from official government records.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-xs text-neutral-400">
           <span>
             {totalMembers} members tracked
           </span>
           <span className="text-neutral-200">|</span>
-          <span>{new Set(syncSummary.map((s) => s.source)).size} data sources</span>
+          <span>{new Set(visibleSummary.map((s) => s.source)).size} data sources</span>
           {latestSync?.completedAt && (
             <>
               <span className="text-neutral-200">|</span>
@@ -99,8 +99,33 @@ export default async function Home() {
         </div>
       </div>
 
+      {/* Ask — the AI front door */}
+      <div className="mb-12 rounded-lg border border-neutral-200 bg-stone-50 p-5 sm:p-6">
+        <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <span className="rounded-full border border-neutral-300 bg-white px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-neutral-600">
+            AI lookup
+          </span>
+          <p className="text-sm text-neutral-500">
+            Grounded in official records — it cites what it checked, and says
+            so when the data can&apos;t answer.
+          </p>
+        </div>
+        <AskClient />
+      </div>
+
       {/* Geographic Map */}
       <div className="mb-10">
+        <div className="mb-4 flex items-baseline justify-between">
+          <h2 className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+            Or browse by state
+          </h2>
+          <Link
+            href="/find"
+            className="text-xs text-neutral-500 no-underline hover:text-neutral-900"
+          >
+            Find yours by address →
+          </Link>
+        </div>
         <StateMap states={fiftyStates} />
         <div className="mt-3 flex items-center justify-center gap-4 text-[10px] text-neutral-400">
           <span className="flex items-center gap-1">
@@ -159,82 +184,6 @@ export default async function Home() {
         ))}
       </div>
 
-      {/* Stock trades */}
-      {trades.totalTrades > 0 && (
-        <div className="mt-10 border-t border-neutral-100 pt-8">
-          <div className="flex items-baseline justify-between">
-            <h2 className="text-xs font-medium uppercase tracking-wide text-neutral-400">
-              Stock trades
-            </h2>
-            <Link
-              href="/trades"
-              className="text-xs text-neutral-500 no-underline hover:text-neutral-900"
-            >
-              See all →
-            </Link>
-          </div>
-          <p className="mt-2 max-w-2xl text-sm text-neutral-600">
-            <span className="font-mono font-medium text-neutral-900">
-              {trades.totalTrades.toLocaleString()}
-            </span>{" "}
-            disclosed trades from{" "}
-            <span className="font-mono font-medium text-neutral-900">
-              {trades.houseMembers + trades.senateMembers}
-            </span>{" "}
-            members ({trades.houseMembers} House, {trades.senateMembers} Senate)
-            across{" "}
-            <span className="font-mono font-medium text-neutral-900">
-              {trades.totalFilings}
-            </span>{" "}
-            STOCK Act PTRs. Parsed from House Clerk PDFs and Senate eFD HTML, both chambers covered.
-          </p>
-          {trades.activeCollectionStart && (
-            <p className="mt-1 max-w-2xl text-[12px] text-neutral-500">
-              Active collection began{" "}
-              <span className="font-medium text-neutral-700">
-                {fmtCoverage(trades.activeCollectionStart + "-01")}
-              </span>
-              {trades.stragglerFilingCount > 0 && (
-                <>
-                  {" "}({trades.stragglerFilingCount}{" "}
-                  earlier PTR{trades.stragglerFilingCount === 1 ? "" : "s"} from late-filed
-                  amendments not shown)
-                </>
-              )}
-              . Hover any bar for the breakdown. Each PTR discloses trades up to ~45 days back, so transaction dates lag filing dates.{" "}
-              <Link href="/trades/methodology" className="underline hover:text-neutral-900">
-                Methodology →
-              </Link>
-            </p>
-          )}
-          {trades.monthly.length > 0 && (
-            <div className="mt-5">
-              <TradesMonthlyBars monthly={trades.monthly} />
-            </div>
-          )}
-          <p className="mt-5 text-[10px] uppercase tracking-wide text-neutral-400">
-            Most active members
-          </p>
-          <div className="mt-1 grid gap-1 sm:grid-cols-5">
-            {trades.topMembers.map((m) => (
-              <Link
-                key={m.bioguideId}
-                href={`/trades/${m.bioguideId}`}
-                className="flex flex-col rounded px-2 py-1.5 no-underline transition-colors hover:bg-neutral-50"
-              >
-                <span className="truncate text-xs text-neutral-700">
-                  {m.fullName}
-                </span>
-                <span className="font-mono text-[10px] text-neutral-400">
-                  {m.stateCode}-{m.chamber === "senate" ? "S" : "H"} ·{" "}
-                  {m.txCount.toLocaleString()} trades
-                </span>
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Recent Activity */}
       {recentEvents.length > 0 && (
         <div className="mt-10 border-t border-neutral-100 pt-8">
@@ -280,7 +229,7 @@ export default async function Home() {
         </div>
       )}
 
-      <HomeFreshnessAndTerritories syncSummary={syncSummary} territoryList={territoryList} nowMs={nowMs} />
+      <HomeFreshnessAndTerritories syncSummary={visibleSummary} territoryList={territoryList} nowMs={nowMs} />
     </div>
   );
 }
