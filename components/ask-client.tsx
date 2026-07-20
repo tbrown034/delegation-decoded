@@ -331,13 +331,13 @@ export default function AskClient() {
             <li key={exchanges.length - i} className="rounded border border-neutral-200 bg-white p-4">
               <p className="text-sm font-medium text-neutral-900">{ex.question}</p>
               <div className="mt-3">{renderAnswer(ex.answer)}</div>
-              {ex.trace.length > 0 && (
-                <p className="mt-3 border-t border-neutral-100 pt-2 text-xs text-neutral-400">
-                  Checked:{" "}
-                  {[...new Set(ex.trace.map((t) => TOOL_LABELS[t.tool] ?? t.tool))].join(", ")}. Answers draw only on official records in this site&apos;s database.
-                  {ex.cached && " Served from today's cache."}
-                </p>
-              )}
+              <p className="mt-3 border-t border-neutral-100 pt-2 text-xs text-neutral-400">
+                {ex.trace.length > 0
+                  ? `Checked: ${[...new Set(ex.trace.map((t) => TOOL_LABELS[t.tool] ?? t.tool))].join(", ")}. `
+                  : "Answered from the delegation roster. "}
+                Answers draw only on official records in this site&apos;s database.
+                {ex.cached && " Served from today's cache."}
+              </p>
             </li>
           ))}
         </ol>

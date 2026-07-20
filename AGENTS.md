@@ -15,7 +15,7 @@ Congressional accountability tracking organized by state delegation. 538 members
 - Next.js 16 (App Router only, Server Components by default), React 19, TypeScript
 - Tailwind CSS 4
 - Neon serverless Postgres + Drizzle ORM
-- Anthropic API: Opus 4.8 powers the /ask grounded lookup; Sonnet 4.6 for House PTR vision parsing
+- Anthropic API: Haiku 4.5 powers /ask (eval-picked via scripts/eval-ask.ts; override with ASK_MODEL); Sonnet 4.6 for House PTR vision parsing
 - Deployed on Vercel
 - pnpm preferred
 

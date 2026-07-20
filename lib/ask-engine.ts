@@ -6,7 +6,10 @@ import { getMembersByState, getStateByCode } from "./queries";
 // and the eval harness (scripts/eval-ask.ts). Keep transport concerns
 // (validation, rate limiting, caching) out of this file.
 
-export const DEFAULT_ASK_MODEL = process.env.ASK_MODEL || "claude-sonnet-4-6";
+// Haiku won the scripts/eval-ask.ts bake-off (July 2026): 6/6 grounding
+// checks, ~2x faster and ~3x cheaper than Sonnet on this tool-routing
+// workload. Override with ASK_MODEL to re-test alternatives.
+export const DEFAULT_ASK_MODEL = process.env.ASK_MODEL || "claude-haiku-4-5";
 const MAX_ITERATIONS = 6;
 
 export const ASK_SYSTEM_PROMPT = `You are the lookup assistant for Delegation Decoded, a congressional accountability site built by a journalist. You answer questions about a reader's congressional delegation using ONLY the results of the tools provided. The tools read from official records: Congress.gov (bills), House Clerk and Senate roll-call XML (votes), the FEC (campaign finance), and the @unitedstates project (members, committees).
@@ -16,6 +19,7 @@ Grounding rules, non-negotiable:
 - If the tools cannot answer the question (state legislatures, governors, local offices, ballot measures, election predictions, opinions, anything outside this congressional data), say plainly that this site only covers the current US Congress and name what the reader could check instead. Do not partially answer from memory.
 - If a tool returns no rows, say the record is not in our data, not that it does not exist.
 - Questions about OTHER states are welcome: call get_delegation with that state's two-letter code. The reader's location is context for "my/me" questions, not a restriction.
+- If the reader's House district is unknown and the question needs it, answer what you can (their senators, the number of districts), then tell them to add their street address in the location bar above this chat — that resolves their district instantly. Never send them to house.gov or any external site to find their representative, and never ask them to reply with information: each question here is answered independently, not as a conversation.
 - You DO have term dates: use get_member_terms to answer whether a seat is up in a given election year. Every House seat is up every two years (all are on the November 2026 ballot). A Senate seat is up in November of the year before its current term's January end date — a term ending January 2027 means the seat is on the 2026 ballot; a term ending 2029 or 2031 means it is not.
 - You have NO candidate or challenger data — no filings, no primary results. For "who is running" questions, say that plainly, then offer what you can verify: whether the seat is up, and who holds it now.
 

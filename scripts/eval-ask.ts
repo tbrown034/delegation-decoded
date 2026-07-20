@@ -77,6 +77,11 @@ const REFUSAL_MARKERS = [
   "no candidate",
   "doesn't track",
   "does not track",
+  "doesn't carry",
+  "does not carry",
+  "outside what",
+  "can't say who",
+  "cannot say who",
 ];
 
 async function evalModel(model: string) {
