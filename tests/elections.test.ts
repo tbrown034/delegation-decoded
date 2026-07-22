@@ -181,6 +181,36 @@ test("campaign HTML is treated as text and scripts or form instructions are excl
   ]);
 });
 
+test("campaign prior service preserves year-only dates without inventing a day", () => {
+  const pages: CampaignResearchPage[] = [
+    {
+      pageId: "p1",
+      snapshotId: "candidate-site-1",
+      url: "https://campaign.example/about",
+      text: "Elected to the Indiana State Senate in 2014, where she served until 2022.",
+    },
+  ];
+  const output = validateCampaignResearch(
+    {
+      claims: [],
+      priorService: [
+        {
+          officeTitle: "Indiana State Senator",
+          jurisdiction: "Indiana",
+          startedOn: "2014",
+          endedOn: "2022",
+          pageId: "p1",
+          sourceQuote: "Elected to the Indiana State Senate in 2014, where she served until 2022",
+        },
+      ],
+    },
+    pages
+  );
+  assert.deepEqual(output.priorService.map(({ startedOn, endedOn }) => ({ startedOn, endedOn })), [
+    { startedOn: "2014", endedOn: "2022" },
+  ]);
+});
+
 test("campaign crawler obeys the most specific robots rule", () => {
   const groups = parseRobots(`
     User-agent: *

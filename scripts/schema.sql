@@ -620,8 +620,8 @@ CREATE TABLE IF NOT EXISTS candidate_prior_service (
   person_id           TEXT NOT NULL REFERENCES candidate_people(person_id) ON DELETE CASCADE,
   office_title        TEXT NOT NULL,
   jurisdiction        TEXT,
-  started_on          DATE,
-  ended_on            DATE,
+  started_on          TEXT,
+  ended_on            TEXT,
   source_url          TEXT NOT NULL,
   source_quote        TEXT NOT NULL,
   source_snapshot_id  TEXT NOT NULL REFERENCES candidate_site_snapshots(snapshot_id),
@@ -633,6 +633,13 @@ CREATE TABLE IF NOT EXISTS candidate_prior_service (
   reviewed_by         TEXT,
   CHECK (verification_status IN ('needs_review', 'verified', 'rejected'))
 );
+
+-- Campaign pages often state only a year or year-month. Preserve that source
+-- precision instead of inventing a calendar day to satisfy PostgreSQL DATE.
+ALTER TABLE candidate_prior_service
+  ALTER COLUMN started_on TYPE TEXT USING started_on::text;
+ALTER TABLE candidate_prior_service
+  ALTER COLUMN ended_on TYPE TEXT USING ended_on::text;
 
 CREATE INDEX IF NOT EXISTS idx_candidate_service_person
   ON candidate_prior_service(person_id, verification_status);
