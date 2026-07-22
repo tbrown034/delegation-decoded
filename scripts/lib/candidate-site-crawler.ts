@@ -201,6 +201,7 @@ type ResearchCrawlOptions = {
   researchPath: RegExp;
   userAgent: string;
   robotsAgent: string;
+  maxBytes?: number;
 };
 
 export async function crawlResearchSite(
@@ -225,14 +226,22 @@ export async function crawlResearchSite(
     seen.add(next);
     const url = new URL(next);
     if (!robotsAllows(robots, url.pathname, options.robotsAgent)) continue;
-    const result = await safeFetchBuffer(url.toString(), {
-      allowedHosts,
-      allowedContentTypes: ["text/html", "application/xhtml+xml"],
-      maxBytes: 1_000_000,
-      timeoutMs: 15_000,
-      maxRedirects: 3,
-      userAgent: options.userAgent,
-    });
+    let result: SafeFetchResult;
+    try {
+      result = await safeFetchBuffer(url.toString(), {
+        allowedHosts,
+        allowedContentTypes: ["text/html", "application/xhtml+xml"],
+        maxBytes: options.maxBytes ?? 1_000_000,
+        timeoutMs: 15_000,
+        maxRedirects: 3,
+        userAgent: options.userAgent,
+      });
+    } catch (error) {
+      // A bad secondary link must not discard a valid root/about page. The
+      // first page still fails closed because no trusted site content exists.
+      if (pages.length === 0) throw error;
+      continue;
+    }
     const parsed = parseCampaignHtml(result.body.toString("utf8"), result.finalUrl);
     if (parsed.text.length < 40) continue;
     pages.push({ url: result.finalUrl, result, text: parsed.text });
@@ -284,5 +293,6 @@ export function crawlOfficialBiographySite(rawUrl: string, maxPages: number) {
     userAgent:
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
     robotsAgent: "delegationdecodedofficialbiographyresearch",
+    maxBytes: 2_000_000,
   });
 }

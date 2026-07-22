@@ -49,6 +49,7 @@ type ExtractionResult = {
 };
 
 const DRY_RUN = process.argv.includes("--dry-run");
+const RETRY_ERRORS = process.argv.includes("--retry-errors");
 const MEMBER_ARG = process.argv.find((argument) => argument.startsWith("--member="));
 const REQUESTED_MEMBER = (
   MEMBER_ARG?.split("=", 2)[1] ?? process.env.MEMBER_BIO_MEMBER ?? ""
@@ -202,6 +203,9 @@ async function getMembers(db: Database) {
   const requested = REQUESTED_MEMBER
     ? sql`AND m.bioguide_id = ${REQUESTED_MEMBER}`
     : sql``;
+  const retryErrors = RETRY_ERRORS
+    ? sql`AND site.crawl_error IS NOT NULL`
+    : sql``;
   try {
     const result = await db.execute(sql`
       SELECT m.bioguide_id, m.full_name, m.chamber, m.website_url,
@@ -211,7 +215,15 @@ async function getMembers(db: Database) {
       WHERE m.in_office = true
         AND m.website_url IS NOT NULL
         ${requested}
-      ORDER BY site.last_crawled_at ASC NULLS FIRST, m.full_name
+        ${retryErrors}
+      ORDER BY
+        CASE
+          WHEN site.bioguide_id IS NULL THEN 0
+          WHEN site.last_crawled_at IS NOT NULL THEN 1
+          ELSE 2
+        END,
+        site.last_crawled_at ASC NULLS FIRST,
+        m.full_name
       LIMIT ${MAX_MEMBERS}
     `);
     return result.rows as MemberRow[];
