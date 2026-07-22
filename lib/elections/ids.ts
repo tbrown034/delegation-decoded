@@ -13,6 +13,35 @@ export function normalizeCandidateName(name: string) {
     .replace(/\s+/g, " ");
 }
 
+const FIRST_NAME_EQUIVALENTS: Record<string, string> = {
+  brad: "bradley",
+  jim: "james",
+  jimmy: "james",
+  jd: "james",
+};
+
+function comparableFirstName(value: string) {
+  return FIRST_NAME_EQUIVALENTS[value] ?? value;
+}
+
+/**
+ * Conservative FEC-to-ballot name comparison. Middle names and initials may
+ * differ across authorities, but first and last names must agree. A one-letter
+ * first-name initial is allowed; callers must still reject ambiguous matches.
+ */
+export function candidateNamesLikelySame(left: string, right: string) {
+  const leftTokens = normalizeCandidateName(left).split(" ").filter(Boolean);
+  const rightTokens = normalizeCandidateName(right).split(" ").filter(Boolean);
+  if (leftTokens.length < 2 || rightTokens.length < 2) return false;
+  const leftFirst = comparableFirstName(leftTokens[0]);
+  const rightFirst = comparableFirstName(rightTokens[0]);
+  const firstMatches =
+    leftFirst === rightFirst ||
+    (leftFirst.length === 1 && rightFirst.startsWith(leftFirst)) ||
+    (rightFirst.length === 1 && leftFirst.startsWith(rightFirst));
+  return firstMatches && leftTokens.at(-1) === rightTokens.at(-1);
+}
+
 export function stableElectionId(prefix: string, ...parts: Array<string | number | null>) {
   const digest = createHash("sha256")
     .update(parts.map((part) => String(part ?? "")).join("\u001f"))

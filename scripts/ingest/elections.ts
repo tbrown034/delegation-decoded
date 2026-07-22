@@ -21,6 +21,7 @@ import {
   INDIANA_2026_SOURCES,
 } from "../../lib/elections/registry";
 import {
+  candidateNamesLikelySame,
   candidateIdentity,
   houseContestId,
   normalizeCandidateName,
@@ -124,15 +125,18 @@ async function fecMatchesForIndiana(db: Database) {
         eq(electionCandidates.electionYear, 2026)
       )
     );
-  const byRaceName = new Map<string, string[]>();
-  for (const row of rows) {
-    if (row.district == null) continue;
-    const key = `${row.district}|${normalizeCandidateName(row.name)}`;
-    const ids = byRaceName.get(key) ?? [];
-    ids.push(row.candidateId);
-    byRaceName.set(key, ids);
-  }
-  return byRaceName;
+  return (district: number, ballotName: string) => {
+    const districtRows = rows.filter((row) => row.district === district);
+    const exact = districtRows.filter(
+      (row) => normalizeCandidateName(row.name) === normalizeCandidateName(ballotName)
+    );
+    if (exact.length === 1) return exact[0].candidateId;
+    if (exact.length > 1) return null;
+    const likely = districtRows.filter((row) =>
+      candidateNamesLikelySame(row.name, ballotName)
+    );
+    return likely.length === 1 ? likely[0].candidateId : null;
+  };
 }
 
 async function ingestIndiana(db: Database) {
@@ -164,7 +168,10 @@ async function ingestIndiana(db: Database) {
     primaryByDistrict.set(candidate.district, district);
   }
 
-  await db.transaction(async (tx) => {
+  // neon-http does not support interactive transactions. Every write below is
+  // idempotent, so a failed run can safely resume from the first unfinished
+  // upsert while sync_log records the partial failure.
+  const tx = db;
     for (const snapshot of [generalSnapshot, settingsSnapshot, resultSnapshot]) {
       await tx
         .insert(electionSourceSnapshots)
@@ -272,8 +279,7 @@ async function ingestIndiana(db: Database) {
       for (const pair of combined.values()) {
         const candidate = pair.general ?? pair.primary;
         if (!candidate) continue;
-        const fecIds = fecMatches.get(`${district}|${candidate.normalizedName}`) ?? [];
-        const fecCandidateId = fecIds.length === 1 ? fecIds[0] : null;
+        const fecCandidateId = fecMatches(district, candidate.name);
         const identity = candidateIdentity(
           contestId,
           candidate.normalizedName,
@@ -436,7 +442,6 @@ async function ingestIndiana(db: Database) {
         updatedAt: observedAt,
       })
       .where(eq(electionSources.sourceId, INDIANA_SOURCE_ID));
-  });
   return fetched.generalCandidates.length + fetched.primary.candidates.length;
 }
 

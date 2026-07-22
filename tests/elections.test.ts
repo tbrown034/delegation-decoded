@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  candidateNamesLikelySame,
   candidateIdentity,
   houseContestId,
   normalizeCandidateName,
@@ -102,6 +103,15 @@ test("an office switch with a new FEC ID creates a new candidacy instead of over
   assert.notEqual(house.candidacyId, senate.candidacyId);
   assert.equal(house.fecCandidateId, "H6IN04000");
   assert.equal(senate.fecCandidateId, "S6IN00000");
+});
+
+test("state ballot names conservatively match FEC middle names and common first-name forms", () => {
+  assert.equal(candidateNamesLikelySame("Jim Baird", "James R Baird"), true);
+  assert.equal(candidateNamesLikelySame("Brad A. Meyer", "Bradley Allen Meyer"), true);
+  assert.equal(candidateNamesLikelySame("J.D. Ford", "James (J.D.) David Ford"), true);
+  assert.equal(candidateNamesLikelySame("Mary Allen", "Mary Theresa Allen"), true);
+  assert.equal(candidateNamesLikelySame("Mary Allen", "Mary Baker"), false);
+  assert.equal(candidateNamesLikelySame("Alex Smith", "Andrew Smith"), false);
 });
 
 test("Indiana's source Certified flag controls result status", () => {

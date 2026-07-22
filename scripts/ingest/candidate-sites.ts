@@ -283,7 +283,9 @@ async function saveResearch(
   extraction: ExtractionResult
 ) {
   const pageById = new Map(pages.map((page) => [page.pageId, page]));
-  await db.transaction(async (tx) => {
+  // neon-http has no interactive transaction support. Stable IDs and
+  // ON CONFLICT make these inserts safe to retry after a partial failure.
+  const tx = db;
     for (const claim of extraction.output.claims) {
       const page = pageById.get(claim.pageId);
       if (!page) continue;
@@ -339,7 +341,6 @@ async function saveResearch(
         })
         .onConflictDoNothing();
     }
-  });
 }
 
 async function processCandidate(
