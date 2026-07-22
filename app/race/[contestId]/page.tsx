@@ -69,7 +69,7 @@ export default async function RacePage({ params }: Props) {
 
       {inactive.length > 0 && race.coverage !== "fec_only" && (
         <section className="mt-10">
-          <h2 className="font-serif text-xl font-semibold">Earlier primary candidates</h2>
+          <h2 className="font-serif text-xl font-semibold">Earlier or withdrawn candidates</h2>
           <p className="mt-1 text-xs text-neutral-500">Historical records remain visible; status events are append-only.</p>
           <CandidateList candidates={inactive} research={research} />
         </section>

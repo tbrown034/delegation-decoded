@@ -4,6 +4,24 @@ A chronological record of development sessions and significant changes.
 
 ---
 
+## 2026-07-22 — Delaware election adapter and challenger evidence
+
+**Session Summary:**
+- Added Delaware as the second state-authority adapter. It ingests the Department of Elections' official 2026 primary and general candidate workbooks, seeds the two federal contests at their current primary stage and keeps coverage `verification_pending` until a ballot or certified-result source is available.
+- Activated 11 state-authority candidacies: 10 active candidates and one withdrawal across U.S. House At-Large and U.S. Senate Class 2. The live load stored 2 private source snapshots, 10 qualified ballot lines and 11 append-only status events.
+- Ran FEC-linked campaign research for Delaware in GitHub Actions. Four current committee-reported sites were verified, one candidate had no current principal or authorized committee website, and five active candidates remained unlinked because no matching FEC staging record exists.
+
+**Notable Changes:**
+- Extracted shared and inline OOXML parsing into a reusable bounded utility. The Delaware parser reads only office, ballot name, party, filing/withdrawal dates and public status; it never retains the source workbooks' address, email, phone or website columns and fails closed on unknown federal statuses.
+- Added daily due checks plus manual `DE` and `all` workflow dispatches. Two live ingests proved idempotent: source snapshots, candidacies, ballot lines and events did not duplicate.
+- Expanded conservative common-first-name matching to link Chris Coons to the unique Christopher A. Coons FEC record. Five of Delaware's 10 active candidates now have an exact or unique conservative FEC link; unsupported matches remain empty.
+- GitHub Actions run `29966891499` crawled 13 campaign pages and queued 30 claims plus 4 prior-service records through OpenAI GPT-5.6 Terra. All 34 records remain `needs_review`; no model-extracted claim was published or supplied to Ask.
+- Corrected race-page history copy so a withdrawn general-election record is not mislabeled as an earlier primary candidate.
+- Patched Next.js and `eslint-config-next` from 16.2.10 to 16.2.11 after the final audit found newly published high-severity advisories. Both npm and pnpm production audits now report zero known vulnerabilities.
+- Verification: 34/34 tests, TypeScript, ESLint, `git diff --check`, the Next.js 16.2.11 production build and the live health gate pass. Local production responses returned 200 for Delaware state, House race, Senate race, race index, health and race CSV routes. Health remains `WARN` for disclosed source/review conditions. The in-app browser had no available target, so visual and click QA remain unverified.
+
+---
+
 ## 2026-07-22 — Election and biography activation
 
 **Session Summary:**
