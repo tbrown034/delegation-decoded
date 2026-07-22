@@ -4,6 +4,24 @@ A chronological record of development sessions and significant changes.
 
 ---
 
+## 2026-07-22 — Election and biography activation
+
+**Session Summary:**
+- Applied the idempotent 95-statement election and biography schema to the connected Neon database and created a private Vercel Blob evidence store linked to development, preview and production environments.
+- Loaded Indiana's mid-cycle election backfill from state sources: 9 contests, 61 candidacies, 53 primary-result rows and 3 immutable source snapshots. All 9 contests remain `verification_pending` because the primary feed labels its results unofficial and the general workbook is incomplete.
+- Attempted every active member with a roster-provided official site. The final pass crawled 510 of 536 sites, queued 3,819 exact-quote biography facts for 459 members and left every fact in `needs_review` pending a named human decision.
+
+**Notable Changes:**
+- Fixed Neon HTTP incompatibility in election and campaign-site ingestion by replacing interactive transactions with stable, idempotent upserts.
+- Added conservative FEC identity matching for ballot names with middle names, initials and common first-name variants. Indiana's active candidacy linkage improved from 11 of 26 to 17 of 26; ambiguous or unsupported matches remain empty.
+- Added bounded failed-site retries, raised the official-page byte cap to 2 MB and preserved valid root/about evidence when an optional secondary page fails. The retry recovered 20 of 46 failed official sites; 24 of the 26 remaining failures are unverifiable robots policies and stay fail-closed.
+- Created a private Blob store after confirming the uploader correctly rejected a mistakenly created public store; the empty public store was deleted. Refreshed GitHub Actions secrets for Blob, OpenAI and Anthropic without exposing values.
+- Pushed commits `203ee5f`, `5836d47` and `5d609ca` to `ask-portfolio-polish`. A Vercel preview built successfully from `5836d47`; production was not changed.
+- Validation through the latest retry commit: TypeScript, ESLint, 30/30 tests and `git diff --check` pass. A final production build remains required after the activation log and workflow changes.
+- Operational warning: relinking Vercel environment variables replaced `.env.local`; its local-only FEC and Congress keys are no longer present. The GitHub Actions secrets remain available, so key-dependent ingests continue there until the local values are restored.
+
+---
+
 ## 2026-07-22 — Verified biographies and exact member-profile Ask
 
 **Session Summary:**
