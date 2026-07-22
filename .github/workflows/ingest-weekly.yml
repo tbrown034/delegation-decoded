@@ -20,6 +20,14 @@ on:
           - candidates
           - members
         default: full
+      candidacy_id:
+        description: "Optional exact candidacy ID for a targeted candidate recovery"
+        required: false
+        default: ""
+      force_reextract:
+        description: "Re-extract a targeted candidate even when source bytes are unchanged"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -70,6 +78,8 @@ jobs:
           CANDIDATE_EXTRACT_MAX_INPUT_CHARS: 36000
           CANDIDATE_EXTRACT_MAX_PROVIDER_CALLS: 16
           CANDIDATE_EXTRACT_MAX_RUN_TOKENS: 250000
+          CANDIDATE_EXTRACT_CANDIDACY_ID: ${{ inputs.candidacy_id }}
+          CANDIDATE_EXTRACT_FORCE: ${{ inputs.force_reextract }}
 
       - name: Crawl official member biographies and queue facts for review
         if: ${{ !cancelled() && inputs.mode != 'candidates' }}

@@ -52,8 +52,14 @@ type ExtractionResult = {
 };
 
 const DRY_RUN = process.argv.includes("--dry-run");
+const FORCE_REEXTRACT =
+  process.argv.includes("--force") ||
+  ["1", "true"].includes((process.env.CANDIDATE_EXTRACT_FORCE ?? "").toLowerCase());
 const CANDIDATE_ARG = process.argv.find((argument) => argument.startsWith("--candidate="));
-const REQUESTED_CANDIDACY = CANDIDATE_ARG?.split("=", 2)[1]?.trim() || null;
+const REQUESTED_CANDIDACY =
+  CANDIDATE_ARG?.split("=", 2)[1]?.trim() ||
+  process.env.CANDIDATE_EXTRACT_CANDIDACY_ID?.trim() ||
+  null;
 
 function boundedInt(name: string, fallback: number, min: number, max: number) {
   const raw = process.env[name];
@@ -362,7 +368,7 @@ async function processCandidate(
         .join("")
     )
     .digest("hex");
-  if (candidate.content_sha256 === aggregateHash) {
+  if (!FORCE_REEXTRACT && candidate.content_sha256 === aggregateHash) {
     await db
       .update(candidateCampaignSites)
       .set({ lastCrawledAt: new Date(), crawlError: null, updatedAt: new Date() })

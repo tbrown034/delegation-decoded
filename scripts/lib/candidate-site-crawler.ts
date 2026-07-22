@@ -278,6 +278,7 @@ export function crawlCampaignSite(rawUrl: string, maxPages: number) {
     researchPath: RESEARCH_PATH,
     userAgent: "DelegationDecodedCampaignResearch/1.0",
     robotsAgent: "delegationdecodedcampaignresearch",
+    maxBytes: 2_000_000,
   });
 }
 
