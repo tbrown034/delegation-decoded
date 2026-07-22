@@ -63,13 +63,20 @@ async function main() {
   console.table(recent);
 
   const failed = (await sql`
-    SELECT source, entity_type, status, started_at, error_message
-    FROM sync_log
-    WHERE status = 'failed' AND started_at > now() - interval '14 days'
-    ORDER BY started_at DESC
+    SELECT failed.source, failed.entity_type, failed.status,
+           failed.started_at, failed.error_message
+    FROM sync_log failed
+    WHERE failed.status = 'failed'
+      AND failed.started_at > now() - interval '14 days'
+      AND failed.id IN (
+        SELECT MAX(latest.id)
+        FROM sync_log latest
+        GROUP BY latest.source, latest.entity_type
+      )
+    ORDER BY failed.started_at DESC
     LIMIT 25
   `) as Row[];
-  console.log("\n=== Recent failed runs (last 14 days) ===");
+  console.log("\n=== Unrecovered failed runs (last 14 days) ===");
   console.table(failed);
 }
 

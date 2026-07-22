@@ -634,7 +634,8 @@ export async function getCandidateResearchHealth() {
     const result = await db.execute(sql`
       SELECT
         (SELECT COUNT(*)::int FROM candidate_campaign_sites WHERE verification_status = 'verified') AS verified_sites,
-        (SELECT COUNT(*)::int FROM candidate_campaign_sites WHERE crawl_error IS NOT NULL) AS crawl_errors,
+        (SELECT COUNT(*)::int FROM candidate_campaign_sites WHERE verification_status = 'blocked') AS blocked_sites,
+        (SELECT COUNT(*)::int FROM candidate_campaign_sites WHERE verification_status = 'verified' AND crawl_error IS NOT NULL) AS crawl_errors,
         (SELECT COUNT(*)::int FROM candidate_site_claims WHERE review_status = 'needs_review') AS pending_claims,
         (SELECT COUNT(*)::int FROM candidate_site_claims WHERE review_status = 'verified') AS verified_claims,
         (SELECT COUNT(*)::int FROM candidate_prior_service WHERE verification_status = 'needs_review') AS pending_service,
@@ -643,6 +644,7 @@ export async function getCandidateResearchHealth() {
     const row = result.rows[0] as Record<string, unknown> | undefined;
     return {
       verifiedSites: Number(row?.verified_sites ?? 0),
+      blockedSites: Number(row?.blocked_sites ?? 0),
       crawlErrors: Number(row?.crawl_errors ?? 0),
       pendingClaims: Number(row?.pending_claims ?? 0),
       verifiedClaims: Number(row?.verified_claims ?? 0),
@@ -653,6 +655,7 @@ export async function getCandidateResearchHealth() {
     if (!isMissingElectionSchema(error)) throw error;
     return {
       verifiedSites: 0,
+      blockedSites: 0,
       crawlErrors: 0,
       pendingClaims: 0,
       verifiedClaims: 0,

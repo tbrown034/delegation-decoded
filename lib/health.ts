@@ -54,6 +54,7 @@ export type HealthReport = {
   electionCoverage: StateRaceCoverage[];
   candidateResearch: {
     verifiedSites: number;
+    blockedSites: number;
     crawlErrors: number;
     pendingClaims: number;
     verifiedClaims: number;
@@ -164,12 +165,18 @@ export async function buildHealthReport(): Promise<HealthReport> {
 
   const failuresResult = await db.execute(sql`
     SELECT
-      source, entity_type, status, started_at, completed_at,
-      records_count, error_message,
-      EXTRACT(EPOCH FROM (now() - started_at)) / 3600.0 AS age_hours
-    FROM sync_log
-    WHERE status = 'failed' AND started_at > now() - interval '14 days'
-    ORDER BY started_at DESC
+      failed.source, failed.entity_type, failed.status, failed.started_at,
+      failed.completed_at, failed.records_count, failed.error_message,
+      EXTRACT(EPOCH FROM (now() - failed.started_at)) / 3600.0 AS age_hours
+    FROM sync_log failed
+    WHERE failed.status = 'failed'
+      AND failed.started_at > now() - interval '14 days'
+      AND failed.id IN (
+        SELECT MAX(latest.id)
+        FROM sync_log latest
+        GROUP BY latest.source, latest.entity_type
+      )
+    ORDER BY failed.started_at DESC
     LIMIT 25
   `);
   const recentFailures: SyncRun[] = (failuresResult.rows as Array<Record<string, unknown>>).map(
@@ -239,6 +246,15 @@ export async function buildHealthReport(): Promise<HealthReport> {
       level: "warn",
       title: `${candidateResearch.crawlErrors} verified campaign site${candidateResearch.crawlErrors === 1 ? " has" : "s have"} crawl errors`,
       detail: "The site link remains visible, but no extracted claim is published unless its evidence passes human review.",
+    });
+  }
+
+  if (candidateResearch.blockedSites > 0) {
+    checks.push({
+      id: "candidate-site-discovery-blocked",
+      level: "warn",
+      title: `${candidateResearch.blockedSites} candidate${candidateResearch.blockedSites === 1 ? " has" : "s have"} no current FEC campaign website`,
+      detail: "These verified candidacies remain visible, but campaign-site claims stay unavailable unless a current principal or authorized committee reports a website.",
     });
   }
 
@@ -354,10 +370,9 @@ export async function buildHealthReport(): Promise<HealthReport> {
     });
   }
 
-  // Dedicated alert for upstream-API auth failures so they don't get
-  // buried in the generic recent-failures detail. Looks across the last
-  // 14 days of failures for any auth-shape error and reports it with
-  // the offending source called out.
+  // Dedicated alert for upstream-API auth failures so they don't get buried
+  // in the generic failure detail. Only an unrecovered latest failure counts;
+  // a later successful run resolves the incident immediately.
   const authFailures = activeFailures.filter((r) =>
     /\b(?:401|403)\b.*(?:authentication_error|invalid[_ -]?(?:x-)?api[_ -]?key|invalid[_ -]?token|API_KEY_INVALID)/i.test(
       r.errorMessage ?? ""
@@ -376,12 +391,13 @@ export async function buildHealthReport(): Promise<HealthReport> {
     });
   }
 
-  // Recent failures.
+  // Unrecovered recent failures. Historical failures remain in sync_log for
+  // auditability but a later success must restore current health.
   if (activeFailures.length > 0) {
     checks.push({
       id: "recent-failures",
       level: activeFailures.length >= 3 ? "crit" : "warn",
-      title: `${activeFailures.length} failed sync run${activeFailures.length === 1 ? "" : "s"} in the last 14 days`,
+      title: `${activeFailures.length} unrecovered sync failure${activeFailures.length === 1 ? "" : "s"} in the last 14 days`,
       detail: await renderRecentFailuresDetail(activeFailures.slice(0, 3)),
     });
   }

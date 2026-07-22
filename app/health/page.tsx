@@ -117,6 +117,7 @@ export default async function HealthPage() {
         </p>
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <Stat label="Verified sites" value={report.candidateResearch.verifiedSites} />
+          <Stat label="No FEC site" value={report.candidateResearch.blockedSites} tone={report.candidateResearch.blockedSites > 0 ? "warn" : "ok"} />
           <Stat label="Crawl errors" value={report.candidateResearch.crawlErrors} tone={report.candidateResearch.crawlErrors > 0 ? "warn" : "ok"} />
           <Stat label="Claims queued" value={report.candidateResearch.pendingClaims} tone={report.candidateResearch.pendingClaims > 0 ? "warn" : "ok"} />
           <Stat label="Claims verified" value={report.candidateResearch.verifiedClaims} />
