@@ -18,6 +18,8 @@ on:
         options:
           - due
           - IN
+          - DE
+          - all
         default: due
 
 permissions:
@@ -63,7 +65,7 @@ jobs:
           FEC_API_KEY: ${{ secrets.FEC_API_KEY }}
 
       # State-authority race records. The script reads next_check_at on normal
-      # daily runs; a manual dispatch can force Indiana's mid-cycle backfill.
+      # daily runs; a manual dispatch can force one adapter or every implemented adapter.
       # Every source response is hash-addressed in private Vercel Blob before
       # its parsed records are committed to Postgres.
       - name: Ingest verified election records
@@ -71,10 +73,12 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
-          if [ "${ELECTION_STATE}" = "IN" ]; then
-            npx tsx scripts/ingest/elections.ts --state=IN --backfill
-          else
+          if [ "${ELECTION_STATE}" = "due" ]; then
             npx tsx scripts/ingest/elections.ts --due
+          elif [ "${ELECTION_STATE}" = "all" ]; then
+            npx tsx scripts/ingest/elections.ts --backfill
+          else
+            npx tsx scripts/ingest/elections.ts --state="${ELECTION_STATE}" --backfill
           fi
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}

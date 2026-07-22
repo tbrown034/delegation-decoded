@@ -1,11 +1,6 @@
-import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import { promisify } from "node:util";
 import { normalizeCandidateName } from "../../lib/elections/ids";
+import { parseFirstXlsxWorksheet } from "./xlsx-rows";
 
-const execFileAsync = promisify(execFile);
 const DISTRICTS: Record<string, number> = {
   first: 1,
   second: 2,
@@ -34,46 +29,6 @@ export type IndianaPrimaryCandidate = {
   totalVotes: number;
   isWinner: boolean;
 };
-
-function decodeXml(value: string) {
-  return value
-    .replace(/&#(\d+);/g, (_match, code: string) => String.fromCodePoint(Number(code)))
-    .replace(/&#x([0-9a-f]+);/gi, (_match, code: string) =>
-      String.fromCodePoint(Number.parseInt(code, 16))
-    )
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'");
-}
-
-function parseSharedStrings(xml: string) {
-  return Array.from(xml.matchAll(/<si(?:\s[^>]*)?>([\s\S]*?)<\/si>/g), (match) =>
-    Array.from(match[1].matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g), (text) =>
-      decodeXml(text[1])
-    ).join("")
-  );
-}
-
-function cellColumn(reference: string) {
-  return reference.replace(/\d+$/, "");
-}
-
-function parseRows(sheetXml: string, shared: string[]) {
-  return Array.from(sheetXml.matchAll(/<row(?:\s[^>]*)?>([\s\S]*?)<\/row>/g), (row) => {
-    const values: Record<string, string> = {};
-    for (const cell of row[1].matchAll(/<c\s([^>]*)>([\s\S]*?)<\/c>/g)) {
-      const reference = /\br="([A-Z]+\d+)"/.exec(cell[1])?.[1];
-      const raw = /<v>([\s\S]*?)<\/v>/.exec(cell[2])?.[1];
-      if (!reference || raw == null) continue;
-      values[cellColumn(reference)] = /\bt="s"/.test(cell[1])
-        ? shared[Number(raw)] ?? ""
-        : decodeXml(raw);
-    }
-    return values;
-  });
-}
 
 function parseDistrict(value: string) {
   const numeric = /\b(\d{1,2})(?:st|nd|rd|th)?\b/.exec(value)?.[1];
@@ -117,25 +72,12 @@ export function parseIndianaGeneralRows(rows: Array<Record<string, string>>) {
 }
 
 export async function parseIndianaGeneralWorkbook(buffer: Buffer) {
-  if (buffer.length > 10_000_000) throw new Error("Indiana workbook exceeds the size limit");
-  const tempDirectory = await mkdtemp(path.join(tmpdir(), "dd-election-"));
-  const workbookPath = path.join(tempDirectory, "source.xlsx");
-  try {
-    await writeFile(workbookPath, buffer, { flag: "wx" });
-    const [shared, sheet] = await Promise.all([
-      execFileAsync("unzip", ["-p", workbookPath, "xl/sharedStrings.xml"], {
-        maxBuffer: 10_000_000,
-      }),
-      execFileAsync("unzip", ["-p", workbookPath, "xl/worksheets/sheet1.xml"], {
-        maxBuffer: 10_000_000,
-      }),
-    ]);
-    return parseIndianaGeneralRows(
-      parseRows(sheet.stdout, parseSharedStrings(shared.stdout))
-    );
-  } finally {
-    await rm(tempDirectory, { recursive: true, force: true });
-  }
+  return parseIndianaGeneralRows(
+    await parseFirstXlsxWorksheet(buffer, {
+      label: "Indiana workbook",
+      maxBytes: 10_000_000,
+    })
+  );
 }
 
 function objectValue(value: unknown, label: string): Record<string, unknown> {

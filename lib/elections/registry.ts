@@ -80,6 +80,23 @@ stateSeeds[indianaIndex] = {
     "Mid-cycle adapter: state-published general candidate list plus the statewide primary result feed. The result feed's Certified flag controls result labels.",
 };
 
+const delawareIndex = stateSeeds.findIndex((source) => source.stateCode === "DE");
+stateSeeds[delawareIndex] = {
+  sourceId: "state-de",
+  stateCode: "DE",
+  authorityName: "Delaware Department of Elections",
+  sourceKind: "state_election_authority",
+  sourceUrl: "https://elections.delaware.gov/candidates/candidatelist/",
+  adapterKey: "delaware-2026",
+  coverageStatus: "verification_pending",
+  isAuthoritative: true,
+  certificationWindowDays: 21,
+  nextExpectedEvent: "2026-09-15",
+  nextCheckAt: new Date("2026-07-22T00:00:00Z"),
+  notes:
+    "Current-cycle adapter: state-published qualified and withdrawn federal candidates from the official primary and general lists. Coverage remains verification pending until a ballot or certified result source is available.",
+};
+
 export const ELECTION_SOURCE_REGISTRY: ElectionSourceSeed[] = [
   {
     sourceId: "fec-form2",
@@ -107,4 +124,12 @@ export const INDIANA_2026_SOURCES = {
     "https://enr.indianavoters.in.gov/site/data/OffCatC_1005_A.json",
 } as const;
 
-export const ELECTION_CALENDAR_AS_OF = "2026-05-18";
+export const DELAWARE_2026_SOURCES = {
+  candidateLanding: "https://elections.delaware.gov/candidates/candidatelist/",
+  primaryCandidateList:
+    "https://elections.delaware.gov/candidates/candidatelist/prim_fcddt_2026.xlsx",
+  generalCandidateList:
+    "https://elections.delaware.gov/candidates/candidatelist/genl_fcddt_2026.xlsx",
+} as const;
+
+export const ELECTION_CALENDAR_AS_OF = "2026-07-22";

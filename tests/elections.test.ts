@@ -17,6 +17,8 @@ import {
   parseIndianaGeneralRows,
   parseIndianaPrimaryResults,
 } from "../scripts/lib/indiana-election-parser";
+import { parseDelawareCandidateRows } from "../scripts/lib/delaware-election-parser";
+import { parseXlsxRows } from "../scripts/lib/xlsx-rows";
 import { isBlockedAddress } from "../scripts/lib/safe-fetch";
 import {
   classifyCmsFamily,
@@ -150,6 +152,96 @@ test("Indiana's source Certified flag controls result status", () => {
   assert.equal(parseIndianaPrimaryResults(settings, results).resultStatus, "unofficial");
   settings.Root.Certified = "T";
   assert.equal(parseIndianaPrimaryResults(settings, results).resultStatus, "certified");
+});
+
+test("OOXML rows support Delaware's inline strings without retaining empty cells", () => {
+  const rows = parseXlsxRows(
+    `<worksheet><sheetData><row r="1">
+      <c r="A1" t="inlineStr"><is><t>Office &amp; district</t></is></c>
+      <c r="B1" t="inlineStr" />
+      <c r="C1" t="s"><v>0</v></c>
+    </row></sheetData></worksheet>`,
+    ["Qualified"]
+  );
+  assert.deepEqual(rows, [{ A: "Office & district", C: "Qualified" }]);
+});
+
+test("Delaware candidate lists keep only federal public-status fields", () => {
+  const parsed = parseDelawareCandidateRows(
+    [
+      { B: "Office", D: "BallotName", E: "Party", T: "DisplayedStatus" },
+      {
+        B: "U.S. Senator",
+        D: "Jane Public",
+        E: "Democratic",
+        J: "7/14/2026",
+        O: "https://campaign.example",
+        P: "private@example.com",
+        R: "302-555-0100",
+        T: "Qualified",
+      },
+      {
+        B: "Representative in Congress",
+        C: "7/17/2026",
+        D: "John Withdrawn",
+        E: "Republican",
+        J: "3/19/2026",
+        T: "Withdrawn",
+      },
+      {
+        B: "State Senator District 1",
+        D: "Local Candidate",
+        E: "Democratic",
+        J: "7/14/2026",
+        T: "Qualified",
+      },
+    ],
+    "general"
+  );
+  assert.deepEqual(parsed, [
+    {
+      name: "Jane Public",
+      normalizedName: "jane public",
+      party: "Democratic",
+      office: "S",
+      stage: "general",
+      filingDate: "2026-07-14",
+      withdrawalDate: null,
+      status: "qualified",
+    },
+    {
+      name: "John Withdrawn",
+      normalizedName: "john withdrawn",
+      party: "Republican",
+      office: "H",
+      stage: "general",
+      filingDate: "2026-03-19",
+      withdrawalDate: "2026-07-17",
+      status: "withdrawn",
+    },
+  ]);
+  assert.equal("email" in parsed[0], false);
+  assert.equal("phone" in parsed[0], false);
+  assert.equal("website" in parsed[0], false);
+});
+
+test("Delaware federal records fail closed on an unknown state status", () => {
+  assert.throws(
+    () =>
+      parseDelawareCandidateRows(
+        [
+          { B: "Office", D: "BallotName", E: "Party", T: "DisplayedStatus" },
+          {
+            B: "U.S. Senator",
+            D: "Jane Public",
+            E: "Democratic",
+            T: "Pending mystery review",
+          },
+        ],
+        "primary"
+      ),
+    /failed validation/
+  );
 });
 
 test("crawler address guard blocks loopback, private, link-local, and metadata ranges", () => {

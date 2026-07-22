@@ -64,7 +64,7 @@ scripts/ingest/
   votes.ts                Clerk House XML + Senate XML → roll calls + positions
   finance.ts              FEC API → campaign_finance + top_contributors
   candidates.ts           FEC Form 2 filings → election_candidates (2026 races, statutory candidates only; daily). /ask's get_race_candidates cross-checks FEC "incumbent" filers against sitting members so a departed filer is never presented as the officeholder.
-  elections.ts            State-authority race adapter runner. Starts with Indiana mid-cycle backfill; private Blob snapshots precede append-only status/result writes. FEC remains the labeled fallback where no adapter is verified.
+  elections.ts            State-authority race adapter runner. Indiana backfills a completed primary; Delaware tracks its active primary and general lists. Private Blob snapshots precede append-only status/result writes. FEC remains the labeled fallback where no adapter is covered.
   candidate-sites.ts      Bounded crawler for FEC committee-reported campaign sites. Private page snapshots precede strict OpenAI extraction with Anthropic fallback; every claim remains needs_review until human verification.
   member-biographies.ts   Bounded crawler for roster-verified house.gov/senate.gov sites. CMS recon + private snapshots precede evidence-linked extraction; every fact remains needs_review until attributed human verification.
   disclosures-house.ts    House Clerk PTR PDFs → Sonnet vision parse

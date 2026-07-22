@@ -17,6 +17,7 @@ import {
   syncLog,
 } from "../../lib/schema";
 import {
+  DELAWARE_2026_SOURCES,
   ELECTION_SOURCE_REGISTRY,
   INDIANA_2026_SOURCES,
 } from "../../lib/elections/registry";
@@ -25,6 +26,7 @@ import {
   candidateIdentity,
   houseContestId,
   normalizeCandidateName,
+  senateContestId,
   stableElectionId,
 } from "../../lib/elections/ids";
 import { safeFetchBuffer } from "../lib/safe-fetch";
@@ -35,12 +37,17 @@ import {
   type IndianaGeneralCandidate,
   type IndianaPrimaryCandidate,
 } from "../lib/indiana-election-parser";
+import {
+  parseDelawareCandidateWorkbook,
+  type DelawareCandidate,
+} from "../lib/delaware-election-parser";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const BACKFILL = process.argv.includes("--backfill");
 const STATE_ARG = process.argv.find((argument) => argument.startsWith("--state="));
 const REQUESTED_STATE = STATE_ARG?.split("=", 2)[1]?.trim().toUpperCase() ?? null;
 const INDIANA_SOURCE_ID = "state-in";
+const DELAWARE_SOURCE_ID = "state-de";
 
 type Database = ReturnType<typeof drizzle>;
 
@@ -106,6 +113,30 @@ async function fetchIndianaSources() {
   return { general, settings, primaryResults, generalCandidates, primary };
 }
 
+async function fetchDelawareSources() {
+  const [primary, general] = await Promise.all([
+    safeFetchBuffer(DELAWARE_2026_SOURCES.primaryCandidateList, {
+      allowedHosts: new Set(["elections.delaware.gov"]),
+      allowedContentTypes: [
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      ],
+      maxBytes: 5_000_000,
+    }),
+    safeFetchBuffer(DELAWARE_2026_SOURCES.generalCandidateList, {
+      allowedHosts: new Set(["elections.delaware.gov"]),
+      allowedContentTypes: [
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      ],
+      maxBytes: 5_000_000,
+    }),
+  ]);
+  const [primaryCandidates, generalCandidates] = await Promise.all([
+    parseDelawareCandidateWorkbook(primary.body, "primary"),
+    parseDelawareCandidateWorkbook(general.body, "general"),
+  ]);
+  return { primary, general, primaryCandidates, generalCandidates };
+}
+
 function candidateKey(candidate: { normalizedName: string; party: string }) {
   return `${candidate.normalizedName}|${partyCode(candidate.party)}`;
 }
@@ -135,6 +166,38 @@ async function fecMatchesForIndiana(db: Database) {
     const likely = districtRows.filter((row) =>
       candidateNamesLikelySame(row.name, ballotName)
     );
+    return likely.length === 1 ? likely[0].candidateId : null;
+  };
+}
+
+async function fecMatchesForDelaware(db: Database) {
+  const rows = await db
+    .select({
+      candidateId: electionCandidates.candidateId,
+      name: electionCandidates.name,
+      office: electionCandidates.office,
+      district: electionCandidates.district,
+    })
+    .from(electionCandidates)
+    .where(
+      and(
+        eq(electionCandidates.stateCode, "DE"),
+        eq(electionCandidates.electionYear, 2026)
+      )
+    );
+
+  return (office: "H" | "S", ballotName: string) => {
+    const raceRows = rows.filter(
+      (row) =>
+        row.office === office &&
+        (office === "S" || row.district === 0)
+    );
+    const exact = raceRows.filter(
+      (row) => normalizeCandidateName(row.name) === normalizeCandidateName(ballotName)
+    );
+    if (exact.length === 1) return exact[0].candidateId;
+    if (exact.length > 1) return null;
+    const likely = raceRows.filter((row) => candidateNamesLikelySame(row.name, ballotName));
     return likely.length === 1 ? likely[0].candidateId : null;
   };
 }
@@ -445,29 +508,317 @@ async function ingestIndiana(db: Database) {
   return fetched.generalCandidates.length + fetched.primary.candidates.length;
 }
 
+function delawareStatus(candidate: DelawareCandidate) {
+  if (candidate.status === "withdrawn") return "withdrawn";
+  if (candidate.stage === "general") {
+    return candidate.status === "qualified" ? "general_ballot" : "state_general_provisional";
+  }
+  return candidate.status === "qualified"
+    ? "state_primary_qualified"
+    : "state_primary_provisional";
+}
+
+async function ingestDelaware(db: Database) {
+  const fetched = await fetchDelawareSources();
+  console.log(
+    `Delaware: ${fetched.primaryCandidates.length} primary-list records; ${fetched.generalCandidates.length} general-list records.`
+  );
+
+  if (DRY_RUN) return fetched.primaryCandidates.length + fetched.generalCandidates.length;
+
+  const [primarySnapshot, generalSnapshot, fecMatches] = await Promise.all([
+    storeElectionSnapshot(DELAWARE_SOURCE_ID, fetched.primary),
+    storeElectionSnapshot(DELAWARE_SOURCE_ID, fetched.general),
+    fecMatchesForDelaware(db),
+  ]);
+  const observedAt = new Date();
+  const tx = db;
+
+  for (const snapshot of [primarySnapshot, generalSnapshot]) {
+    await tx
+      .insert(electionSourceSnapshots)
+      .values({
+        snapshotSha256: snapshot.sha256,
+        sourceId: DELAWARE_SOURCE_ID,
+        originalUrl: snapshot.originalUrl,
+        blobUrl: snapshot.blobUrl,
+        contentType: snapshot.contentType,
+        contentLength: snapshot.contentLength,
+        etag: snapshot.etag,
+        lastModified: snapshot.lastModified,
+      })
+      .onConflictDoNothing();
+  }
+
+  const contests = [
+    {
+      contestId: houseContestId("DE", 0),
+      office: "H" as const,
+      district: 0,
+      senateClass: null,
+      title: "Delaware U.S. House At-Large",
+    },
+    {
+      contestId: senateContestId("DE", 2),
+      office: "S" as const,
+      district: null,
+      senateClass: 2,
+      title: "Delaware U.S. Senate Class 2",
+    },
+  ];
+
+  for (const contest of contests) {
+    await tx
+      .insert(electionContests)
+      .values({
+        contestId: contest.contestId,
+        electionCycle: 2026,
+        stateCode: "DE",
+        office: contest.office,
+        district: contest.district,
+        senateClass: contest.senateClass,
+        title: contest.title,
+        currentStage: "primary",
+        coverageStatus: "verification_pending",
+        certifiedThrough: null,
+        nextExpectedEvent: "2026-09-15",
+        primarySourceId: DELAWARE_SOURCE_ID,
+        updatedAt: observedAt,
+      })
+      .onConflictDoUpdate({
+        target: electionContests.contestId,
+        set: {
+          title: contest.title,
+          currentStage: "primary",
+          coverageStatus: "verification_pending",
+          nextExpectedEvent: "2026-09-15",
+          primarySourceId: DELAWARE_SOURCE_ID,
+          updatedAt: observedAt,
+        },
+      });
+
+    for (const party of ["Democratic", "Republican"] as const) {
+      const partyCodeValue = party === "Democratic" ? "D" : "R";
+      const stageId = `${contest.contestId}-primary-${partyCodeValue}`;
+      await tx
+        .insert(electionStages)
+        .values({
+          stageId,
+          contestId: contest.contestId,
+          stageKind: "primary",
+          party,
+          electionDate: "2026-09-15",
+          sequenceNumber: party === "Democratic" ? 1 : 2,
+          resultStatus: "not_started",
+          sourceId: DELAWARE_SOURCE_ID,
+          updatedAt: observedAt,
+        })
+        .onConflictDoUpdate({
+          target: electionStages.stageId,
+          set: { sourceId: DELAWARE_SOURCE_ID, updatedAt: observedAt },
+        });
+    }
+
+    const generalStageId = `${contest.contestId}-general`;
+    await tx
+      .insert(electionStages)
+      .values({
+        stageId: generalStageId,
+        contestId: contest.contestId,
+        stageKind: "general",
+        electionDate: "2026-11-03",
+        sequenceNumber: 3,
+        resultStatus: "not_started",
+        sourceId: DELAWARE_SOURCE_ID,
+        updatedAt: observedAt,
+      })
+      .onConflictDoUpdate({
+        target: electionStages.stageId,
+        set: { sourceId: DELAWARE_SOURCE_ID, updatedAt: observedAt },
+      });
+
+    const combined = new Map<
+      string,
+      { primary: DelawareCandidate | null; general: DelawareCandidate | null }
+    >();
+    for (const candidate of fetched.primaryCandidates.filter(
+      (candidate) => candidate.office === contest.office
+    )) {
+      combined.set(candidateKey(candidate), { primary: candidate, general: null });
+    }
+    for (const candidate of fetched.generalCandidates.filter(
+      (candidate) => candidate.office === contest.office
+    )) {
+      const key = candidateKey(candidate);
+      combined.set(key, { primary: combined.get(key)?.primary ?? null, general: candidate });
+    }
+
+    for (const pair of combined.values()) {
+      const current = pair.general ?? pair.primary;
+      if (!current) continue;
+      const fecCandidateId = fecMatches(contest.office, current.name);
+      const { personId, candidacyId } = candidateIdentity(
+        contest.contestId,
+        current.normalizedName,
+        partyCode(current.party),
+        fecCandidateId
+      );
+      const currentStatus = delawareStatus(current);
+      const isActive = current.status !== "withdrawn";
+
+      await tx
+        .insert(candidatePeople)
+        .values({
+          personId,
+          displayName: current.name,
+          normalizedName: current.normalizedName,
+          updatedAt: observedAt,
+        })
+        .onConflictDoUpdate({
+          target: candidatePeople.personId,
+          set: {
+            displayName: current.name,
+            normalizedName: current.normalizedName,
+            updatedAt: observedAt,
+          },
+        });
+      await tx
+        .insert(candidacies)
+        .values({
+          candidacyId,
+          contestId: contest.contestId,
+          personId,
+          party: current.party,
+          currentStatus,
+          isActive,
+          fecCandidateId,
+          verifiedSourceId: DELAWARE_SOURCE_ID,
+          verifiedAt: observedAt,
+          updatedAt: observedAt,
+        })
+        .onConflictDoUpdate({
+          target: candidacies.candidacyId,
+          set: {
+            party: current.party,
+            currentStatus,
+            isActive,
+            fecCandidateId,
+            verifiedSourceId: DELAWARE_SOURCE_ID,
+            verifiedAt: observedAt,
+            updatedAt: observedAt,
+          },
+        });
+
+      for (const candidate of [pair.primary, pair.general].filter(
+        (value): value is DelawareCandidate => value != null
+      )) {
+        const stageId =
+          candidate.stage === "primary"
+            ? `${contest.contestId}-primary-${candidate.party === "Democratic" ? "D" : "R"}`
+            : generalStageId;
+        const snapshot = candidate.stage === "primary" ? primarySnapshot : generalSnapshot;
+        const status = delawareStatus(candidate);
+        const effectiveDate =
+          candidate.status === "withdrawn"
+            ? candidate.withdrawalDate ?? candidate.filingDate
+            : candidate.filingDate;
+
+        if (candidate.status === "qualified") {
+          const ballotLineId = stableElectionId(
+            "ballot",
+            candidacyId,
+            stageId,
+            candidate.party
+          );
+          await tx
+            .insert(candidacyBallotLines)
+            .values({
+              ballotLineId,
+              candidacyId,
+              stageId,
+              partyLabel: candidate.party,
+              sourceId: DELAWARE_SOURCE_ID,
+            })
+            .onConflictDoUpdate({
+              target: candidacyBallotLines.ballotLineId,
+              set: { partyLabel: candidate.party, sourceId: DELAWARE_SOURCE_ID },
+            });
+        }
+
+        const eventId = stableElectionId(
+          "event",
+          candidacyId,
+          stageId,
+          status,
+          effectiveDate
+        );
+        await tx
+          .insert(candidateStatusEvents)
+          .values({
+            eventId,
+            candidacyId,
+            electionStageId: stageId,
+            status,
+            effectiveDate,
+            observedAt,
+            sourceId: DELAWARE_SOURCE_ID,
+            snapshotSha256: snapshot.sha256,
+            details: {
+              filing_date: candidate.filingDate,
+              withdrawal_date: candidate.withdrawalDate,
+              state_status: candidate.status,
+            },
+          })
+          .onConflictDoNothing();
+      }
+    }
+  }
+
+  await tx
+    .update(electionSources)
+    .set({
+      coverageStatus: "verification_pending",
+      lastCheckedAt: observedAt,
+      lastSuccessAt: observedAt,
+      nextExpectedEvent: "2026-09-15",
+      nextCheckAt: new Date(observedAt.getTime() + 24 * 60 * 60 * 1000),
+      updatedAt: observedAt,
+    })
+    .where(eq(electionSources.sourceId, DELAWARE_SOURCE_ID));
+
+  return fetched.primaryCandidates.length + fetched.generalCandidates.length;
+}
+
 async function selectedStates(db: Database) {
   if (REQUESTED_STATE) return [REQUESTED_STATE];
-  if (BACKFILL) return ["IN"];
+  if (BACKFILL) return ["IN", "DE"];
   const due = await db
     .select({ stateCode: electionSources.stateCode })
     .from(electionSources)
     .where(
       and(
         lte(electionSources.nextCheckAt, new Date()),
-        inArray(electionSources.adapterKey, ["indiana-2026"])
+        inArray(electionSources.adapterKey, ["indiana-2026", "delaware-2026"])
       )
     );
   return due.map((row) => row.stateCode).filter((code): code is string => Boolean(code));
 }
 
 async function main() {
-  if (REQUESTED_STATE && REQUESTED_STATE !== "IN") {
+  if (REQUESTED_STATE && !["IN", "DE"].includes(REQUESTED_STATE)) {
     throw new Error(`No verified adapter is available for ${REQUESTED_STATE}`);
   }
 
   if (DRY_RUN) {
-    const count = await ingestIndiana({} as Database);
-    console.log(`Dry run complete. Parsed ${count} Indiana records; no database or Blob writes.`);
+    const states = REQUESTED_STATE ? [REQUESTED_STATE] : BACKFILL ? ["IN", "DE"] : ["IN", "DE"];
+    let count = 0;
+    for (const state of states) {
+      if (state === "IN") count += await ingestIndiana({} as Database);
+      if (state === "DE") count += await ingestDelaware({} as Database);
+    }
+    console.log(
+      `Dry run complete. Parsed ${count} records across ${states.join(", ")}; no database or Blob writes.`
+    );
     return;
   }
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
@@ -491,6 +842,7 @@ async function main() {
     let records = 0;
     for (const state of states) {
       if (state === "IN") records += await ingestIndiana(db);
+      if (state === "DE") records += await ingestDelaware(db);
     }
     await db
       .update(syncLog)

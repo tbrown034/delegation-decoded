@@ -396,12 +396,15 @@ function AboutProcessDetails({
               The verified layer starts from state election-authority ballot and
               result records, stores each raw response as a hash-addressed private
               snapshot, and appends status events rather than rewriting history.
-              Indiana is the first mid-cycle adapter. Its current state records
-              are published with verification pending because the statewide
-              primary feed still marks itself unofficial and the state&apos;s general
-              candidate spreadsheet warns that it is incomplete. Everywhere else,
-              FEC Form 2 filings remain visible only as a labeled fallback. An FEC
-              filing is never presented as ballot access.
+              Indiana backfills a completed primary and Delaware tracks its
+              still-active primary. Indiana remains verification pending because
+              the statewide primary feed marks itself unofficial and the state&apos;s
+              general candidate spreadsheet warns that it is incomplete. Delaware
+              remains verification pending because its official lists establish
+              qualified and withdrawn candidates, but are not yet a sample ballot
+              or certified result. Everywhere else, FEC Form 2 filings remain
+              visible only as a labeled fallback. An FEC filing is never presented
+              as ballot access.
             </li>
             <li>
               <strong className="text-neutral-900">Research campaign sites.</strong>{" "}
