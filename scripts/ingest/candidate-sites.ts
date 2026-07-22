@@ -195,6 +195,10 @@ function committeeSourceUrl(committeeId: string) {
   return `https://www.fec.gov/data/committee/${encodeURIComponent(committeeId)}/`;
 }
 
+function candidateSourceUrl(candidateId: string) {
+  return `https://www.fec.gov/data/candidate/${encodeURIComponent(candidateId)}/`;
+}
+
 function selectCommitteeSite(committees: FECCommittee[]) {
   const current = committees.filter(
     (committee) =>
@@ -236,7 +240,34 @@ async function resolveCampaignSite(db: Database, candidate: CandidateRow) {
     };
   }
   const committees = await fetchCandidateCommittees(candidate.fec_candidate_id);
-  const selected = selectCommitteeSite(committees);
+  let selected: ReturnType<typeof selectCommitteeSite>;
+  try {
+    selected = selectCommitteeSite(committees);
+  } catch (error) {
+    if (!DRY_RUN) {
+      const message = error instanceof Error ? error.message : "Campaign-site discovery failed";
+      await db
+        .insert(candidateCampaignSites)
+        .values({
+          candidacyId: candidate.candidacy_id,
+          siteUrl: null,
+          verificationStatus: "blocked",
+          verifiedSourceUrl: candidateSourceUrl(candidate.fec_candidate_id),
+          crawlError: message.slice(0, 500),
+        })
+        .onConflictDoUpdate({
+          target: candidateCampaignSites.candidacyId,
+          set: {
+            siteUrl: null,
+            verificationStatus: "blocked",
+            verifiedSourceUrl: candidateSourceUrl(candidate.fec_candidate_id),
+            crawlError: message.slice(0, 500),
+            updatedAt: new Date(),
+          },
+        });
+    }
+    throw error;
+  }
   if (!DRY_RUN) {
     await db
       .insert(candidateCampaignSites)
@@ -276,7 +307,14 @@ async function getCandidates(db: Database) {
       AND ca.fec_candidate_id IS NOT NULL
       AND contest.coverage_status IN ('verified_ballot', 'verification_pending')
       ${requested}
-    ORDER BY site.last_crawled_at ASC NULLS FIRST, p.display_name
+    ORDER BY
+      CASE
+        WHEN site.candidacy_id IS NULL THEN 0
+        WHEN site.last_crawled_at IS NOT NULL THEN 1
+        ELSE 2
+      END,
+      site.last_crawled_at ASC NULLS FIRST,
+      p.display_name
     LIMIT ${MAX_CANDIDATES}
   `);
   return result.rows as CandidateRow[];

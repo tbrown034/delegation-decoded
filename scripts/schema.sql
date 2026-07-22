@@ -557,7 +557,7 @@ CREATE TABLE IF NOT EXISTS election_result_rounds (
 
 CREATE TABLE IF NOT EXISTS candidate_campaign_sites (
   candidacy_id         TEXT PRIMARY KEY REFERENCES candidacies(candidacy_id) ON DELETE CASCADE,
-  site_url             TEXT NOT NULL,
+  site_url             TEXT,
   verification_status TEXT NOT NULL DEFAULT 'pending',
   verified_source_url TEXT,
   last_crawled_at      TIMESTAMPTZ,
@@ -566,6 +566,11 @@ CREATE TABLE IF NOT EXISTS candidate_campaign_sites (
   updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
   CHECK (verification_status IN ('pending', 'verified', 'rejected', 'blocked'))
 );
+
+-- A current FEC filing can be authoritative evidence that no campaign website
+-- is on file. Keep a blocked discovery row without inventing a site URL.
+ALTER TABLE candidate_campaign_sites
+  ALTER COLUMN site_url DROP NOT NULL;
 
 -- Campaign pages are untrusted input. Every fetched page is preserved as an
 -- immutable private blob before extraction so a published claim can be traced

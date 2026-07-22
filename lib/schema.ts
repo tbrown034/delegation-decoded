@@ -914,7 +914,7 @@ export const electionResultRounds = pgTable(
 
 export const candidateCampaignSites = pgTable("candidate_campaign_sites", {
   candidacyId: text("candidacy_id").primaryKey().references(() => candidacies.candidacyId, { onDelete: "cascade" }),
-  siteUrl: text("site_url").notNull(),
+  siteUrl: text("site_url"),
   verificationStatus: text("verification_status").notNull().default("pending"),
   verifiedSourceUrl: text("verified_source_url"),
   lastCrawledAt: timestamp("last_crawled_at", { withTimezone: true }),

@@ -403,6 +403,7 @@ export async function getPublishedCampaignResearch(contestId: string) {
         JOIN candidacies ca ON ca.candidacy_id = site.candidacy_id
         WHERE ca.contest_id = ${contestId}
           AND site.verification_status = 'verified'
+          AND site.site_url IS NOT NULL
           AND site.verified_source_url IS NOT NULL
       `),
       db.execute(sql`
