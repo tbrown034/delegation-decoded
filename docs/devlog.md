@@ -7,9 +7,10 @@ A chronological record of development sessions and significant changes.
 ## 2026-07-22 — Election and biography activation
 
 **Session Summary:**
-- Applied the idempotent 95-statement election and biography schema to the connected Neon database and created a private Vercel Blob evidence store linked to development, preview and production environments.
+- Applied the idempotent election and biography schema to the connected Neon database; the final precision and discovery updates bring it to 98 statements. Created a private Vercel Blob evidence store linked to development, preview and production environments.
 - Loaded Indiana's mid-cycle election backfill from state sources: 9 contests, 61 candidacies, 53 primary-result rows and 3 immutable source snapshots. All 9 contests remain `verification_pending` because the primary feed labels its results unofficial and the general workbook is incomplete.
-- Attempted every active member with a roster-provided official site. The final pass crawled 510 of 536 sites, queued 3,819 exact-quote biography facts for 459 members and left every fact in `needs_review` pending a named human decision.
+- Attempted every active member with a roster-provided official site. The final pass crawled 510 of 536 sites, queued 3,908 exact-quote biography facts for 460 members and left every fact in `needs_review` pending a named human decision.
+- Attempted all 17 FEC-linked active Indiana candidacies. Fifteen committee-reported campaign sites were verified, 9 crawled successfully, 2 no-site outcomes were recorded as blocked and 70 exact-quote records were queued: 61 campaign claims plus 9 prior-service records. The other 9 active candidacies remain unlinked rather than guessed.
 
 **Notable Changes:**
 - Fixed Neon HTTP incompatibility in election and campaign-site ingestion by replacing interactive transactions with stable, idempotent upserts.
@@ -17,9 +18,10 @@ A chronological record of development sessions and significant changes.
 - Added bounded failed-site retries, raised the official-page byte cap to 2 MB and preserved valid root/about evidence when an optional secondary page fails. The retry recovered 20 of 46 failed official sites; 24 of the 26 remaining failures are unverifiable robots policies and stay fail-closed.
 - Moved weekly candidate and member evidence collection ahead of both FEC finance ingests and isolated the steps from unrelated failures, giving challenger discovery the first small share of the weekly API quota. The guards use `!cancelled()` so a deliberate workflow cancellation still stops downstream spend.
 - Added manual `research`, `candidates` and `members` workflow modes for evidence-only recovery. They avoid replaying unrelated roster and finance pipelines, and candidate-specific retries no longer spend a member-biography batch.
+- Preserved year-only prior-service dates as source-precision text instead of inventing January 1. Added targeted forced re-extraction, recovered Erin Houchin's 2014–2022 state Senate record and stopped failed or no-site discoveries from starving untouched candidates.
 - Created a private Blob store after confirming the uploader correctly rejected a mistakenly created public store; the empty public store was deleted. A live candidate run caught a dotenv banner accidentally piped into the first GitHub Blob secret; Blob, OpenAI and Anthropic were then refreshed with silent parsing and no value output.
-- Pushed commits `203ee5f`, `5836d47` and `5d609ca` to `ask-portfolio-polish`. A Vercel preview built successfully from `5836d47`; production was not changed.
-- Final validation: TypeScript, ESLint, 30/30 tests, `pnpm audit --prod`, `git diff --check` and the Next.js production build pass.
+- Pushed the activation series to `ask-portfolio-polish`, from `203ee5f` through `26cb679`. Vercel previews built successfully; production was not changed.
+- Final validation: TypeScript, ESLint, 31/31 tests, `pnpm audit --prod`, `git diff --check` and the Next.js production build pass.
 - Operational warning: relinking Vercel environment variables replaced `.env.local`; its local-only FEC and Congress keys are no longer present. The GitHub Actions secrets remain available, so key-dependent ingests continue there until the local values are restored.
 
 ---
