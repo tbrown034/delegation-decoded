@@ -12,11 +12,13 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "Run the full weekly pipeline or only candidate/member research"
+        description: "Choose the full weekly pipeline or an evidence-only recovery"
         type: choice
         options:
           - full
           - research
+          - candidates
+          - members
         default: full
 
 permissions:
@@ -41,20 +43,20 @@ jobs:
         run: npm ci
 
       - name: Ingest members
-        if: ${{ inputs.mode != 'research' }}
+        if: ${{ inputs.mode == '' || inputs.mode == 'full' }}
         run: npx tsx scripts/ingest/members.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Ingest committees
-        if: ${{ inputs.mode != 'research' }}
+        if: ${{ inputs.mode == '' || inputs.mode == 'full' }}
         run: npx tsx scripts/ingest/committees.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           CONGRESS_API_KEY: ${{ secrets.CONGRESS_API_KEY }}
 
       - name: Crawl verified campaign sites and queue extracted claims for review
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && inputs.mode != 'members' }}
         run: npx tsx scripts/ingest/candidate-sites.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -70,7 +72,7 @@ jobs:
           CANDIDATE_EXTRACT_MAX_RUN_TOKENS: 250000
 
       - name: Crawl official member biographies and queue facts for review
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && inputs.mode != 'candidates' }}
         run: npx tsx scripts/ingest/member-biographies.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -85,7 +87,7 @@ jobs:
           MEMBER_BIO_MAX_RUN_TOKENS: 250000
 
       - name: Ingest campaign finance
-        if: ${{ !cancelled() && inputs.mode != 'research' }}
+        if: ${{ !cancelled() && (inputs.mode == '' || inputs.mode == 'full') }}
         run: npx tsx scripts/ingest/finance.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -95,26 +97,26 @@ jobs:
       # ceiling. Keep all evidence collection ahead of both finance jobs so
       # candidate research gets the first small share of the weekly FEC quota.
       - name: Ingest finance committees and top contributors
-        if: ${{ !cancelled() && inputs.mode != 'research' }}
+        if: ${{ !cancelled() && (inputs.mode == '' || inputs.mode == 'full') }}
         run: npx tsx scripts/ingest/finance-committees.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           FEC_API_KEY: ${{ secrets.FEC_API_KEY }}
 
       - name: Ingest press releases
-        if: ${{ inputs.mode != 'research' }}
+        if: ${{ inputs.mode == '' || inputs.mode == 'full' }}
         run: npx tsx scripts/ingest/press-releases.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Generate delegation briefs
-        if: ${{ inputs.mode != 'research' }}
+        if: ${{ inputs.mode == '' || inputs.mode == 'full' }}
         run: npx tsx scripts/ingest/generate-briefs.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Generate events feed
-        if: ${{ inputs.mode != 'research' }}
+        if: ${{ inputs.mode == '' || inputs.mode == 'full' }}
         run: npx tsx scripts/ingest/generate-events.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
