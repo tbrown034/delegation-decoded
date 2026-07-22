@@ -10,6 +10,14 @@ on:
   schedule:
     - cron: "0 7 * * 0"
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "Run the full weekly pipeline or only candidate/member research"
+        type: choice
+        options:
+          - full
+          - research
+        default: full
 
 permissions:
   contents: read
@@ -33,11 +41,13 @@ jobs:
         run: npm ci
 
       - name: Ingest members
+        if: ${{ inputs.mode != 'research' }}
         run: npx tsx scripts/ingest/members.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Ingest committees
+        if: ${{ inputs.mode != 'research' }}
         run: npx tsx scripts/ingest/committees.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -75,7 +85,7 @@ jobs:
           MEMBER_BIO_MAX_RUN_TOKENS: 250000
 
       - name: Ingest campaign finance
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && inputs.mode != 'research' }}
         run: npx tsx scripts/ingest/finance.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -85,35 +95,38 @@ jobs:
       # ceiling. Keep all evidence collection ahead of both finance jobs so
       # candidate research gets the first small share of the weekly FEC quota.
       - name: Ingest finance committees and top contributors
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && inputs.mode != 'research' }}
         run: npx tsx scripts/ingest/finance-committees.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           FEC_API_KEY: ${{ secrets.FEC_API_KEY }}
 
       - name: Ingest press releases
+        if: ${{ inputs.mode != 'research' }}
         run: npx tsx scripts/ingest/press-releases.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Generate delegation briefs
+        if: ${{ inputs.mode != 'research' }}
         run: npx tsx scripts/ingest/generate-briefs.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Generate events feed
+        if: ${{ inputs.mode != 'research' }}
         run: npx tsx scripts/ingest/generate-events.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Cleanup stuck runs
-        if: always()
+        if: ${{ !cancelled() }}
         run: npx tsx scripts/cleanup-stuck-runs.ts --apply
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Health check
-        if: always()
+        if: ${{ !cancelled() }}
         run: npx tsx scripts/health-check.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
