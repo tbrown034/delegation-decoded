@@ -15,9 +15,10 @@ A chronological record of development sessions and significant changes.
 - Fixed Neon HTTP incompatibility in election and campaign-site ingestion by replacing interactive transactions with stable, idempotent upserts.
 - Added conservative FEC identity matching for ballot names with middle names, initials and common first-name variants. Indiana's active candidacy linkage improved from 11 of 26 to 17 of 26; ambiguous or unsupported matches remain empty.
 - Added bounded failed-site retries, raised the official-page byte cap to 2 MB and preserved valid root/about evidence when an optional secondary page fails. The retry recovered 20 of 46 failed official sites; 24 of the 26 remaining failures are unverifiable robots policies and stay fail-closed.
+- Moved weekly candidate and member evidence collection ahead of the rate-limit-heavy contributor ingest and made both evidence steps independent of earlier failures, preventing the slower finance job from starving them.
 - Created a private Blob store after confirming the uploader correctly rejected a mistakenly created public store; the empty public store was deleted. Refreshed GitHub Actions secrets for Blob, OpenAI and Anthropic without exposing values.
 - Pushed commits `203ee5f`, `5836d47` and `5d609ca` to `ask-portfolio-polish`. A Vercel preview built successfully from `5836d47`; production was not changed.
-- Validation through the latest retry commit: TypeScript, ESLint, 30/30 tests and `git diff --check` pass. A final production build remains required after the activation log and workflow changes.
+- Final validation: TypeScript, ESLint, 30/30 tests, `pnpm audit --prod`, `git diff --check` and the Next.js production build pass.
 - Operational warning: relinking Vercel environment variables replaced `.env.local`; its local-only FEC and Congress keys are no longer present. The GitHub Actions secrets remain available, so key-dependent ingests continue there until the local values are restored.
 
 ---
