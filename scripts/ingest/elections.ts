@@ -4,6 +4,7 @@ import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
 import { and, eq, inArray, lte, sql } from "drizzle-orm";
 import {
+  candidateIdentifiers,
   candidatePeople,
   candidateStatusEvents,
   candidacies,
@@ -19,6 +20,7 @@ import {
 import {
   DELAWARE_2026_SOURCES,
   ELECTION_SOURCE_REGISTRY,
+  FLORIDA_2026_SOURCES,
   INDIANA_2026_SOURCES,
 } from "../../lib/elections/registry";
 import {
@@ -41,6 +43,10 @@ import {
   parseDelawareCandidateWorkbook,
   type DelawareCandidate,
 } from "../lib/delaware-election-parser";
+import {
+  parseFloridaCandidateTsv,
+  type FloridaCandidate,
+} from "../lib/florida-election-parser";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const BACKFILL = process.argv.includes("--backfill");
@@ -48,6 +54,7 @@ const STATE_ARG = process.argv.find((argument) => argument.startsWith("--state="
 const REQUESTED_STATE = STATE_ARG?.split("=", 2)[1]?.trim().toUpperCase() ?? null;
 const INDIANA_SOURCE_ID = "state-in";
 const DELAWARE_SOURCE_ID = "state-de";
+const FLORIDA_SOURCE_ID = "state-fl";
 
 type Database = ReturnType<typeof drizzle>;
 
@@ -137,6 +144,26 @@ async function fetchDelawareSources() {
   return { primary, general, primaryCandidates, generalCandidates };
 }
 
+async function fetchFloridaSource() {
+  const exportResult = await safeFetchBuffer(FLORIDA_2026_SOURCES.candidateExtract, {
+    allowedHosts: new Set(["dos.elections.myflorida.com"]),
+    allowedContentTypes: ["application/tab-separated-values"],
+    maxBytes: 2_000_000,
+    maxRedirects: 0,
+    formData: {
+      elecID: "20261103-GEN",
+      office: "FED",
+      status: "All",
+      cantype: "STA",
+      FormSubmit: "Download Candidate List",
+    },
+  });
+  return {
+    exportResult,
+    candidates: parseFloridaCandidateTsv(exportResult.body),
+  };
+}
+
 function candidateKey(candidate: { normalizedName: string; party: string }) {
   return `${candidate.normalizedName}|${partyCode(candidate.party)}`;
 }
@@ -191,6 +218,36 @@ async function fecMatchesForDelaware(db: Database) {
       (row) =>
         row.office === office &&
         (office === "S" || row.district === 0)
+    );
+    const exact = raceRows.filter(
+      (row) => normalizeCandidateName(row.name) === normalizeCandidateName(ballotName)
+    );
+    if (exact.length === 1) return exact[0].candidateId;
+    if (exact.length > 1) return null;
+    const likely = raceRows.filter((row) => candidateNamesLikelySame(row.name, ballotName));
+    return likely.length === 1 ? likely[0].candidateId : null;
+  };
+}
+
+async function fecMatchesForFlorida(db: Database) {
+  const rows = await db
+    .select({
+      candidateId: electionCandidates.candidateId,
+      name: electionCandidates.name,
+      office: electionCandidates.office,
+      district: electionCandidates.district,
+    })
+    .from(electionCandidates)
+    .where(
+      and(
+        eq(electionCandidates.stateCode, "FL"),
+        eq(electionCandidates.electionYear, 2026)
+      )
+    );
+
+  return (office: "H" | "S", district: number | null, ballotName: string) => {
+    const raceRows = rows.filter(
+      (row) => row.office === office && (office === "S" || row.district === district)
     );
     const exact = raceRows.filter(
       (row) => normalizeCandidateName(row.name) === normalizeCandidateName(ballotName)
@@ -789,32 +846,325 @@ async function ingestDelaware(db: Database) {
   return fetched.primaryCandidates.length + fetched.generalCandidates.length;
 }
 
+function floridaStatus(candidate: FloridaCandidate) {
+  if (candidate.status === "withdrawn") return "withdrawn";
+  if (candidate.status === "did_not_qualify") return "did_not_qualify";
+  if (candidate.status === "primary_unopposed") return "state_reported_primary_unopposed";
+  if (candidate.partyCode === "WRI") return "qualified_write_in";
+  if (candidate.partyCode === "DEM" || candidate.partyCode === "REP") {
+    return "state_primary_qualified";
+  }
+  return "state_general_qualified";
+}
+
+function floridaPrimaryParty(candidate: FloridaCandidate) {
+  if (candidate.partyCode === "DEM") return "D" as const;
+  if (candidate.partyCode === "REP") return "R" as const;
+  return null;
+}
+
+async function ingestFlorida(db: Database) {
+  const fetched = await fetchFloridaSource();
+  const activeCount = fetched.candidates.filter(
+    (candidate) => candidate.status === "qualified" || candidate.status === "primary_unopposed"
+  ).length;
+  console.log(
+    `Florida: ${fetched.candidates.length} federal candidate records across 29 contests; ${activeCount} active state-qualified or unopposed records.`
+  );
+
+  if (DRY_RUN) return fetched.candidates.length;
+
+  const [snapshot, fecMatches] = await Promise.all([
+    storeElectionSnapshot(FLORIDA_SOURCE_ID, fetched.exportResult),
+    fecMatchesForFlorida(db),
+  ]);
+  const observedAt = new Date();
+  const tx = db;
+
+  await tx
+    .insert(electionSourceSnapshots)
+    .values({
+      snapshotSha256: snapshot.sha256,
+      sourceId: FLORIDA_SOURCE_ID,
+      originalUrl: snapshot.originalUrl,
+      blobUrl: snapshot.blobUrl,
+      contentType: snapshot.contentType,
+      contentLength: snapshot.contentLength,
+      etag: snapshot.etag,
+      lastModified: snapshot.lastModified,
+    })
+    .onConflictDoNothing();
+
+  const contests = [
+    ...Array.from({ length: 28 }, (_, index) => ({
+      contestId: houseContestId("FL", index + 1),
+      office: "H" as const,
+      district: index + 1,
+      senateClass: null,
+      electionType: "regular" as const,
+      title: `Florida U.S. House District ${index + 1}`,
+      specialElectionUrl: null,
+    })),
+    {
+      contestId: senateContestId("FL", 3, "special"),
+      office: "S" as const,
+      district: null,
+      senateClass: 3,
+      electionType: "special" as const,
+      title: "Florida U.S. Senate Class 3 Special Election",
+      specialElectionUrl: FLORIDA_2026_SOURCES.senateVacancyLaw,
+    },
+  ];
+
+  for (const contest of contests) {
+    await tx
+      .insert(electionContests)
+      .values({
+        contestId: contest.contestId,
+        electionCycle: 2026,
+        stateCode: "FL",
+        office: contest.office,
+        district: contest.district,
+        senateClass: contest.senateClass,
+        electionType: contest.electionType,
+        title: contest.title,
+        currentStage: "primary",
+        coverageStatus: "verification_pending",
+        certifiedThrough: null,
+        nextExpectedEvent: "2026-08-18",
+        primarySourceId: FLORIDA_SOURCE_ID,
+        specialElectionUrl: contest.specialElectionUrl,
+        updatedAt: observedAt,
+      })
+      .onConflictDoUpdate({
+        target: electionContests.contestId,
+        set: {
+          title: contest.title,
+          currentStage: "primary",
+          coverageStatus: "verification_pending",
+          nextExpectedEvent: "2026-08-18",
+          primarySourceId: FLORIDA_SOURCE_ID,
+          specialElectionUrl: contest.specialElectionUrl,
+          updatedAt: observedAt,
+        },
+      });
+
+    for (const party of ["Democratic", "Republican"] as const) {
+      const partyCodeValue = party === "Democratic" ? "D" : "R";
+      const stageId = `${contest.contestId}-primary-${partyCodeValue}`;
+      await tx
+        .insert(electionStages)
+        .values({
+          stageId,
+          contestId: contest.contestId,
+          stageKind: "primary",
+          party,
+          electionDate: "2026-08-18",
+          sequenceNumber: party === "Democratic" ? 1 : 2,
+          resultStatus: "not_started",
+          sourceId: FLORIDA_SOURCE_ID,
+          updatedAt: observedAt,
+        })
+        .onConflictDoUpdate({
+          target: electionStages.stageId,
+          set: { sourceId: FLORIDA_SOURCE_ID, updatedAt: observedAt },
+        });
+    }
+
+    const generalStageId = `${contest.contestId}-general`;
+    await tx
+      .insert(electionStages)
+      .values({
+        stageId: generalStageId,
+        contestId: contest.contestId,
+        stageKind: "general",
+        electionDate: "2026-11-03",
+        sequenceNumber: 3,
+        resultStatus: "not_started",
+        sourceId: FLORIDA_SOURCE_ID,
+        updatedAt: observedAt,
+      })
+      .onConflictDoUpdate({
+        target: electionStages.stageId,
+        set: { sourceId: FLORIDA_SOURCE_ID, updatedAt: observedAt },
+      });
+
+    const contestCandidates = fetched.candidates.filter(
+      (candidate) =>
+        candidate.office === contest.office &&
+        (candidate.office === "S" || candidate.district === contest.district)
+    );
+    for (const candidate of contestCandidates) {
+      const fecCandidateId = fecMatches(candidate.office, candidate.district, candidate.name);
+      const { personId, candidacyId } = candidateIdentity(
+        contest.contestId,
+        candidate.normalizedName,
+        candidate.partyCode,
+        fecCandidateId
+      );
+      const currentStatus = floridaStatus(candidate);
+      const isActive =
+        candidate.status === "qualified" || candidate.status === "primary_unopposed";
+
+      await tx
+        .insert(candidatePeople)
+        .values({
+          personId,
+          displayName: candidate.name,
+          normalizedName: candidate.normalizedName,
+          updatedAt: observedAt,
+        })
+        .onConflictDoUpdate({
+          target: candidatePeople.personId,
+          set: {
+            displayName: candidate.name,
+            normalizedName: candidate.normalizedName,
+            updatedAt: observedAt,
+          },
+        });
+      await tx
+        .insert(candidateIdentifiers)
+        .values({
+          personId,
+          identifierType: "fl_candidate_account",
+          identifierValue: candidate.stateCandidateId,
+          sourceId: FLORIDA_SOURCE_ID,
+        })
+        .onConflictDoNothing();
+      await tx
+        .insert(candidacies)
+        .values({
+          candidacyId,
+          contestId: contest.contestId,
+          personId,
+          party: candidate.party,
+          currentStatus,
+          isActive,
+          fecCandidateId,
+          verifiedSourceId: FLORIDA_SOURCE_ID,
+          verifiedAt: observedAt,
+          updatedAt: observedAt,
+        })
+        .onConflictDoUpdate({
+          target: candidacies.candidacyId,
+          set: {
+            party: candidate.party,
+            currentStatus,
+            isActive,
+            fecCandidateId,
+            verifiedSourceId: FLORIDA_SOURCE_ID,
+            verifiedAt: observedAt,
+            updatedAt: observedAt,
+          },
+        });
+
+      const primaryParty = floridaPrimaryParty(candidate);
+      const primaryStageId = primaryParty
+        ? `${contest.contestId}-primary-${primaryParty}`
+        : null;
+      const eventStageId = primaryStageId ?? generalStageId;
+      const ballotStageId =
+        !isActive || candidate.partyCode === "WRI"
+          ? null
+          : candidate.status === "primary_unopposed" || primaryParty == null
+            ? generalStageId
+            : primaryStageId;
+
+      if (ballotStageId) {
+        const ballotLineId = stableElectionId(
+          "ballot",
+          candidacyId,
+          ballotStageId,
+          candidate.party
+        );
+        await tx
+          .insert(candidacyBallotLines)
+          .values({
+            ballotLineId,
+            candidacyId,
+            stageId: ballotStageId,
+            partyLabel: candidate.party,
+            sourceId: FLORIDA_SOURCE_ID,
+          })
+          .onConflictDoUpdate({
+            target: candidacyBallotLines.ballotLineId,
+            set: { partyLabel: candidate.party, sourceId: FLORIDA_SOURCE_ID },
+          });
+      }
+
+      const eventId = stableElectionId(
+        "event",
+        candidacyId,
+        candidate.stateCandidateId,
+        currentStatus
+      );
+      await tx
+        .insert(candidateStatusEvents)
+        .values({
+          eventId,
+          candidacyId,
+          electionStageId: eventStageId,
+          status: currentStatus,
+          effectiveDate: null,
+          observedAt,
+          sourceId: FLORIDA_SOURCE_ID,
+          snapshotSha256: snapshot.sha256,
+          details: {
+            state_candidate_id: candidate.stateCandidateId,
+            state_status: candidate.status,
+            party_code: candidate.partyCode,
+          },
+        })
+        .onConflictDoNothing();
+    }
+  }
+
+  await tx
+    .update(electionSources)
+    .set({
+      coverageStatus: "verification_pending",
+      lastCheckedAt: observedAt,
+      lastSuccessAt: observedAt,
+      nextExpectedEvent: "2026-08-18",
+      nextCheckAt: new Date(observedAt.getTime() + 24 * 60 * 60 * 1000),
+      updatedAt: observedAt,
+    })
+    .where(eq(electionSources.sourceId, FLORIDA_SOURCE_ID));
+
+  return fetched.candidates.length;
+}
+
 async function selectedStates(db: Database) {
   if (REQUESTED_STATE) return [REQUESTED_STATE];
-  if (BACKFILL) return ["IN", "DE"];
+  if (BACKFILL) return ["IN", "DE", "FL"];
   const due = await db
     .select({ stateCode: electionSources.stateCode })
     .from(electionSources)
     .where(
       and(
         lte(electionSources.nextCheckAt, new Date()),
-        inArray(electionSources.adapterKey, ["indiana-2026", "delaware-2026"])
+        inArray(electionSources.adapterKey, ["indiana-2026", "delaware-2026", "florida-2026"])
       )
     );
   return due.map((row) => row.stateCode).filter((code): code is string => Boolean(code));
 }
 
 async function main() {
-  if (REQUESTED_STATE && !["IN", "DE"].includes(REQUESTED_STATE)) {
+  if (REQUESTED_STATE && !["IN", "DE", "FL"].includes(REQUESTED_STATE)) {
     throw new Error(`No verified adapter is available for ${REQUESTED_STATE}`);
   }
 
   if (DRY_RUN) {
-    const states = REQUESTED_STATE ? [REQUESTED_STATE] : BACKFILL ? ["IN", "DE"] : ["IN", "DE"];
+    const states = REQUESTED_STATE
+      ? [REQUESTED_STATE]
+      : BACKFILL
+        ? ["IN", "DE", "FL"]
+        : ["IN", "DE", "FL"];
     let count = 0;
     for (const state of states) {
       if (state === "IN") count += await ingestIndiana({} as Database);
       if (state === "DE") count += await ingestDelaware({} as Database);
+      if (state === "FL") count += await ingestFlorida({} as Database);
     }
     console.log(
       `Dry run complete. Parsed ${count} records across ${states.join(", ")}; no database or Blob writes.`
@@ -843,6 +1193,7 @@ async function main() {
     for (const state of states) {
       if (state === "IN") records += await ingestIndiana(db);
       if (state === "DE") records += await ingestDelaware(db);
+      if (state === "FL") records += await ingestFlorida(db);
     }
     await db
       .update(syncLog)

@@ -396,13 +396,19 @@ function AboutProcessDetails({
               The verified layer starts from state election-authority ballot and
               result records, stores each raw response as a hash-addressed private
               snapshot, and appends status events rather than rewriting history.
-              Indiana backfills a completed primary and Delaware tracks its
-              still-active primary. Indiana remains verification pending because
+              Indiana backfills a completed primary while Delaware and Florida
+              track still-active primaries. Indiana remains verification pending because
               the statewide primary feed marks itself unofficial and the state&apos;s
               general candidate spreadsheet warns that it is incomplete. Delaware
               remains verification pending because its official lists establish
               qualified and withdrawn candidates, but are not yet a sample ballot
-              or certified result. Everywhere else, FEC Form 2 filings remain
+              or certified result. Florida&apos;s export distinguishes qualified,
+              unopposed, withdrawn and failed-to-qualify records, but its candidate
+              tracking system describes itself as an unofficial reference. The
+              structured parser excludes voter IDs, addresses, phone numbers and
+              email addresses from candidate records; the complete source export
+              is retained only as a private, content-addressed evidence snapshot.
+              Everywhere else, FEC Form 2 filings remain
               visible only as a labeled fallback. An FEC filing is never presented
               as ballot access.
             </li>

@@ -97,6 +97,23 @@ stateSeeds[delawareIndex] = {
     "Current-cycle adapter: state-published qualified and withdrawn federal candidates from the official primary and general lists. Coverage remains verification pending until a ballot or certified result source is available.",
 };
 
+const floridaIndex = stateSeeds.findIndex((source) => source.stateCode === "FL");
+stateSeeds[floridaIndex] = {
+  sourceId: "state-fl",
+  stateCode: "FL",
+  authorityName: "Florida Department of State, Division of Elections",
+  sourceKind: "state_election_authority",
+  sourceUrl: "https://dos.elections.myflorida.com/candidates/downloadcanlist.asp",
+  adapterKey: "florida-2026",
+  coverageStatus: "verification_pending",
+  isAuthoritative: true,
+  certificationWindowDays: 14,
+  nextExpectedEvent: "2026-08-18",
+  nextCheckAt: new Date("2026-07-22T00:00:00Z"),
+  notes:
+    "Current-cycle adapter: the state candidate export supplies federal qualifying status, including unopposed, withdrawn and did-not-qualify records. The tracking system is an unofficial reference, so coverage remains verification pending until official ballots or results are loaded.",
+};
+
 export const ELECTION_SOURCE_REGISTRY: ElectionSourceSeed[] = [
   {
     sourceId: "fec-form2",
@@ -130,6 +147,14 @@ export const DELAWARE_2026_SOURCES = {
     "https://elections.delaware.gov/candidates/candidatelist/prim_fcddt_2026.xlsx",
   generalCandidateList:
     "https://elections.delaware.gov/candidates/candidatelist/genl_fcddt_2026.xlsx",
+} as const;
+
+export const FLORIDA_2026_SOURCES = {
+  candidateLanding: "https://dos.fl.gov/elections/candidates-committees/candidates-campaign-documents-and-committees/",
+  candidateDownload: "https://dos.elections.myflorida.com/candidates/downloadcanlist.asp",
+  candidateExtract: "https://dos.elections.myflorida.com/candidates/extractCanList.asp",
+  senateVacancyLaw: "https://www.flsenate.gov/Laws/Statutes/2025/0100.161",
+  primaryCalendar: "https://dos.fl.gov/elections/for-voters/election-dates/",
 } as const;
 
 export const ELECTION_CALENDAR_AS_OF = "2026-07-22";

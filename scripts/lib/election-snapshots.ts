@@ -5,6 +5,7 @@ import type { SafeFetchResult } from "./safe-fetch";
 function extensionFor(result: SafeFetchResult) {
   if (result.contentType === "application/json") return "json";
   if (result.contentType === "text/csv") return "csv";
+  if (result.contentType === "application/tab-separated-values") return "tsv";
   if (
     result.contentType ===
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

@@ -18,6 +18,7 @@ import {
   parseIndianaPrimaryResults,
 } from "../scripts/lib/indiana-election-parser";
 import { parseDelawareCandidateRows } from "../scripts/lib/delaware-election-parser";
+import { parseFloridaCandidateTsv } from "../scripts/lib/florida-election-parser";
 import { parseXlsxRows } from "../scripts/lib/xlsx-rows";
 import { isBlockedAddress } from "../scripts/lib/safe-fetch";
 import {
@@ -244,6 +245,78 @@ test("Delaware federal records fail closed on an unknown state status", () => {
       ),
     /failed validation/
   );
+});
+
+const FLORIDA_HEADERS = [
+  "AcctNum", "VoterID", "ElectionID", "OfficeCode", "OfficeDesc", "Juris1num",
+  "Juris2num", "StatusCode", "StatusDesc", "PartyCode", "PartyDesc", "NameLast",
+  "NameFirst", "NameMiddle", "SuppressAddress", "Addr1", "Addr2", "City", "State",
+  "Zip", "County", "Phone", "TrsNameLast", "TrsNameFirst", "TrsNameMiddle", "Email",
+];
+
+function floridaFixture(status = "QUA") {
+  const rows: string[][] = [];
+  for (let district = 1; district <= 28; district++) {
+    rows.push([
+      String(90_000 + district),
+      `private-voter-${district}`,
+      "20261103-GEN",
+      "USR",
+      "United States Representative",
+      String(district).padStart(3, "0"),
+      "",
+      district === 1 ? status : "QUA",
+      district === 1 ? "Qualified" : "Qualified",
+      district === 2 ? "NPA" : "DEM",
+      district === 2 ? "No Party Affiliation (Partisan)" : "Florida Democratic Party",
+      `Public-${district}`,
+      "Jane",
+      "Q.",
+      "N",
+      `${district} Private Street`,
+      "",
+      "Tallahassee",
+      "FL",
+      "32301",
+      "073",
+      "850-555-0100",
+      "Treasurer",
+      "Private",
+      "",
+      `private-${district}@example.com`,
+    ]);
+  }
+  rows.push([
+    "99999", "private-voter-senate", "20261103-GEN", "USS", "United States Senator", "", "",
+    "UNO", "Unopposed", "REP", "Republican Party of Florida", "Public", "John", "", "N",
+    "99 Private Street", "", "Tallahassee", "FL", "32301", "073", "850-555-0199",
+    "Treasurer", "Private", "", "private-senate@example.com",
+  ]);
+  return [FLORIDA_HEADERS, ...rows].map((row) => row.join("\t")).join("\r\n");
+}
+
+test("Florida export keeps federal status fields and drops voter and contact data", () => {
+  const parsed = parseFloridaCandidateTsv(floridaFixture());
+  assert.equal(parsed.length, 29);
+  assert.deepEqual(parsed[0], {
+    stateCandidateId: "90001",
+    name: "Jane Q. Public-1",
+    normalizedName: "jane q public 1",
+    party: "Florida Democratic Party",
+    partyCode: "DEM",
+    office: "H",
+    district: 1,
+    status: "qualified",
+  });
+  assert.equal(parsed.at(-1)?.status, "primary_unopposed");
+  assert.equal("voterId" in parsed[0], false);
+  assert.equal("address" in parsed[0], false);
+  assert.equal("phone" in parsed[0], false);
+  assert.equal("email" in parsed[0], false);
+});
+
+test("Florida federal records fail closed on a new status code", () => {
+  assert.throws(() => parseFloridaCandidateTsv(floridaFixture("NEW")), /failed validation/);
 });
 
 test("crawler address guard blocks loopback, private, link-local, and metadata ranges", () => {

@@ -19,6 +19,7 @@ on:
           - due
           - IN
           - DE
+          - FL
           - all
         default: due
 

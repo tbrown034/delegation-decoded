@@ -9,6 +9,7 @@ type SafeFetchOptions = {
   timeoutMs?: number;
   maxRedirects?: number;
   userAgent?: string;
+  formData?: Readonly<Record<string, string>>;
 };
 
 export type SafeFetchResult = {
@@ -95,6 +96,9 @@ export async function safeFetchBuffer(
   const url = validateUrl(rawUrl, options.allowedHosts);
   const resolved = await resolvePublicAddress(url.hostname);
   const timeoutMs = options.timeoutMs ?? 20_000;
+  const requestBody = options.formData
+    ? new URLSearchParams(options.formData).toString()
+    : null;
 
   return new Promise((resolve, reject) => {
     const req = request(
@@ -104,11 +108,17 @@ export async function safeFetchBuffer(
         family: resolved.family,
         port: 443,
         path: `${url.pathname}${url.search}`,
-        method: "GET",
+        method: requestBody == null ? "GET" : "POST",
         headers: {
           Host: url.host,
           Accept: options.allowedContentTypes.join(", "),
           "User-Agent": options.userAgent ?? "DelegationDecodedElectionIngest/1.0",
+          ...(requestBody == null
+            ? {}
+            : {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Content-Length": Buffer.byteLength(requestBody),
+              }),
         },
         servername: url.hostname,
       },
@@ -116,6 +126,10 @@ export async function safeFetchBuffer(
         const status = response.statusCode ?? 0;
         if (status >= 300 && status < 400) {
           response.resume();
+          if (requestBody != null) {
+            reject(new Error("Form source redirects are not followed"));
+            return;
+          }
           const location = headerValue(response.headers.location);
           const maxRedirects = options.maxRedirects ?? 3;
           if (!location || redirectCount >= maxRedirects) {
@@ -173,6 +187,6 @@ export async function safeFetchBuffer(
     );
     req.setTimeout(timeoutMs, () => req.destroy(new Error("Source request timed out")));
     req.on("error", reject);
-    req.end();
+    req.end(requestBody ?? undefined);
   });
 }
