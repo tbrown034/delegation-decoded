@@ -1,14 +1,14 @@
 import { ImageResponse } from "next/og";
 import { db } from "@/lib/db";
-import { count, eq, sql } from "drizzle-orm";
-import { members, stockTransactions, disclosureFilings } from "@/lib/schema";
+import { count, eq } from "drizzle-orm";
+import { bills, electionCandidates, members, votes } from "@/lib/schema";
 import { OgStat } from "@/components/og-stat";
 
 export const runtime = "nodejs";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 export const alt =
-  "Delegation Decoded — congressional accountability, organized by state.";
+  "Delegation Decoded — Congress and the 2026 midterms, state by state.";
 
 const rootStyle = {
   width: "100%",
@@ -35,21 +35,17 @@ const logoStyle = {
 } as const;
 
 async function getStats() {
-  const [[m], [t], [f], [traders]] = await Promise.all([
+  const [[m], [b], [v], [c]] = await Promise.all([
     db.select({ n: count() }).from(members).where(eq(members.inOffice, true)),
-    db.select({ n: count() }).from(stockTransactions),
-    db.select({ n: count() }).from(disclosureFilings),
-    db
-      .select({
-        n: sql<number>`COUNT(DISTINCT ${stockTransactions.bioguideId})::int`,
-      })
-      .from(stockTransactions),
+    db.select({ n: count() }).from(bills),
+    db.select({ n: count() }).from(votes),
+    db.select({ n: count() }).from(electionCandidates).where(eq(electionCandidates.electionYear, 2026)),
   ]);
   return {
     members: m?.n ?? 0,
-    trades: t?.n ?? 0,
-    filings: f?.n ?? 0,
-    traders: traders?.n ?? 0,
+    bills: b?.n ?? 0,
+    votes: v?.n ?? 0,
+    candidates: c?.n ?? 0,
   };
 }
 
@@ -98,7 +94,7 @@ export default async function opengraphImage() {
             maxWidth: 900,
           }}
         >
-          Congressional accountability, organized by state.
+          Congress and the 2026 midterms, state by state.
         </div>
 
         <div
@@ -111,13 +107,12 @@ export default async function opengraphImage() {
           }}
         >
           <OgStat label="members" value={s.members.toLocaleString()} />
-          <OgStat label="trades" value={s.trades.toLocaleString()} />
-          <OgStat label="ptr filings" value={s.filings.toLocaleString()} />
-          <OgStat label="traders" value={s.traders.toLocaleString()} />
+          <OgStat label="bills" value={s.bills.toLocaleString()} />
+          <OgStat label="roll calls" value={s.votes.toLocaleString()} />
+          <OgStat label="2026 FEC filers" value={s.candidates.toLocaleString()} />
         </div>
       </div>
     ),
     { ...size }
   );
 }
-

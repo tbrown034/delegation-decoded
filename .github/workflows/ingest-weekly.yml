@@ -18,7 +18,7 @@ permissions:
 jobs:
   ingest:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - name: Checkout repo
@@ -48,6 +48,41 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           FEC_API_KEY: ${{ secrets.FEC_API_KEY }}
+
+      - name: Ingest finance committees and top contributors
+        run: npx tsx scripts/ingest/finance-committees.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          FEC_API_KEY: ${{ secrets.FEC_API_KEY }}
+
+      - name: Crawl verified campaign sites and queue extracted claims for review
+        run: npx tsx scripts/ingest/candidate-sites.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          FEC_API_KEY: ${{ secrets.FEC_API_KEY }}
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CANDIDATE_EXTRACT_PRIMARY_PROVIDER: openai
+          CANDIDATE_EXTRACT_MAX_CANDIDATES: 8
+          CANDIDATE_EXTRACT_MAX_PAGES: 5
+          CANDIDATE_EXTRACT_MAX_INPUT_CHARS: 36000
+          CANDIDATE_EXTRACT_MAX_PROVIDER_CALLS: 16
+          CANDIDATE_EXTRACT_MAX_RUN_TOKENS: 250000
+
+      - name: Crawl official member biographies and queue facts for review
+        run: npx tsx scripts/ingest/member-biographies.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          MEMBER_BIO_PRIMARY_PROVIDER: openai
+          MEMBER_BIO_MAX_MEMBERS: 12
+          MEMBER_BIO_MAX_PAGES: 4
+          MEMBER_BIO_MAX_INPUT_CHARS: 28000
+          MEMBER_BIO_MAX_PROVIDER_CALLS: 24
+          MEMBER_BIO_MAX_RUN_TOKENS: 250000
 
       - name: Ingest press releases
         run: npx tsx scripts/ingest/press-releases.ts

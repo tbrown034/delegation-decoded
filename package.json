@@ -6,16 +6,23 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "NODE_OPTIONS='--conditions=react-server' tsx --test tests/*.test.ts",
+    "eval:ask": "NODE_OPTIONS='--conditions=react-server' tsx scripts/eval-ask.ts",
+    "eval:candidate-extraction": "tsx scripts/eval-candidate-extraction.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
     "@neondatabase/serverless": "^1.1.0",
     "@vercel/analytics": "^2.0.1",
+    "@vercel/blob": "2.6.1",
     "drizzle-orm": "^0.45.2",
-    "next": "16.2.4",
+    "next": "16.2.10",
+    "openai": "6.47.0",
+    "parse5": "8.0.1",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "server-only": "^0.0.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -25,9 +32,30 @@
     "dotenv": "^17.4.2",
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
-    "eslint-config-next": "16.2.4",
+    "eslint-config-next": "16.2.10",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
     "typescript": "^5"
+  },
+  "pnpm": {
+    "overrides": {
+      "@babel/core": "7.29.6",
+      "brace-expansion@1.1.14": "1.1.16",
+      "brace-expansion@5.0.5": "5.0.7",
+      "esbuild@0.18.20": "0.25.12",
+      "esbuild@0.27.7": "0.28.1",
+      "js-yaml@4.1.1": "4.3.0",
+      "postcss": "8.5.12",
+      "sharp": "0.35.0"
+    }
+  },
+  "overrides": {
+    "@babel/core": "7.29.6",
+    "brace-expansion@1.1.14": "1.1.16",
+    "brace-expansion@5.0.5": "5.0.7",
+    "esbuild": "0.28.1",
+    "js-yaml@4.1.1": "4.3.0",
+    "postcss": "8.5.12",
+    "sharp": "0.35.0"
   }
 }

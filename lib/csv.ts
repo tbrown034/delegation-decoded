@@ -4,7 +4,10 @@ const CRLF = "\r\n";
 
 function escape(cell: unknown): string {
   if (cell === null || cell === undefined) return "";
-  const s = typeof cell === "string" ? cell : String(cell);
+  const raw = typeof cell === "string" ? cell : String(cell);
+  // Public-source text is untrusted. Neutralize spreadsheet formulas without
+  // changing numeric values that callers pass as numbers.
+  const s = typeof cell === "string" && /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
   if (s.includes(",") || s.includes('"') || s.includes("\n") || s.includes("\r")) {
     return `"${s.replace(/"/g, '""')}"`;
   }

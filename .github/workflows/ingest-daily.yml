@@ -11,6 +11,14 @@ on:
   schedule:
     - cron: "0 6 * * *"
   workflow_dispatch:
+    inputs:
+      election_state:
+        description: "Election adapter to backfill, or run only due adapters"
+        type: choice
+        options:
+          - due
+          - IN
+        default: due
 
 permissions:
   contents: read
@@ -54,6 +62,25 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           FEC_API_KEY: ${{ secrets.FEC_API_KEY }}
 
+      # State-authority race records. The script reads next_check_at on normal
+      # daily runs; a manual dispatch can force Indiana's mid-cycle backfill.
+      # Every source response is hash-addressed in private Vercel Blob before
+      # its parsed records are committed to Postgres.
+      - name: Ingest verified election records
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          if [ "${ELECTION_STATE}" = "IN" ]; then
+            npx tsx scripts/ingest/elections.ts --state=IN --backfill
+          else
+            npx tsx scripts/ingest/elections.ts --due
+          fi
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+          ELECTION_STATE: ${{ inputs.election_state || 'due' }}
+
       - name: Ingest votes
         run: npx tsx scripts/ingest/votes.ts
         env:
@@ -91,6 +118,12 @@ jobs:
       - name: Cleanup stuck runs
         if: always()
         run: npx tsx scripts/cleanup-stuck-runs.ts --apply
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Delete expired Ask data
+        if: always()
+        run: npx tsx scripts/cleanup-ask-data.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 

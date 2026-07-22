@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import {
@@ -13,9 +14,17 @@ type Props = { params: Promise<{ ticker: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { ticker } = await params;
+  const symbol = ticker.toUpperCase();
+  const [existing] = await db
+    .select({ id: stockTransactions.id })
+    .from(stockTransactions)
+    .where(eq(stockTransactions.ticker, symbol))
+    .limit(1);
+  if (!existing) notFound();
   return {
-    title: `${ticker.toUpperCase()} — Congressional holders`,
-    description: `Members of Congress who disclosed trades in ${ticker.toUpperCase()} under the STOCK Act.`,
+    title: `${symbol} — Stock disclosures preview`,
+    description: "Preview STOCK Act disclosure infrastructure; coverage is still under validation.",
+    robots: { index: false, follow: true },
   };
 }
 
@@ -63,6 +72,8 @@ export default async function TickerPage({ params }: Props) {
     )
     .where(eq(stockTransactions.ticker, symbol))
     .orderBy(stockTransactions.txDate);
+
+  if (txs.length === 0) notFound();
 
   // Group by member
   interface MemberBucket {

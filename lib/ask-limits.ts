@@ -1,32 +1,43 @@
-import { createHash } from "crypto";
-import { db } from "./db";
+import { createHmac } from "crypto";
 import { sql } from "drizzle-orm";
-
-// Postgres-backed rate limiting and answer caching for /api/ask.
-// Neon is already the only stateful dependency, so counters and the answer
-// cache live there instead of adding Redis. Fixed windows are accurate
-// enough at this traffic level; the global daily cap is the spend backstop.
+import { ASK_PROMPT_VERSION, type AskProvider } from "./ask-engine";
+import type { Citation } from "./ask-citations";
+import type { AskScope } from "./ask-tools";
+import { db } from "./db";
 
 const IP_HOURLY_LIMIT = 20;
 const LOCATE_IP_HOURLY_LIMIT = 30;
-const GLOBAL_DAILY_LIMIT = 400;
+const SEARCH_IP_HOURLY_LIMIT = 60;
+const GLOBAL_DAILY_PROVIDER_ATTEMPT_LIMIT = 500;
+const PROVIDER_DAILY_ATTEMPT_LIMIT = 350;
 const CACHE_TTL_HOURS = 24;
 
-// IPs are hashed before storage — the site promises addresses and identities
-// never persist, so rate buckets must not contain raw IPs.
+function privacySecret() {
+  return (
+    process.env.ASK_RATE_LIMIT_SECRET ||
+    process.env.OPENAI_API_KEY ||
+    process.env.ANTHROPIC_API_KEY ||
+    "delegation-decoded-local-development"
+  );
+}
+
+function keyedHash(value: string, length = 32): string {
+  return createHmac("sha256", privacySecret()).update(value).digest("hex").slice(0, length);
+}
+
 function hashIp(ip: string): string {
-  return createHash("sha256")
-    .update(`dd-ask:${ip}`)
-    .digest("hex")
-    .slice(0, 24);
+  return keyedHash(`dd-ask-ip:${ip}`, 24);
+}
+
+export function createSafetyIdentifier(ip: string): string {
+  return keyedHash(`dd-openai-safety:${ip}`, 32);
 }
 
 export interface RateDecision {
   allowed: boolean;
   reason?: string;
-  // Seconds until the window resets, for a Retry-After header and concrete
-  // "try again in N minutes" copy instead of "in a bit".
   retryAfterSeconds?: number;
+  budgetScope?: "global" | "provider";
 }
 
 function secondsToNextHour(): number {
@@ -42,11 +53,6 @@ function secondsToUtcMidnight(): number {
   );
 }
 
-// Per-IP limits and the global model budget are separate on purpose: an IP
-// that is already blocked (or a request that fails validation upstream) must
-// never advance the global counter, or a single hostile IP could burn the
-// day's budget for everyone without spending a model token.
-
 async function bumpCounter(
   bucket: string,
   window: "hour" | "day"
@@ -61,24 +67,17 @@ async function bumpCounter(
   return Number(rows.rows?.[0]?.count ?? 0);
 }
 
-// First gate, hit on every request before any other work.
 export async function checkIpLimit(
   ip: string,
-  kind: "ask" | "locate" = "ask"
+  kind: "ask" | "locate" | "search" = "ask"
 ): Promise<RateDecision> {
-  // Opportunistic cleanup: stale windows and expired cache rows go on ~2% of
-  // requests, so no cron is needed for these two small tables.
-  if (Math.random() < 0.02) {
-    db.execute(
-      sql`DELETE FROM ask_rate_limits WHERE window_start < now() - interval '2 days'`
-    ).catch(() => {});
-    db.execute(
-      sql`DELETE FROM ask_cache WHERE created_at < now() - interval '7 days'`
-    ).catch(() => {});
-  }
-
-  const prefix = kind === "locate" ? "loc" : "ip";
-  const limit = kind === "locate" ? LOCATE_IP_HOURLY_LIMIT : IP_HOURLY_LIMIT;
+  const prefix = kind === "locate" ? "loc" : kind === "search" ? "search" : "ip";
+  const limit =
+    kind === "locate"
+      ? LOCATE_IP_HOURLY_LIMIT
+      : kind === "search"
+        ? SEARCH_IP_HOURLY_LIMIT
+        : IP_HOURLY_LIMIT;
   const count = await bumpCounter(`${prefix}:${hashIp(ip)}`, "hour");
   if (count > limit) {
     return {
@@ -86,64 +85,134 @@ export async function checkIpLimit(
       reason:
         kind === "locate"
           ? "Too many location lookups from your connection this hour."
-          : `That's ${limit} questions in an hour — the limit that keeps this free.`,
+          : kind === "search"
+            ? "Too many searches from your connection this hour."
+          : `That is ${limit} questions in an hour — the limit that keeps this public.`,
       retryAfterSeconds: secondsToNextHour(),
     };
   }
   return { allowed: true };
 }
 
-// Second gate, hit only when a request is actually about to spend model
-// tokens — after validation, the IP check, and a cache miss.
-export async function countModelCall(): Promise<RateDecision> {
-  const count = await bumpCounter("global", "day");
-  if (count > GLOBAL_DAILY_LIMIT) {
+export async function countProviderAttempt(
+  provider: AskProvider
+): Promise<RateDecision> {
+  const [globalCount, providerCount] = await Promise.all([
+    bumpCounter("global-provider-attempts", "day"),
+    bumpCounter(`provider:${provider}`, "day"),
+  ]);
+  if (globalCount > GLOBAL_DAILY_PROVIDER_ATTEMPT_LIMIT) {
     return {
       allowed: false,
       reason:
-        "The assistant has hit its daily budget. It resets at midnight UTC — the rest of the site is unaffected.",
+        "The assistant has hit its daily provider budget. It resets at midnight UTC; every records page remains available.",
       retryAfterSeconds: secondsToUtcMidnight(),
+      budgetScope: "global",
+    };
+  }
+  if (providerCount > PROVIDER_DAILY_ATTEMPT_LIMIT) {
+    return {
+      allowed: false,
+      reason: `${provider} has reached its daily attempt limit.`,
+      retryAfterSeconds: secondsToUtcMidnight(),
+      budgetScope: "provider",
     };
   }
   return { allowed: true };
 }
 
-function normalizeQuestion(q: string): string {
-  return q.toLowerCase().replace(/\s+/g, " ").trim();
+function normalizedQuestion(question: string) {
+  return question.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function cacheIdentity(question: string, scope: AskScope) {
+  const scopeKey =
+    scope.type === "member"
+      ? `member:${scope.bioguideId}:seat:${scope.seat.office === "H" ? `H${scope.seat.district}` : `S${scope.seat.senateClass}`}`
+      : `state:${scope.stateCode}:district:${scope.district ?? "all"}`;
+  return keyedHash(
+    `dd-ask-cache:${ASK_PROMPT_VERSION}|${scopeKey}|${normalizedQuestion(question)}`,
+    64
+  );
 }
 
 export interface CachedAnswer {
   answer: string;
-  trace: unknown;
+  citations: Citation[];
+  trace: unknown[];
+  provider?: AskProvider;
+  model?: string;
+  fallbackUsed?: boolean;
+}
+
+function cacheDistrict(scope: AskScope) {
+  return scope.type === "state" ? scope.district ?? -1 : -1;
+}
+
+function parseCachePayload(answer: string, value: unknown): CachedAnswer {
+  if (Array.isArray(value)) return { answer, citations: [], trace: value };
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return {
+      answer,
+      citations: Array.isArray(record.citations)
+        ? (record.citations as Citation[])
+        : [],
+      trace: Array.isArray(record.trace) ? record.trace : [],
+      provider:
+        record.provider === "anthropic" || record.provider === "openai"
+          ? record.provider
+          : undefined,
+      model: typeof record.model === "string" ? record.model : undefined,
+      fallbackUsed: record.fallbackUsed === true,
+    };
+  }
+  return { answer, citations: [], trace: [] };
 }
 
 export async function getCachedAnswer(
   question: string,
-  stateCode: string,
-  district: number | null
+  scope: AskScope
 ): Promise<CachedAnswer | null> {
   const rows = (await db.execute(sql`
     SELECT answer, trace FROM ask_cache
-    WHERE question_norm = ${normalizeQuestion(question)}
-      AND state_code = ${stateCode}
-      AND district = ${district ?? -1}
+    WHERE question_norm = ${cacheIdentity(question, scope)}
+      AND state_code = ${scope.stateCode}
+      AND district = ${cacheDistrict(scope)}
       AND created_at > now() - interval '${sql.raw(String(CACHE_TTL_HOURS))} hours'
     LIMIT 1
   `)) as unknown as { rows: { answer: string; trace: unknown }[] };
-  return rows.rows?.[0] ?? null;
+  const row = rows.rows?.[0];
+  return row ? parseCachePayload(row.answer, row.trace) : null;
 }
 
 export async function setCachedAnswer(
   question: string,
-  stateCode: string,
-  district: number | null,
+  scope: AskScope,
   answer: string,
-  trace: unknown
+  trace: unknown,
+  provider: AskProvider,
+  model: string,
+  fallbackUsed: boolean,
+  citations: Citation[] = []
 ): Promise<void> {
+  const payload = JSON.stringify({ trace, provider, model, fallbackUsed, citations });
   await db.execute(sql`
     INSERT INTO ask_cache (question_norm, state_code, district, answer, trace, created_at)
-    VALUES (${normalizeQuestion(question)}, ${stateCode}, ${district ?? -1}, ${answer}, ${JSON.stringify(trace)}, now())
+    VALUES (${cacheIdentity(question, scope)}, ${scope.stateCode}, ${cacheDistrict(scope)}, ${answer}, ${payload}, now())
     ON CONFLICT (question_norm, state_code, district)
     DO UPDATE SET answer = EXCLUDED.answer, trace = EXCLUDED.trace, created_at = now()
   `);
+}
+
+let lastCleanupAt = 0;
+
+export function scheduleAskDataCleanup() {
+  const now = Date.now();
+  if (now - lastCleanupAt < 60 * 60 * 1000) return;
+  lastCleanupAt = now;
+  Promise.allSettled([
+    db.execute(sql`DELETE FROM ask_rate_limits WHERE window_start < now() - interval '2 days'`),
+    db.execute(sql`DELETE FROM ask_cache WHERE created_at < now() - interval '7 days'`),
+  ]).catch(() => {});
 }

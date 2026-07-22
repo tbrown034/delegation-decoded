@@ -5,6 +5,13 @@
 
 import { db } from "./db";
 import { sql } from "drizzle-orm";
+import {
+  getCandidateResearchHealth,
+  getElectionCoverageMatrix,
+  getOverdueElectionCertifications,
+} from "./elections/queries";
+import type { StateRaceCoverage } from "./elections/types";
+import { getMemberBiographyHealth } from "./biography-queries";
 
 export type HealthLevel = "ok" | "warn" | "crit";
 
@@ -44,6 +51,22 @@ export type HealthReport = {
   stuckRuns: SyncRun[];
   ptrFilings: { parsed: number; review: number; failed: number; pending: number };
   lowConfidenceTrades: number;
+  electionCoverage: StateRaceCoverage[];
+  candidateResearch: {
+    verifiedSites: number;
+    crawlErrors: number;
+    pendingClaims: number;
+    verifiedClaims: number;
+    pendingService: number;
+    verifiedService: number;
+  };
+  memberBiographies: {
+    verifiedSites: number;
+    crawlErrors: number;
+    membersWithVerifiedFacts: number;
+    pendingFacts: number;
+    verifiedFacts: number;
+  };
   checks: HealthCheck[];
 };
 
@@ -55,22 +78,29 @@ const PAUSED_SOURCES: Record<string, string> = {
     "House PTR ingest paused July 20, 2026: the upstream API key is rejected and the scheduled job is disabled pending key rotation. Already-ingested trades remain published; Senate PTR ingest is unaffected.",
 };
 
-// Per-source thresholds for staleness (in hours).
-// Beyond `warn`, the source is yellow. Beyond `crit`, red.
+// Per-entity thresholds for staleness (in hours), keyed by sync_log
+// entity_type. Beyond `warn`, the source is yellow. Beyond `crit`, red.
+// One-shot backfill entities (votes_backfill_118 etc.) deliberately have no
+// entry — a backfill that ran once is not stale.
 const STALENESS: Record<string, { warn: number; crit: number }> = {
   bills: { warn: 36, crit: 72 },
   votes: { warn: 36, crit: 72 },
   members: { warn: 24 * 9, crit: 24 * 14 },
   committees: { warn: 24 * 9, crit: 24 * 14 },
   campaign_finance: { warn: 24 * 9, crit: 24 * 14 },
+  finance_committees: { warn: 24 * 9, crit: 24 * 14 },
   press_releases: { warn: 24 * 9, crit: 24 * 14 },
   disclosures: { warn: 24 * 9, crit: 24 * 21 },
+  elections: { warn: 36, crit: 72 },
+  candidate_research: { warn: 24 * 9, crit: 24 * 14 },
+  member_biography: { warn: 24 * 9, crit: 24 * 14 },
 };
 
 const SOURCE_TABLES: { source: string; table: string }[] = [
   { source: "bills", table: "bill_sponsorships" },
   { source: "votes", table: "vote_positions" },
   { source: "campaign_finance", table: "campaign_finance" },
+  { source: "finance_committees", table: "finance_committees" },
   { source: "press_releases", table: "press_releases" },
   { source: "disclosures", table: "disclosure_filings" },
   { source: "trades", table: "stock_transactions" },
@@ -194,7 +224,41 @@ export async function buildHealthReport(): Promise<HealthReport> {
   `);
   const lowConfidenceTrades = (lowConf.rows[0] as { n: number })?.n ?? 0;
 
+  const [electionCoverage, overdueCertifications, candidateResearch, memberBiographies] = await Promise.all([
+    getElectionCoverageMatrix(),
+    getOverdueElectionCertifications(),
+    getCandidateResearchHealth(),
+    getMemberBiographyHealth(),
+  ]);
+
   const checks: HealthCheck[] = [];
+
+  if (candidateResearch.crawlErrors > 0) {
+    checks.push({
+      id: "candidate-crawl-errors",
+      level: "warn",
+      title: `${candidateResearch.crawlErrors} verified campaign site${candidateResearch.crawlErrors === 1 ? " has" : "s have"} crawl errors`,
+      detail: "The site link remains visible, but no extracted claim is published unless its evidence passes human review.",
+    });
+  }
+
+  if (memberBiographies.crawlErrors > 0) {
+    checks.push({
+      id: "member-biography-crawl-errors",
+      level: "warn",
+      title: `${memberBiographies.crawlErrors} official member site${memberBiographies.crawlErrors === 1 ? " has" : "s have"} biography crawl errors`,
+      detail: "No biography fact is published or supplied to Ask unless its official-site quote passes human review.",
+    });
+  }
+
+  for (const overdue of overdueCertifications) {
+    checks.push({
+      id: `election-certification-${overdue.stateCode}-${overdue.title}`,
+      level: "warn",
+      title: `${overdue.stateCode} certification has exceeded its expectation window`,
+      detail: `${overdue.title}: ${overdue.electionDate} remains unofficial after the source's ${overdue.expectationDays}-day default window. This is an alert, not a claim that a statutory deadline was missed.`,
+    });
+  }
 
   // Coverage checks: a source covering < 60% of its expected chamber is a concern.
   // Some sources legitimately have partial coverage (PTRs are filed only when triggered;
@@ -220,9 +284,11 @@ export async function buildHealthReport(): Promise<HealthReport> {
     }
   }
 
-  // Staleness checks against the latest sync_log row per source.
+  // Staleness checks against the latest sync_log row per entity. (Keyed by
+  // entity_type: sync_log.source holds the upstream name like congress_gov,
+  // and indexing the thresholds by it left every staleness check dead.)
   for (const r of latestRuns) {
-    const t = STALENESS[r.source];
+    const t = STALENESS[r.entityType];
     if (!t) continue;
     if (r.ageHours > t.crit) {
       checks.push({
@@ -339,6 +405,52 @@ export async function buildHealthReport(): Promise<HealthReport> {
     });
   }
 
+  // Finance-committee layer: populated by the weekly finance-committees
+  // ingest. Empty tables are a visible warn, not silence, so the gap between
+  // shipping the feature and its first ingest run is never invisible.
+  const fincomResult = await db.execute(sql`
+    SELECT
+      (SELECT COUNT(*)::int FROM finance_committees) AS committees,
+      (SELECT COUNT(*)::int FROM top_contributors) AS contributors
+  `);
+  const fincom = fincomResult.rows[0] as { committees: number; contributors: number };
+  if ((fincom?.committees ?? 0) === 0 || (fincom?.contributors ?? 0) === 0) {
+    checks.push({
+      id: "finance-committees-empty",
+      level: "warn",
+      title:
+        (fincom?.committees ?? 0) === 0
+          ? "Finance committees not yet ingested"
+          : "Top contributors not yet ingested",
+      detail:
+        "The weekly finance-committee ingest has not completed a run. Until it does, leadership-PAC and top-contributor detail is missing from member finance answers.",
+    });
+  }
+
+  // Backfill integrity: a successful historical votes backfill whose rows
+  // later disappear means data loss, not staleness.
+  const backfillResult = await db.execute(sql`
+    SELECT DISTINCT entity_type
+    FROM sync_log
+    WHERE status = 'success' AND entity_type LIKE 'votes_backfill_%'
+  `);
+  for (const r of backfillResult.rows as { entity_type: string }[]) {
+    const congress = parseInt(r.entity_type.replace("votes_backfill_", ""), 10);
+    if (!Number.isInteger(congress)) continue;
+    const countResult = await db.execute(
+      sql`SELECT COUNT(*)::int AS n FROM votes WHERE congress = ${congress}`
+    );
+    const n = (countResult.rows[0] as { n: number })?.n ?? 0;
+    if (n === 0) {
+      checks.push({
+        id: `backfill-votes-${congress}`,
+        level: "crit",
+        title: `Backfilled ${congress}th-Congress votes are missing`,
+        detail: `A successful ${congress}th-Congress backfill is on record but the votes table has no rows for that congress.`,
+      });
+    }
+  }
+
   // Roll up to overall level: crit > warn > ok.
   let level: HealthLevel = "ok";
   for (const c of checks) {
@@ -356,6 +468,9 @@ export async function buildHealthReport(): Promise<HealthReport> {
     stuckRuns,
     ptrFilings,
     lowConfidenceTrades,
+    electionCoverage,
+    candidateResearch,
+    memberBiographies,
     checks,
   };
 }
@@ -456,7 +571,10 @@ const ENTITY_LABELS: Record<string, string> = {
   committees: "committees",
   bills: "bills",
   campaign_finance: "finance",
+  finance_committees: "finance committees",
   votes: "votes",
+  votes_backfill_118: "118th-Congress votes backfill",
+  bills_backfill_118: "118th-Congress bills backfill",
   press_releases: "press releases",
   disclosures: "Senate PTRs",
   ptr: "House PTRs",

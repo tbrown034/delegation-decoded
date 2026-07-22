@@ -1,7 +1,8 @@
 import type { MetadataRoute } from "next";
+import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { eq, sql } from "drizzle-orm";
-import { members, states, stockTransactions } from "@/lib/schema";
+import { bills, committees, members, states } from "@/lib/schema";
+import { getRaceIndex } from "@/lib/elections/queries";
 
 const BASE_URL =
   process.env.NEXT_PUBLIC_SITE_URL ?? "https://delegation-decoded.vercel.app";
@@ -10,53 +11,59 @@ export const revalidate = 3600;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
-
-  const [stateRows, memberRows, tickerRows] = await Promise.all([
+  const [stateRows, memberRows, billRows, committeeRows, raceRows] = await Promise.all([
     db.select({ code: states.code }).from(states),
     db
       .select({ bioguideId: members.bioguideId, updatedAt: members.updatedAt })
       .from(members)
       .where(eq(members.inOffice, true)),
-    db
-      .select({ ticker: stockTransactions.ticker })
-      .from(stockTransactions)
-      .where(sql`${stockTransactions.ticker} IS NOT NULL`)
-      .groupBy(stockTransactions.ticker),
+    db.select({ billId: bills.billId }).from(bills),
+    db.select({ committeeId: committees.committeeId }).from(committees),
+    getRaceIndex(),
   ]);
 
   const staticRoutes: MetadataRoute.Sitemap = [
-    { url: `${BASE_URL}/`, lastModified: now, changeFrequency: "daily", priority: 1.0 },
-    { url: `${BASE_URL}/find`, lastModified: now, changeFrequency: "monthly", priority: 0.6 },
-    { url: `${BASE_URL}/compare`, lastModified: now, changeFrequency: "monthly", priority: 0.6 },
-    { url: `${BASE_URL}/trades`, lastModified: now, changeFrequency: "daily", priority: 0.9 },
-    { url: `${BASE_URL}/trades/methodology`, lastModified: now, changeFrequency: "monthly", priority: 0.5 },
-    { url: `${BASE_URL}/for-journalists`, lastModified: now, changeFrequency: "weekly", priority: 0.7 },
+    { url: `${BASE_URL}/`, lastModified: now, changeFrequency: "daily", priority: 1 },
+    { url: `${BASE_URL}/ask`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${BASE_URL}/find`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
+    { url: `${BASE_URL}/compare`, lastModified: now, changeFrequency: "weekly", priority: 0.7 },
+    { url: `${BASE_URL}/races`, lastModified: now, changeFrequency: "daily", priority: 0.9 },
+    { url: `${BASE_URL}/for-journalists`, lastModified: now, changeFrequency: "weekly", priority: 0.8 },
     { url: `${BASE_URL}/health`, lastModified: now, changeFrequency: "hourly", priority: 0.4 },
-    { url: `${BASE_URL}/about`, lastModified: now, changeFrequency: "monthly", priority: 0.5 },
+    { url: `${BASE_URL}/about`, lastModified: now, changeFrequency: "monthly", priority: 0.6 },
   ];
 
-  const stateRoutes: MetadataRoute.Sitemap = stateRows.map((s) => ({
-    url: `${BASE_URL}/state/${s.code}`,
-    lastModified: now,
-    changeFrequency: "weekly",
-    priority: 0.7,
-  }));
-
-  const memberRoutes: MetadataRoute.Sitemap = memberRows.map((m) => ({
-    url: `${BASE_URL}/member/${m.bioguideId}`,
-    lastModified: m.updatedAt ?? now,
-    changeFrequency: "weekly",
-    priority: 0.6,
-  }));
-
-  const tickerRoutes: MetadataRoute.Sitemap = tickerRows
-    .filter((t): t is { ticker: string } => Boolean(t.ticker))
-    .map((t) => ({
-      url: `${BASE_URL}/trades/companies/${t.ticker}`,
+  return [
+    ...staticRoutes,
+    ...stateRows.map((state) => ({
+      url: `${BASE_URL}/state/${state.code}`,
       lastModified: now,
-      changeFrequency: "weekly",
+      changeFrequency: "daily" as const,
+      priority: 0.8,
+    })),
+    ...memberRows.map((member) => ({
+      url: `${BASE_URL}/member/${member.bioguideId}`,
+      lastModified: member.updatedAt ?? now,
+      changeFrequency: "daily" as const,
+      priority: 0.8,
+    })),
+    ...billRows.map((bill) => ({
+      url: `${BASE_URL}/bill/${bill.billId}`,
+      lastModified: now,
+      changeFrequency: "weekly" as const,
       priority: 0.5,
-    }));
-
-  return [...staticRoutes, ...stateRoutes, ...memberRoutes, ...tickerRoutes];
+    })),
+    ...committeeRows.map((committee) => ({
+      url: `${BASE_URL}/committee/${committee.committeeId}`,
+      lastModified: now,
+      changeFrequency: "weekly" as const,
+      priority: 0.5,
+    })),
+    ...raceRows.map((race) => ({
+      url: `${BASE_URL}/race/${race.contestId}`,
+      lastModified: now,
+      changeFrequency: "daily" as const,
+      priority: race.coverage === "fec_only" ? 0.5 : 0.8,
+    })),
+  ];
 }

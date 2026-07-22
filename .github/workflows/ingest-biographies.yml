@@ -1,0 +1,59 @@
+name: Member biography backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_members:
+        description: "Number of least-recently-crawled members to process (1-50)"
+        required: true
+        default: "50"
+      bioguide_id:
+        description: "Optional exact Bioguide ID; leave blank for the next batch"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply idempotent schema
+        run: npx tsx scripts/apply-schema.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Backfill official member biographies
+        run: npx tsx scripts/ingest/member-biographies.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          MEMBER_BIO_PRIMARY_PROVIDER: openai
+          MEMBER_BIO_MAX_MEMBERS: ${{ inputs.max_members }}
+          MEMBER_BIO_MEMBER: ${{ inputs.bioguide_id }}
+          MEMBER_BIO_MAX_PAGES: 4
+          MEMBER_BIO_MAX_INPUT_CHARS: 28000
+          MEMBER_BIO_MAX_PROVIDER_CALLS: 100
+          MEMBER_BIO_MAX_RUN_TOKENS: 1000000
+
+      - name: Health check
+        if: always()
+        run: npx tsx scripts/health-check.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}

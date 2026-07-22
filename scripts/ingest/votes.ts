@@ -5,13 +5,26 @@ import { drizzle } from "drizzle-orm/neon-http";
 import { votes, votePositions, members, syncLog } from "../../lib/schema";
 import { sql, eq } from "drizzle-orm";
 
-const CONGRESS = 119;
-// The 119th Congress runs through January 2027 — session 1 is 2025, session 2 is 2026.
-// Adding 2027 here is harmless once the calendar catches up.
-const SESSIONS: { year: number; session: number }[] = [
-  { year: 2025, session: 1 },
-  { year: 2026, session: 2 },
-];
+// Defaults to the current 119th Congress (session 1 is 2025, session 2 is
+// 2026). Pass --congress=118 (or BACKFILL_CONGRESS=118) for a one-shot
+// historical backfill; positions are still stored for current members only.
+function resolveTarget() {
+  const arg = process.argv.find((a) => a.startsWith("--congress="));
+  const raw = arg ? arg.split("=")[1] : process.env.BACKFILL_CONGRESS;
+  const congress = raw ? parseInt(raw, 10) : 119;
+  if (!Number.isInteger(congress) || congress < 110 || congress > 130) {
+    throw new Error(`Invalid congress: ${raw}`);
+  }
+  const firstYear = 1789 + (congress - 1) * 2;
+  return {
+    congress,
+    sessions: [
+      { year: firstYear, session: 1 },
+      { year: firstYear + 1, session: 2 },
+    ],
+  };
+}
+
 const DELAY_MS = 300;
 
 // ─── XML parsing helpers (no dependency needed for this simple structure) ─────
@@ -34,6 +47,7 @@ function extractTag(xml: string, tag: string): string {
 async function ingestHouseVotesForYear(
   db: ReturnType<typeof drizzle>,
   memberIds: Set<string>,
+  congress: number,
   year: number
 ) {
   console.log("Ingesting House votes for " + year + "...");
@@ -58,8 +72,8 @@ async function ingestHouseVotesForYear(
   const existing = await db.execute(sql`
     SELECT COALESCE(MAX(roll_number), 0) AS max_roll
     FROM votes
-    WHERE chamber='house' AND congress=${CONGRESS}
-      AND vote_id LIKE ${`house-${CONGRESS}-${year}-%`}
+    WHERE chamber='house' AND congress=${congress}
+      AND vote_id LIKE ${`house-${congress}-${year}-%`}
   `);
   const startRoll = Number((existing.rows[0] as { max_roll: number })?.max_roll ?? 0) + 1;
   if (startRoll > maxRoll) {
@@ -79,7 +93,7 @@ async function ingestHouseVotesForYear(
       if (!res.ok) continue;
       const xml = await res.text();
 
-      const voteId = `house-${CONGRESS}-${year}-${roll}`;
+      const voteId = `house-${congress}-${year}-${roll}`;
       const session = parseInt(extractTag(xml, "session") || "1");
       const question = extractTag(xml, "vote-question");
       const desc = extractTag(xml, "vote-desc");
@@ -124,7 +138,7 @@ async function ingestHouseVotesForYear(
       if (billMatch) {
         const num = billMatch[1] || billMatch[2] || billMatch[3];
         const type = legisNum.toLowerCase().replace(/\s+/g, "").replace(/\./g, "");
-        billId = `${type.startsWith("s") ? "s" : type.startsWith("hj") ? "hjres" : "hr"}-${num}-${CONGRESS}`;
+        billId = `${type.startsWith("s") ? "s" : type.startsWith("hj") ? "hjres" : "hr"}-${num}-${congress}`;
       }
 
       // Upsert vote
@@ -133,7 +147,7 @@ async function ingestHouseVotesForYear(
         .values({
           voteId,
           chamber: "house",
-          congress: CONGRESS,
+          congress,
           session,
           rollNumber: roll,
           voteDate,
@@ -157,11 +171,13 @@ async function ingestHouseVotesForYear(
           },
         });
 
-      // Parse individual vote positions
+      // Parse individual vote positions; one multi-row insert per vote —
+      // row-at-a-time over neon-http would turn a backfill into hours.
       const voteMatches = xml.matchAll(
         /<recorded-vote>[\s\S]*?name-id="([^"]*)"[\s\S]*?<vote>([^<]*)<\/vote>[\s\S]*?<\/recorded-vote>/g
       );
 
+      const positionRows: { voteId: string; bioguideId: string; position: string }[] = [];
       for (const m of voteMatches) {
         const bioguideId = m[1];
         const pos = m[2].trim().toLowerCase();
@@ -177,10 +193,10 @@ async function ingestHouseVotesForYear(
                 ? "present"
                 : "not_voting";
 
-        await db
-          .insert(votePositions)
-          .values({ voteId, bioguideId, position })
-          .onConflictDoNothing();
+        positionRows.push({ voteId, bioguideId, position });
+      }
+      if (positionRows.length > 0) {
+        await db.insert(votePositions).values(positionRows).onConflictDoNothing();
       }
 
       votesIngested++;
@@ -202,6 +218,7 @@ async function ingestHouseVotesForYear(
 async function ingestSenateVotesForSession(
   db: ReturnType<typeof drizzle>,
   memberLookup: Map<string, string>, // last_name+state → bioguide_id
+  congress: number,
   year: number,
   session: number
 ) {
@@ -209,12 +226,12 @@ async function ingestSenateVotesForSession(
 
   // Resume from one past the highest existing vote number for this year so
   // we don't re-hit several hundred 200s only to upsert no-ops. The Senate
-  // URL pattern is /vote119{session}/vote_119_{session}_{NNNNN}.xml, and
-  // numbering restarts each session.
+  // URL pattern is /vote{congress}{session}/vote_{congress}_{session}_{NNNNN}.xml,
+  // and numbering restarts each session.
   const existing = await db.execute(sql`
     SELECT COALESCE(MAX(roll_number), 0) AS max_roll
     FROM votes
-    WHERE chamber='senate' AND congress=${CONGRESS} AND session=${session}
+    WHERE chamber='senate' AND congress=${congress} AND session=${session}
   `);
   const startVote = Number((existing.rows[0] as { max_roll: number })?.max_roll ?? 0) + 1;
 
@@ -224,7 +241,7 @@ async function ingestSenateVotesForSession(
   // Hard cap of 800 to avoid runaway loops if the upstream serves a wall of 5xx.
   for (let voteNum = startVote; voteNum <= 800; voteNum++) {
     const paddedNum = String(voteNum).padStart(5, "0");
-    const url = `https://www.senate.gov/legislative/LIS/roll_call_votes/vote119${session}/vote_119_${session}_${paddedNum}.xml`;
+    const url = `https://www.senate.gov/legislative/LIS/roll_call_votes/vote${congress}${session}/vote_${congress}_${session}_${paddedNum}.xml`;
 
     try {
       const res = await fetch(url);
@@ -249,7 +266,7 @@ async function ingestSenateVotesForSession(
       }
       consecutive404 = 0;
 
-      const voteId = `senate-${CONGRESS}-${year}-${voteNum}`;
+      const voteId = `senate-${congress}-${year}-${voteNum}`;
       const question = extractTag(xml, "question");
       const voteTitle = extractTag(xml, "vote_title");
       const result = extractTag(xml, "vote_result");
@@ -286,7 +303,7 @@ async function ingestSenateVotesForSession(
       let billId: string | null = null;
       if (docType && docNum) {
         const t = docType.toLowerCase().replace(/\./g, "").replace(/\s/g, "");
-        billId = `${t}-${docNum}-${CONGRESS}`;
+        billId = `${t}-${docNum}-${congress}`;
       }
 
       await db
@@ -294,7 +311,7 @@ async function ingestSenateVotesForSession(
         .values({
           voteId,
           chamber: "senate",
-          congress: CONGRESS,
+          congress,
           session,
           rollNumber: voteNum,
           voteDate,
@@ -323,6 +340,7 @@ async function ingestSenateVotesForSession(
         /<member>[\s\S]*?<last_name>([^<]*)<\/last_name>[\s\S]*?<party>([^<]*)<\/party>[\s\S]*?<state>([^<]*)<\/state>[\s\S]*?<vote_cast>([^<]*)<\/vote_cast>[\s\S]*?<\/member>/g
       );
 
+      const positionRows: { voteId: string; bioguideId: string; position: string }[] = [];
       for (const m of memberMatches) {
         const lastName = m[1].trim();
         const state = m[3].trim();
@@ -342,10 +360,10 @@ async function ingestSenateVotesForSession(
                 ? "present"
                 : "not_voting";
 
-        await db
-          .insert(votePositions)
-          .values({ voteId, bioguideId, position })
-          .onConflictDoNothing();
+        positionRows.push({ voteId, bioguideId, position });
+      }
+      if (positionRows.length > 0) {
+        await db.insert(votePositions).values(positionRows).onConflictDoNothing();
       }
 
       votesIngested++;
@@ -370,9 +388,15 @@ async function main() {
   const client = neon(process.env.DATABASE_URL);
   const db = drizzle(client);
 
+  const { congress, sessions } = resolveTarget();
+  // Backfills log under their own entity type so the daily "votes" freshness
+  // signal on /health is untouched.
+  const entityType = congress === 119 ? "votes" : `votes_backfill_${congress}`;
+  console.log(`Target: ${congress}th Congress (${sessions.map((s) => s.year).join(", ")})`);
+
   const [syncEntry] = await db
     .insert(syncLog)
-    .values({ source: "house_senate_xml", entityType: "votes", status: "running" })
+    .values({ source: "house_senate_xml", entityType, status: "running" })
     .returning();
 
   try {
@@ -402,9 +426,9 @@ async function main() {
 
     let houseCount = 0;
     let senateCount = 0;
-    for (const { year, session } of SESSIONS) {
-      houseCount += await ingestHouseVotesForYear(db, memberIds, year);
-      senateCount += await ingestSenateVotesForSession(db, senateLookup, year, session);
+    for (const { year, session } of sessions) {
+      houseCount += await ingestHouseVotesForYear(db, memberIds, congress, year);
+      senateCount += await ingestSenateVotesForSession(db, senateLookup, congress, year, session);
     }
 
     await db

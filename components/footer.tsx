@@ -11,7 +11,7 @@ export function Footer() {
               DD
             </span>
             <p className="text-xs text-neutral-400">
-              Congressional accountability by state delegation
+              A public-records guide to Congress and the 2026 midterms
             </p>
           </div>
 

@@ -44,3 +44,30 @@ export function rejectCrossSite(request: NextRequest): Response | null {
 
   return null;
 }
+
+export async function readLimitedJson(
+  request: NextRequest,
+  maxBytes: number
+): Promise<
+  | { ok: true; body: unknown }
+  | { ok: false; reason: "invalid" | "too_large" }
+> {
+  const declaredLength = Number(request.headers.get("content-length") ?? 0);
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+    return { ok: false, reason: "too_large" };
+  }
+  let text: string;
+  try {
+    text = await request.text();
+  } catch {
+    return { ok: false, reason: "invalid" };
+  }
+  if (new TextEncoder().encode(text).byteLength > maxBytes) {
+    return { ok: false, reason: "too_large" };
+  }
+  try {
+    return { ok: true, body: JSON.parse(text) };
+  } catch {
+    return { ok: false, reason: "invalid" };
+  }
+}

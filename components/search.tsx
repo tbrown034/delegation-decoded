@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 type Hit = {
-  type: "member" | "ticker" | "state" | "bill" | "committee";
+  type: "member" | "state" | "bill" | "committee";
   href: string;
   title: string;
   subtitle: string;
@@ -14,7 +14,6 @@ type Hit = {
 
 const TYPE_LABEL: Record<Hit["type"], string> = {
   member: "Member",
-  ticker: "Ticker",
   state: "State",
   bill: "Bill",
   committee: "Committee",
@@ -157,7 +156,7 @@ export function Search() {
         type="button"
         onClick={openSearch}
         aria-label="Open search"
-        className="hidden h-8 items-center gap-2 rounded border border-neutral-200 px-3 text-xs text-neutral-500 transition-colors hover:border-neutral-400 hover:text-neutral-700 md:inline-flex"
+        className="inline-flex h-8 items-center gap-2 rounded border border-neutral-200 px-3 text-xs text-neutral-500 transition-colors hover:border-neutral-400 hover:text-neutral-700"
       >
         <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
           <circle cx="7" cy="7" r="5" />
@@ -207,8 +206,8 @@ export function Search() {
                     ? `search-opt-${state.active}`
                     : undefined
                 }
-                aria-label="Search members, tickers, states, bills, and committees"
-                placeholder="Search members, tickers, states…"
+                aria-label="Search members, states, bills, and committees"
+                placeholder="Search members, states, bills…"
                 spellCheck={false}
                 autoComplete="off"
                 enterKeyHint="search"
@@ -227,7 +226,7 @@ export function Search() {
             >
               {state.query.trim().length < 2 ? (
                 <p className="px-4 py-3 text-xs text-neutral-500">
-                  Type at least 2 characters. Try “khanna”, “NVDA”, or “California”.
+                  Type at least 2 characters. Try “Khanna”, “HR 1”, or “California”.
                 </p>
               ) : state.hits.length === 0 && !state.loading ? (
                 <p className="px-4 py-3 text-xs text-neutral-500">No matches.</p>

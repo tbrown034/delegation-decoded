@@ -16,6 +16,7 @@ import { PartyBar } from "@/components/party-bar";
 import { StateCoverageNote } from "@/components/data-coverage";
 import { effectiveTotal, fmt } from "@/lib/finance";
 import AskClient from "@/components/ask-client";
+import { getStateRaceIndex } from "@/lib/elections/queries";
 
 type Props = {
   params: Promise<{ code: string }>;
@@ -42,7 +43,7 @@ export default async function StatePage({ params }: Props) {
   const state = await getStateByCode(code);
   if (!state) notFound();
 
-  const [membersList, committeeCoverage, recentBills, financeData, stateEvents, brief, coverageStats] =
+  const [membersList, committeeCoverage, recentBills, financeData, stateEvents, brief, coverageStats, stateRaces] =
     await Promise.all([
       getMembersByState(code),
       getStateCommitteeCoverage(code),
@@ -51,6 +52,7 @@ export default async function StatePage({ params }: Props) {
       getStateEvents(code, 12),
       getStateBrief(code),
       getStateCoverage(code),
+      getStateRaceIndex(code),
     ]);
 
   const senators = membersList.filter((m) => m.chamber === "senate");
@@ -151,35 +153,6 @@ export default async function StatePage({ params }: Props) {
         </div>
       )}
 
-      {/* Ask, pre-scoped to this delegation */}
-      <div className="mb-10 rounded-lg border border-neutral-200 bg-stone-50 p-5">
-        <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <span className="rounded-full border border-neutral-300 bg-white px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-neutral-600">
-            AI lookup
-          </span>
-          <p className="text-sm text-neutral-500">
-            Ask about the {state.name} delegation — grounded in official
-            records, cites what it checked.
-          </p>
-        </div>
-        <AskClient
-          initialLocated={{
-            stateCode: state.code,
-            stateName: state.name,
-            district: null,
-            matchedAddress: null,
-            members: membersList.map((m) => ({
-              bioguideId: m.bioguideId,
-              fullName: m.fullName,
-              party: m.party,
-              chamber: m.chamber,
-              district: m.district,
-              photoUrl: m.photoUrl,
-            })),
-          }}
-        />
-      </div>
-
       {/* Two-column layout: delegation + sidebar */}
       <div className="grid grid-cols-1 gap-10 lg:grid-cols-3">
         <div className="min-w-0 lg:col-span-2">
@@ -228,6 +201,57 @@ export default async function StatePage({ params }: Props) {
               </div>
             </section>
           )}
+
+          <section className="mb-10">
+            <div className="mb-3 flex items-baseline justify-between gap-3">
+              <h2 className="text-xs font-medium uppercase tracking-wide text-neutral-400">2026 races</h2>
+              <Link href={`/races?state=${state.code}`} className="text-xs text-neutral-500 underline decoration-neutral-300 underline-offset-2 hover:text-neutral-900">
+                All {state.name} races
+              </Link>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {stateRaces.slice(0, 12).map((race) => (
+                <Link key={race.contestId} href={`/race/${race.contestId}`} className="rounded border border-neutral-200 bg-white p-3 no-underline hover:border-neutral-400">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="truncate text-sm font-medium text-neutral-900">{race.title.replace(`${state.name} `, "")}</span>
+                    <span className="shrink-0 font-mono text-xs text-neutral-400">{race.activeCandidates}</span>
+                  </div>
+                  <p className={`mt-1 text-[11px] ${race.coverage === "verification_pending" ? "text-amber-700" : race.coverage === "verified_ballot" ? "text-emerald-700" : "text-neutral-500"}`}>
+                    {race.coverage === "verified_ballot" ? "State-verified ballot" : race.coverage === "verification_pending" ? "State records; verification pending" : "FEC filers only"}
+                  </p>
+                </Link>
+              ))}
+            </div>
+          </section>
+
+          {/* Scoped records assistant follows the delegation roster. */}
+          <section className="mb-10 rounded-lg border border-neutral-200 bg-stone-50 p-5">
+            <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <h2 className="font-serif text-lg font-semibold">
+                Ask about {state.name}
+              </h2>
+              <p className="text-sm text-neutral-500">
+                Answers stay inside this delegation and cite the records checked.
+              </p>
+            </div>
+            <AskClient
+              scope={{ type: "state", stateCode: state.code }}
+              initialLocated={{
+                stateCode: state.code,
+                stateName: state.name,
+                district: null,
+                matchedAddress: null,
+                members: membersList.map((m) => ({
+                  bioguideId: m.bioguideId,
+                  fullName: m.fullName,
+                  party: m.party,
+                  chamber: m.chamber,
+                  district: m.district,
+                  photoUrl: m.photoUrl,
+                })),
+              }}
+            />
+          </section>
 
           {/* Activity Feed */}
           {stateEvents.length > 0 && (

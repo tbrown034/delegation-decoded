@@ -1,4 +1,4 @@
-// Cross-entity search across members, tickers, states, bills, and committees.
+// Cross-entity search across members, states, bills, and committees.
 //
 // Uses plain ILIKE rather than pg_trgm so we don't have to introduce a schema
 // migration; ranking is a CASE expression that prefers exact > prefix > sub.
@@ -7,7 +7,7 @@ import { db } from "./db";
 import { sql } from "drizzle-orm";
 
 export type SearchHit = {
-  type: "member" | "ticker" | "state" | "bill" | "committee";
+  type: "member" | "state" | "bill" | "committee";
   href: string;
   title: string;
   subtitle: string;
@@ -25,7 +25,7 @@ export async function searchAll(query: string): Promise<SearchHit[]> {
   const exact = q.toLowerCase();
   const prefix = `${q.toLowerCase()}%`;
 
-  const [memberRows, tickerRows, stateRows, billRows, committeeRows] = await Promise.all([
+  const [memberRows, stateRows, billRows, committeeRows] = await Promise.all([
     db.execute(sql`
       SELECT bioguide_id, full_name, party, state_code, district, chamber,
         CASE
@@ -39,20 +39,6 @@ export async function searchAll(query: string): Promise<SearchHit[]> {
       WHERE in_office = true
         AND (LOWER(full_name) LIKE ${like} OR LOWER(last_name) LIKE ${like})
       ORDER BY rank DESC, last_name ASC
-      LIMIT ${MAX_PER_BUCKET}
-    `),
-    db.execute(sql`
-      SELECT ticker, COUNT(*)::int AS n,
-        MAX(asset_description) AS sample,
-        CASE
-          WHEN LOWER(ticker) = ${exact} THEN 100
-          WHEN LOWER(ticker) LIKE ${prefix} THEN 80
-          ELSE 50
-        END AS rank
-      FROM stock_transactions
-      WHERE ticker IS NOT NULL AND LOWER(ticker) LIKE ${like}
-      GROUP BY ticker
-      ORDER BY rank DESC, n DESC
       LIMIT ${MAX_PER_BUCKET}
     `),
     db.execute(sql`
@@ -105,17 +91,6 @@ export async function searchAll(query: string): Promise<SearchHit[]> {
       href: `/member/${r.bioguide_id}`,
       title: r.full_name as string,
       subtitle: `${r.party} · ${r.state_code}${districtSuffix} · ${r.chamber === "senate" ? "Senate" : "House"}`,
-      rank: Number(r.rank),
-    });
-  }
-
-  for (const r of tickerRows.rows as Array<Record<string, unknown>>) {
-    const sample = r.sample ? ` · ${truncate(r.sample as string, 60)}` : "";
-    hits.push({
-      type: "ticker",
-      href: `/trades/companies/${r.ticker}`,
-      title: r.ticker as string,
-      subtitle: `${r.n} disclosed trade${r.n === 1 ? "" : "s"}${sample}`,
       rank: Number(r.rank),
     });
   }

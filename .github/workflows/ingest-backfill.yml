@@ -1,0 +1,60 @@
+# One-shot historical backfill for a closed congress (votes + bills).
+# Dispatch manually with the congress number. Votes finish in one run; the
+# bills scan is capped per run and resumes from ingest_cursors — re-dispatch
+# until the log prints "Backfill complete".
+name: Historical backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      congress:
+        description: "Congress number to backfill (e.g. 118)"
+        required: true
+        default: "118"
+      target:
+        description: "What to backfill"
+        type: choice
+        options:
+          - both
+          - votes
+          - bills
+        default: both
+
+permissions:
+  contents: read
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Backfill votes
+        if: inputs.target == 'both' || inputs.target == 'votes'
+        run: npx tsx scripts/ingest/votes.ts --congress=${{ inputs.congress }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Backfill bills
+        if: inputs.target == 'both' || inputs.target == 'bills'
+        run: npx tsx scripts/ingest/bills.ts --congress=${{ inputs.congress }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          CONGRESS_API_KEY: ${{ secrets.CONGRESS_API_KEY }}
+
+      - name: Health check
+        if: always()
+        run: npx tsx scripts/health-check.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}

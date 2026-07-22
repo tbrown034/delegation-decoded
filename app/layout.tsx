@@ -33,8 +33,11 @@ export const metadata: Metadata = {
     template: "%s | Delegation Decoded",
   },
   description:
-    "Congressional accountability tracking, organized by state delegation. Member profiles, legislation, committee assignments, and campaign finance for all 50 states.",
+    "A state-by-state reporting guide to Congress and the 2026 midterms, with member profiles, votes, legislation, campaign finance, and FEC candidate filings.",
 };
+
+// A per-request nonce is required for the enforced Content Security Policy.
+export const dynamic = "force-dynamic";
 
 export default function RootLayout({
   children,

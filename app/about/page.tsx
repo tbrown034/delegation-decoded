@@ -16,7 +16,7 @@ import {
   syncLog,
   votes,
 } from "@/lib/schema";
-import { count, eq, desc } from "drizzle-orm";
+import { count, eq, desc, sql } from "drizzle-orm";
 
 export const metadata: Metadata = {
   title: "About & Methodology",
@@ -25,17 +25,30 @@ export const metadata: Metadata = {
 };
 
 async function getDataStats() {
-  const [[b], [s], [f], [c], [a], [tx], [df], [v], [pr]] = await Promise.all([
-    db.select({ count: count() }).from(bills),
-    db.select({ count: count() }).from(billSponsorships),
-    db.select({ count: count() }).from(campaignFinance),
-    db.select({ count: count() }).from(committees),
-    db.select({ count: count() }).from(committeeAssignments),
-    db.select({ count: count() }).from(stockTransactions),
-    db.select({ count: count() }).from(disclosureFilings),
-    db.select({ count: count() }).from(votes),
-    db.select({ count: count() }).from(pressReleases),
-  ]);
+  const [[b], [s], [f], [c], [a], [tx], [df], [v], [pr], [bc], [vc]] =
+    await Promise.all([
+      db.select({ count: count() }).from(bills),
+      db.select({ count: count() }).from(billSponsorships),
+      db.select({ count: count() }).from(campaignFinance),
+      db.select({ count: count() }).from(committees),
+      db.select({ count: count() }).from(committeeAssignments),
+      db.select({ count: count() }).from(stockTransactions),
+      db.select({ count: count() }).from(disclosureFilings),
+      db.select({ count: count() }).from(votes),
+      db.select({ count: count() }).from(pressReleases),
+      db
+        .select({
+          min: sql<number>`MIN(congress)`,
+          max: sql<number>`MAX(congress)`,
+        })
+        .from(bills),
+      db
+        .select({
+          min: sql<number>`MIN(congress)`,
+          max: sql<number>`MAX(congress)`,
+        })
+        .from(votes),
+    ]);
 
   return {
     bills: b?.count || 0,
@@ -47,7 +60,17 @@ async function getDataStats() {
     filings: df?.count || 0,
     votes: v?.count || 0,
     pressReleases: pr?.count || 0,
+    billsCongress: { min: Number(bc?.min) || 119, max: Number(bc?.max) || 119 },
+    votesCongress: { min: Number(vc?.min) || 119, max: Number(vc?.max) || 119 },
   };
+}
+
+// "the 119th Congress" or "the 118th and 119th Congresses" — derived from the
+// rows actually in the database so this page can never claim coverage the
+// backfill hasn't delivered yet.
+function congressLabel(range: { min: number; max: number }) {
+  if (range.min === range.max) return `the ${range.max}th Congress`;
+  return `the ${range.min}th and ${range.max}th Congresses`;
 }
 
 async function getSyncHistory() {
@@ -79,16 +102,15 @@ export default async function AboutPage() {
         <section>
           <p>
             Delegation Decoded is a congressional accountability platform
-            organized by state delegation. Each state gets a dashboard tracking
-            its senators and representatives across legislation, committee
-            assignments, and campaign finance, drawn directly from official
-            government records.
+            organized by state delegation and built for the 2026 midterms.
+            Each state dashboard connects its current lawmakers, votes,
+            legislation, committees, campaign finance and 2026 candidate fields
+            to the official records behind them.
           </p>
           <p className="mt-2">
-            This is a public records project built for reporters, researchers,
-            and anyone who wants to know what their state&apos;s delegation is
-            actually doing. It is not a consumer app, a voter guide, or a
-            partisan tool.
+            It is built for voters who need a factual starting point and
+            journalists who need a transparent reporting tool. It is not an
+            endorsement guide, election forecast or partisan scorecard.
           </p>
         </section>
 
@@ -106,9 +128,6 @@ export default async function AboutPage() {
               { n: stats.committees, label: "committees" },
               { n: stats.assignments, label: "committee assignments" },
               { n: stats.finance, label: "finance records" },
-              { n: stats.filings, label: "STOCK Act filings" },
-              { n: stats.trades, label: "disclosed trades" },
-              { n: stats.pressReleases, label: "press releases" },
             ].map(({ n, label }) => (
               <div key={label}>
                 <p className="font-mono text-2xl font-semibold text-neutral-900">
@@ -118,6 +137,24 @@ export default async function AboutPage() {
               </div>
             ))}
           </div>
+        </section>
+
+        <section className="rounded border border-amber-200 bg-amber-50 px-5 py-4 text-amber-950">
+          <h2 className="font-serif text-lg font-semibold">
+            Stock disclosures are a coming feature
+          </h2>
+          <p className="mt-2">
+            The House and Senate disclosure pipelines and preview pages remain
+            available while coverage, parser accuracy and member matching are
+            validated. They are not yet a complete reporting dataset and are
+            intentionally excluded from the main navigation, search emphasis
+            and records assistant.
+          </p>
+          <p className="mt-2 text-xs text-amber-900">
+            Preview infrastructure currently contains {stats.filings.toLocaleString()} filings
+            and {stats.trades.toLocaleString()} parsed transaction rows. Those
+            counts measure loaded records, not comprehensive member coverage.
+          </p>
         </section>
 
         {/* Data sources */}
@@ -157,9 +194,9 @@ export default async function AboutPage() {
               <p className="mt-1">
                 Official Library of Congress API. Bills, resolutions,
                 sponsorships, cosponsorships, committee reports, and legislative
-                actions for the 119th Congress. This is the authoritative source
-                for what legislation a member has introduced, cosponsored, or
-                acted on.
+                actions for {congressLabel(stats.billsCongress)}. This is the
+                authoritative source for what legislation a member has
+                introduced, cosponsored, or acted on.
               </p>
               <p className="mt-1 text-xs text-neutral-400">
                 Access: REST API with free key. Rate limit: 5,000 requests/hour.
@@ -179,8 +216,12 @@ export default async function AboutPage() {
                 Federal Election Commission campaign finance data. Candidate
                 financial totals, receipts, disbursements, cash on hand, and
                 contribution breakdowns (small dollar, large individual, PAC).
-                Members are matched by their FEC candidate ID stored in the
-                @unitedstates dataset.
+                Linked committees are also ingested — principal campaign
+                committees, leadership PACs, and joint fundraising committees,
+                with per-cycle totals — plus top contributors aggregated by
+                donor employer from Schedule A itemizations. Members are
+                matched by their FEC candidate ID stored in the @unitedstates
+                dataset.
               </p>
               <p className="mt-1 text-xs text-neutral-400">
                 Access: REST API with free key via api.data.gov. Rate limit:
@@ -203,20 +244,22 @@ export default async function AboutPage() {
                 position record per member.
               </p>
               <p className="mt-1 text-xs text-neutral-400">
-                Access: Public XML, no key. Coverage: 119th Congress,
+                Access: Public XML, no key. Coverage:{" "}
+                {congressLabel(stats.votesCongress)},
                 {" "}{stats.votes.toLocaleString()} roll calls ingested.
+                Historical roll calls are stored for current members only.
               </p>
             </div>
 
             <div className="border-b border-neutral-100 pb-4">
               <h3 className="font-medium text-neutral-900">
-                House Clerk financial disclosures
+                House Clerk financial disclosures — coming feature pipeline
               </h3>
               <p className="mt-1 text-xs text-neutral-400">
                 disclosures-clerk.house.gov
               </p>
               <p className="mt-1">
-                STOCK Act Periodic Transaction Reports for House members. The
+                Preview ingestion of STOCK Act Periodic Transaction Reports for House members. The
                 Clerk publishes annual ZIPs of PTR PDFs. Each PDF is parsed
                 with Anthropic Claude Sonnet 4.6 in vision mode, the model
                 reads the rendered form and returns structured JSON: ticker,
@@ -227,20 +270,20 @@ export default async function AboutPage() {
               </p>
               <p className="mt-1 text-xs text-neutral-400">
                 Access: PDF bulk download. Re-parsing is idempotent via PDF
-                hash. Of {stats.filings.toLocaleString()} House and Senate
-                filings ingested, 99.95% of rows score ≥80% confidence.
+                hash. Coverage and parser accuracy are still being audited;
+                loaded rows must not be treated as a complete universe.
               </p>
             </div>
 
             <div className="border-b border-neutral-100 pb-4">
               <h3 className="font-medium text-neutral-900">
-                Senate Electronic Financial Disclosures (eFD)
+                Senate Electronic Financial Disclosures — coming feature pipeline
               </h3>
               <p className="mt-1 text-xs text-neutral-400">
                 efdsearch.senate.gov
               </p>
               <p className="mt-1">
-                STOCK Act PTRs for senators. The Senate filing system serves
+                Preview ingestion of STOCK Act PTRs for senators. The Senate filing system serves
                 structured HTML tables, every row already has a discrete
                 ticker, owner code, asset type, transaction type, and amount
                 band. Parsed deterministically with a cookie-jar + regex
@@ -280,6 +323,7 @@ export default async function AboutPage() {
           syncs={syncs}
           totalMembers={totalMembers}
           vacantSeats={vacantSeats}
+          billsCongress={stats.billsCongress}
         />
       </div>
     </div>
@@ -290,10 +334,12 @@ function AboutProcessDetails({
   syncs,
   totalMembers,
   vacantSeats,
+  billsCongress,
 }: {
   syncs: Awaited<ReturnType<typeof getSyncHistory>>;
   totalMembers: number;
   vacantSeats: number;
+  billsCongress: { min: number; max: number };
 }) {
   return (
     <>
@@ -323,16 +369,20 @@ function AboutProcessDetails({
             </li>
             <li>
               <strong className="text-neutral-900">Ingest bills.</strong>{" "}
-              The Congress.gov API is queried for all bills in the 119th
-              Congress. Each bill&apos;s detail endpoint is hit to retrieve
-              sponsors and cosponsors. Only bills linked to a tracked member
-              are stored. Rate-limited to stay under API caps.
+              The Congress.gov API is queried for all bills in{" "}
+              {congressLabel(billsCongress)}. Each bill&apos;s detail
+              endpoint is hit to retrieve sponsors and cosponsors. Only bills
+              linked to a tracked member are stored, in historical congresses
+              as well as the current one. Rate-limited to stay under API caps.
             </li>
             <li>
               <strong className="text-neutral-900">Ingest finance.</strong>{" "}
               For each member with an FEC candidate ID, financial totals are
-              pulled per election cycle. Contribution breakdowns distinguish
-              small dollar (under $200), large individual, and PAC money.
+              pulled per election cycle, and current-cycle totals are refreshed
+              weekly. Contribution breakdowns distinguish small dollar (under
+              $200), large individual, and PAC money. A separate weekly pass
+              ingests each member&apos;s linked committees and top contributors
+              by donor employer.
             </li>
             <li>
               <strong className="text-neutral-900">Ingest votes.</strong>{" "}
@@ -342,24 +392,45 @@ function AboutProcessDetails({
               record.
             </li>
             <li>
-              <strong className="text-neutral-900">Ingest 2026 candidates.</strong>{" "}
-              FEC statements of candidacy (Form 2) are synced daily, filtered
-              to statutory candidates who have raised funds — the standard cut
-              that drops paper filers. This is a filing list, not a ballot:
-              state deadlines and primaries decide ballot access, primary
-              results are not ingested, and a filer who later died or resigned
-              can still appear in FEC data — the site cross-checks filed
-              incumbents against the current member roster and flags anyone no
-              longer in office.
+              <strong className="text-neutral-900">Track 2026 races.</strong>{" "}
+              The verified layer starts from state election-authority ballot and
+              result records, stores each raw response as a hash-addressed private
+              snapshot, and appends status events rather than rewriting history.
+              Indiana is the first mid-cycle adapter. Its current state records
+              are published with verification pending because the statewide
+              primary feed still marks itself unofficial and the state&apos;s general
+              candidate spreadsheet warns that it is incomplete. Everywhere else,
+              FEC Form 2 filings remain visible only as a labeled fallback. An FEC
+              filing is never presented as ballot access.
             </li>
             <li>
-              <strong className="text-neutral-900">Ingest disclosures.</strong>{" "}
+              <strong className="text-neutral-900">Research campaign sites.</strong>{" "}
+              For state-authority candidacies with an exact FEC ID match, the
+              weekly pipeline accepts only the website reported by a current
+              principal or authorized campaign committee. It respects robots
+              rules, stays on that domain, blocks private and metadata network
+              addresses, caps pages, bytes, time and model tokens, and stores
+              every page as a private immutable snapshot. Extracted statements
+              and prior-service records remain unpublished until a human checks
+              the live source and exact supporting quote.
+            </li>
+            <li>
+              <strong className="text-neutral-900">Build official member biographies.</strong>{" "}
+              Current House and Senate website URLs come from the member roster
+              and must remain on a house.gov or senate.gov host. A bounded,
+              robots-aware crawler uses the same CMS reconnaissance patterns as
+              Capitol Releases, stores private content-addressed snapshots, and
+              queues evidence-linked biography facts for human review. Nothing
+              appears on a member page or in Ask before that review.
+            </li>
+            <li>
+              <strong className="text-neutral-900">Validate disclosure infrastructure.</strong>{" "}
               House PTR PDFs are downloaded from the Clerk, hashed, and parsed
               with Claude Sonnet 4.6 in vision mode. Senate PTRs come from the
               eFD HTML tables and are parsed deterministically. Both pipelines
-              upsert into the same `disclosure_filings` and
-              `stock_transactions` tables and run incrementally, already-seen
-              hashes are skipped.
+              upsert into shared disclosure tables and run incrementally;
+              already-seen hashes are skipped. Reader-facing coverage remains
+              labeled as a coming feature until the audits are complete.
             </li>
             <li>
               <strong className="text-neutral-900">Ingest press releases.</strong>{" "}
@@ -430,15 +501,14 @@ function AboutProcessDetails({
               office.
             </li>
             <li>
-              STOCK Act PTRs are filed up to 45 days after a transaction.
-              Members who fail to file are flagged late but the data still
-              arrives, sometimes with a multi-month lag.
+              Stock disclosure coverage is incomplete and still under
+              validation. Preview pages cannot establish that a member did or
+              did not trade, and every row must be checked against its official filing.
             </li>
             <li>
-              House PTR rows below 80% parse confidence are flagged for
-              review rather than hidden. About 0.05% of current rows are in
-              this state, typically because the PDF is hand-annotated or
-              uses an unusual asset description.
+              House PTR rows below 80% parse confidence are flagged for review
+              rather than hidden. Automated confidence is a triage signal, not
+              independent verification.
             </li>
             <li>
               Press release coverage depends on each member office publishing
@@ -446,8 +516,14 @@ function AboutProcessDetails({
               not represented in the timeline.
             </li>
             <li>
-              Bill coverage is limited to the 119th Congress. Historical
-              coverage is available through the API but has not been backfilled.
+              Bill and vote coverage is limited to{" "}
+              {congressLabel(billsCongress)}. Earlier congresses are
+              available upstream but have not been backfilled.
+            </li>
+            <li>
+              Historical roll calls and bills are stored for current members
+              only. A member who left office before the current Congress does
+              not appear in vote or sponsorship records here.
             </li>
             <li>
               Territory delegates (DC, PR, GU, AS, MP, VI) have limited
@@ -475,6 +551,12 @@ function AboutProcessDetails({
               sworn in; members who die or leave office are marked out of
               office on the next nightly sync.
             </li>
+            <li>
+              Official and campaign biography text is the subject&apos;s own
+              description. Publication means a reviewer confirmed the source
+              and quote; it does not turn that statement into an independent
+              biographical finding.
+            </li>
           </ul>
         </section>
 
@@ -485,17 +567,34 @@ function AboutProcessDetails({
           </h2>
           <p>
             The <Link href="/ask" className="text-neutral-900 underline decoration-neutral-300 underline-offset-2 hover:decoration-neutral-500">Ask</Link>{" "}
-            feature uses Anthropic Claude to answer questions, but the model
-            never answers from its own knowledge. It can only call this
-            site&apos;s own database queries — the same ones that render every
-            page — and compose an answer from what they return. If the data
-            can&apos;t answer, it is instructed to say so rather than guess.
-            Each answer lists which records were checked, and every member and
-            bill it names links to the underlying page so you can verify.
-            Questions are rate-limited and common answers are cached for a day.
+            feature uses OpenAI GPT-5.6 Terra as its primary provider and
+            Anthropic Claude Sonnet 5 as an independent fallback. OpenAI uses
+            strict schemas for every tool. Anthropic uses a deterministic topic
+            router to expose only the relevant strict retrieval schemas, keeping
+            grammar compilation within the request deadline. Both providers
+            send arguments through server-side type, range and page-scope
+            validation before any query runs. A terminal answer tool is required, and a factual answer is
+            rejected unless at least one record lookup was completed.
           </p>
           <p className="mt-2">
-            One ingestion pipeline uses AI: House PTR PDFs are parsed with
+            Exact SQL retrieval is used instead of embedding search for votes,
+            bills, finance, committees, terms and races because those are
+            structured records where identifiers and dates must match. Each
+            Race answers dual-read state-authority candidacies where a verified
+            adapter exists and FEC filings elsewhere, preserving the coverage
+            label in the model context. Each answer shows the record categories checked. Stock disclosures are
+            not exposed to the assistant while that feature is under validation.
+          </p>
+          <p className="mt-2">
+            Questions are capped in length, same-origin POST requests are
+            enforced, provider retries are disabled, and one provider fallback
+            is allowed only when the primary is unavailable. Per-connection and
+            daily provider limits cap abuse and spend. IP-derived identifiers
+            and cache keys are HMACed or hashed; questions are not stored in
+            plaintext in the answer cache.
+          </p>
+          <p className="mt-2">
+            Two ingestion pipelines use models. House PTR PDFs are parsed with
             Anthropic Claude Sonnet 4.6 in vision mode. The model reads the
             rendered disclosure form and returns structured JSON, ticker,
             asset description, owner, transaction type, transaction date,
@@ -506,12 +605,20 @@ function AboutProcessDetails({
             HTML and are parsed deterministically.
           </p>
           <p className="mt-2">
-            All other data, bills, sponsorships, votes, finance, committees,
-            members, traces directly to an official API or
-            community-maintained dataset, with no model in the loop.
+            Campaign-site and official-member biography research uses OpenAI
+            GPT-5.6 Terra with low reasoning and strict Structured Outputs,
+            then falls back to Anthropic Claude Sonnet 5 when the primary
+            provider is unavailable. Retrieval is deterministic and bounded:
+            crawlers select only approved same-domain research pages, then
+            supply their text directly. The model cannot browse or choose new
+            URLs. Application code drops any output whose quote is not present
+            in the cited snapshot, and a reviewer name and timestamp are stored
+            before any fact can be published or supplied to Ask.
           </p>
           <p className="mt-2">
-            The codebase was built with the assistance of Claude Code.
+            All other data — bills, sponsorships, votes, finance, committees
+            and members — traces directly to an official API or
+            community-maintained dataset, with no model in the loop.
           </p>
         </section>
 

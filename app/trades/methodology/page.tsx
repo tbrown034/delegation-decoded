@@ -5,11 +5,13 @@ import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { members, stockTransactions, disclosureFilings } from "@/lib/schema";
 import { eq, sql } from "drizzle-orm";
+import { TradesWipNotice } from "@/components/trades-wip-notice";
 
 export const metadata: Metadata = {
-  title: "Methodology — Trades",
+  title: "Stock disclosure preview methodology",
   description:
-    "How Delegation Decoded collects and parses congressional financial disclosures.",
+    "How Delegation Decoded is developing and validating its coming stock disclosure feature.",
+  robots: { index: false, follow: true },
 };
 
 async function getCoverage() {
@@ -71,9 +73,6 @@ function fmtDate(iso: string | null) {
 
 export default async function TradesMethodologyPage() {
   const coverage = await getCoverage();
-  const traderPct = coverage.activeMembers
-    ? Math.round((coverage.traders / coverage.activeMembers) * 100)
-    : 0;
   return (
     <article className="mx-auto max-w-2xl px-4 py-10">
       <nav className="mb-8 font-mono text-xs text-neutral-400">
@@ -96,6 +95,8 @@ export default async function TradesMethodologyPage() {
         </p>
       </header>
 
+      <TradesWipNotice />
+
       <Section title="Coverage window">
         <p>
           Periodic transaction reports were filed{" "}
@@ -109,47 +110,26 @@ export default async function TradesMethodologyPage() {
           (1st–99th percentile of transaction dates). A handful of older trades exist when a member files a late or amended PTR covering historical activity, and source data occasionally contains future-dated filer typos.
         </p>
         <p>
-          Across {coverage.activeMembers} active members of Congress,{" "}
+          The preview currently contains transactions associated with{" "}
           <span className="font-medium text-neutral-900">
-            {coverage.traders} ({traderPct}%)
+            {coverage.traders}
           </span>{" "}
-          have reported individual transactions in this window. The remaining{" "}
-          {coverage.activeMembers - coverage.traders} have not. That is the expected pattern — most members do not actively trade individual securities. Common reasons:
-        </p>
-        <ul className="list-disc space-y-1 pl-5">
-          <li>They hold positions through blind trusts, index funds, or mutual funds — none of which trigger STOCK Act reporting.</li>
-          <li>They simply did not buy or sell anything over $1,000 in the period.</li>
-          <li>They filed an annual report instead of a PTR (annual reports cover positions, not transactions, and are not parsed here).</li>
-        </ul>
-        <p>
-          The latest PTR ingested was filed{" "}
-          <span className="font-medium text-neutral-900">
-            {fmtDate(coverage.latestFiling)}
-          </span>
-          . New filings are ingested within ~24 hours of appearing in the House Clerk and Senate eFD portals.
+          current members out of {coverage.activeMembers}. That ratio describes
+          rows loaded into this database, not the share of Congress that traded
+          or filed. Annual disclosures are outside this PTR pipeline.
         </p>
       </Section>
 
       <Section title="How this compares to other trackers">
         <p>
-          The closest reference points are CapitolTrades and Quiver Quantitative. Both go back roughly three years; this site is currently focused on the active filing window.
+          CapitolTrades and Quiver Quantitative are useful divergence checks,
+          but this preview has not reached coverage parity with either service.
         </p>
         <p>
-          For overlap members, the totals line up:
-        </p>
-        <ul className="list-disc space-y-1 pl-5">
-          <li>
-            Members with high filing frequency (Khanna, McCaul, Cisneros) match within a single PTR. When CapitolTrades shows newer trades than this site, the cause is a PTR posted within the last 24–48 hours that has not yet been ingested.
-          </li>
-          <li>
-            For Senate members, the eFD portal serves trades as HTML tables, which we parse deterministically — no AI vision step. CapitolTrades publishes the same data with similar lag.
-          </li>
-          <li>
-            Lifetime totals on third-party sites are larger because they cover three years; the per-month rate of trades and members is comparable.
-          </li>
-        </ul>
-        <p>
-          If a trade is missing from this site that you can find on a primary source (House Clerk or Senate eFD), it is a bug. Open an issue with the document ID and I will fix it.
+          Divergence against an official filing or another tracker is treated
+          as an audit lead. Until those checks are systematic, a missing row can
+          reflect incomplete ingestion, parser error, member matching or a
+          different coverage window.
         </p>
       </Section>
 

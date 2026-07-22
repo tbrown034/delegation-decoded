@@ -15,13 +15,16 @@ import {
   getMemberCoverage,
   getMemberCoverageDetail,
   getMemberActivityData,
-  getRaceCandidates,
+  getPublishedMemberBiography,
 } from "@/lib/queries";
+import { getMemberSeatRaces } from "@/lib/elections/queries";
+import { resolveMemberSeat } from "@/lib/elections/member-seat";
 import { MemberCoverageCard } from "@/components/member-coverage-card";
 import { STATE_BY_CODE } from "@/lib/states";
 import { effectiveTotal, fmt } from "@/lib/finance";
 import { MemberCoverageBar } from "@/components/data-coverage";
 import { buildActivityTimeline } from "@/lib/press-analytics";
+import AskClient from "@/components/ask-client";
 
 type Props = {
   params: Promise<{ bioguideId: string }>;
@@ -49,9 +52,10 @@ export default async function MemberPage({ params }: Props) {
   const member = await getMemberByBioguideId(bioguideId);
   if (!member) notFound();
 
-  const [memberTerms, memberCommittees, memberBills, billCounts, finance, contributors, voteSummary, recentVotes, coverage, coverageDetail, activityData, race] =
+  const memberTerms = await getMemberTerms(bioguideId);
+  const memberSeat = resolveMemberSeat(member, memberTerms);
+  const [memberCommittees, memberBills, billCounts, finance, contributors, voteSummary, recentVotes, coverage, coverageDetail, activityData, memberRaces, biography] =
     await Promise.all([
-      getMemberTerms(bioguideId),
       getMemberCommittees(bioguideId),
       getMemberBills(bioguideId, 20),
       getMemberBillCount(bioguideId),
@@ -62,11 +66,8 @@ export default async function MemberPage({ params }: Props) {
       getMemberCoverage(bioguideId),
       getMemberCoverageDetail(bioguideId),
       getMemberActivityData(bioguideId),
-      getRaceCandidates(
-        member.stateCode,
-        member.chamber === "senate" ? "S" : "H",
-        member.chamber === "house" ? (member.district ?? 0) : null
-      ),
+      memberSeat ? getMemberSeatRaces(member.stateCode, memberSeat) : Promise.resolve([]),
+      getPublishedMemberBiography(bioguideId),
     ]);
 
   const stateName = STATE_BY_CODE[member.stateCode]?.name || member.stateCode;
@@ -83,13 +84,9 @@ export default async function MemberPage({ params }: Props) {
   const subCommittees = memberCommittees.filter((c) => c.parentId);
   const latestFinance = finance[0] || null;
 
-  // Every House seat is on the 2026 ballot; a Senate seat is up when its
-  // current term ends in January 2027.
-  const currentTerm = memberTerms.find((t) => t.isCurrent);
-  const seatUp2026 =
-    member.chamber === "house" ||
-    (currentTerm?.endDate ?? "").startsWith("2027");
-  const raceFilers = seatUp2026 && race.hasData ? race.candidates : [];
+  const loadedMemberRaces = memberRaces.filter(
+    (race) => race.hasData && race.candidates.length > 0
+  );
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
@@ -205,6 +202,70 @@ export default async function MemberPage({ params }: Props) {
           </div>
         </div>
       </div>
+
+      {biography && biography.facts.length > 0 && (
+        <section className="mb-10 border-l-2 border-neutral-300 pl-4">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h2 className="font-serif text-lg font-semibold">Official biography</h2>
+            <a
+              href={biography.biographyUrl ?? biography.siteUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-neutral-500 underline decoration-neutral-300 underline-offset-2 hover:text-neutral-900"
+            >
+              Congressional source
+            </a>
+          </div>
+          <ul className="mt-2 space-y-1.5 text-sm leading-relaxed text-neutral-700">
+            {biography.facts.map((fact) => (
+              <li key={fact.claimId}>
+                {fact.claimText}{" "}
+                <a
+                  href={fact.sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-neutral-400 underline decoration-neutral-300 underline-offset-2"
+                >
+                  Source
+                </a>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-[11px] text-neutral-400">
+            Extracted from this lawmaker&apos;s official House or Senate site and published only after source review.
+          </p>
+        </section>
+      )}
+
+      <section className="mb-10 rounded-lg border border-neutral-200 bg-stone-50 p-5">
+        <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h2 className="font-serif text-lg font-semibold">
+            Ask about {member.fullName}
+          </h2>
+          <p className="text-sm text-neutral-500">
+            The lookup is locked to this lawmaker and seat.
+          </p>
+        </div>
+        <AskClient
+          scope={{ type: "member", bioguideId: member.bioguideId }}
+          initialLocated={{
+            stateCode: member.stateCode,
+            stateName,
+            district: member.chamber === "house" ? member.district : null,
+            matchedAddress: null,
+            members: [
+              {
+                bioguideId: member.bioguideId,
+                fullName: member.fullName,
+                party: member.party,
+                chamber: member.chamber,
+                district: member.district,
+                photoUrl: member.photoUrl,
+              },
+            ],
+          }}
+        />
+      </section>
 
       {/* Legislation */}
       {memberBills.length > 0 && (
@@ -362,18 +423,27 @@ export default async function MemberPage({ params }: Props) {
         </section>
       )}
 
-      {/* The 2026 race: FEC filers for this seat */}
-      {raceFilers.length > 0 && (
-        <section className="mb-10">
-          <h2 className="mb-1 font-serif text-lg font-semibold">
-            The 2026 race
-          </h2>
+      {/* Exact district or Senate-class contests only. Special and regular
+          elections render separately when both exist for one physical seat. */}
+      {loadedMemberRaces.map((race) => {
+        const raceFilers = race.candidates;
+        return (
+        <section key={race.contestId} className="mb-10">
+          <div className="mb-1 flex items-baseline justify-between gap-3">
+            <h2 className="font-serif text-lg font-semibold">
+              {race.electionType === "special" ? "The 2026 special election" : "The 2026 race"}
+              {race.senateClass ? ` · Class ${race.senateClass}` : ""}
+            </h2>
+            <Link href={`/race/${race.contestId}`} className="text-xs text-neutral-500 underline decoration-neutral-300 underline-offset-2 hover:text-neutral-900">
+              Full race
+            </Link>
+          </div>
           <p className="mb-3 text-xs text-neutral-500">
-            Candidates who have filed FEC candidacy paperwork for this seat.
-            Filing is not ballot access — state deadlines and primaries set
-            the ballot, and primary results are not shown here.
-            {member.chamber === "senate" &&
-              " Senate filings are statewide; if the state has a concurrent special election, filers for both seats appear together."}
+            {race.coverage === "verified_ballot"
+              ? "Candidates verified against the state election authority's current ballot records."
+              : race.coverage === "verification_pending"
+                ? "Current candidates reconstructed from state election-authority records. Certification or a complete final ballot list is still pending."
+                : "FEC Form 2 filers for this seat. Filing is not ballot access, and this list does not establish who remains in the race."}
           </p>
           <ul className="divide-y divide-neutral-100 rounded border border-neutral-200 bg-white">
             {raceFilers.slice(0, 8).map((c) => (
@@ -401,6 +471,9 @@ export default async function MemberPage({ params }: Props) {
                     {c.candidate_id === member.fecCandidateId && (
                       <span className="ml-1">· this member</span>
                     )}
+                    {race.coverage !== "fec_only" && c.status && (
+                      <span className="ml-1">· {c.status.replaceAll("_", " ")}</span>
+                    )}
                   </span>
                 </div>
                 <span className="shrink-0 font-mono text-xs text-neutral-500">
@@ -416,11 +489,11 @@ export default async function MemberPage({ params }: Props) {
             </p>
           )}
           <p className="mt-2 text-[11px] text-neutral-400">
-            Source: FEC statements of candidacy (Form 2), statutory candidates
-            who have raised funds. Synced daily.
+            Source: {race.sourceName}. {race.coverage === "fec_only" ? "FEC filing fallback" : "State-authority record"}. Synced daily.
           </p>
         </section>
-      )}
+        );
+      })}
 
       {/* Campaign Finance */}
       {finance.length > 0 && (

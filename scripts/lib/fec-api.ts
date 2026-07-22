@@ -7,23 +7,39 @@ function getApiKey(): string {
 }
 
 async function fetchWithRetry(url: string, retries = 3): Promise<Response> {
+  const safeUrl = (() => {
+    const parsed = new URL(url);
+    if (parsed.searchParams.has("api_key")) parsed.searchParams.set("api_key", "REDACTED");
+    return parsed.toString();
+  })();
   async function attempt(i: number): Promise<Response> {
-    const res = await fetch(url);
-    if (res.ok) return res;
-    if (res.status === 429) {
-      if (i >= retries - 1) {
-        throw new Error(`FEC API error: ${res.status} ${res.statusText} for ${url}`);
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        signal: AbortSignal.timeout(20_000),
+        headers: { "User-Agent": "DelegationDecodedFECIngest/1.0" },
+      });
+    } catch (error) {
+      if (i < retries - 1) {
+        await new Promise((resolve) => setTimeout(resolve, Math.pow(2, i) * 1000));
+        return attempt(i + 1);
       }
-      const wait = Math.pow(2, i + 1) * 1000;
-      console.log(`  Rate limited, waiting ${wait}ms...`);
-      await new Promise((r) => setTimeout(r, wait));
+      throw new Error(`FEC API request failed for ${safeUrl}`, { cause: error });
+    }
+    if (res.ok) return res;
+    if (res.status === 429 || res.status >= 500) {
+      if (i >= retries - 1) {
+        throw new Error(`FEC API error: ${res.status} ${res.statusText} for ${safeUrl}`);
+      }
+      const retryAfter = Number(res.headers.get("retry-after"));
+      const wait = Number.isFinite(retryAfter) && retryAfter > 0
+        ? Math.min(retryAfter * 1000, 30_000)
+        : Math.pow(2, i + 1) * 1000;
+      console.log(`  FEC API ${res.status}; retrying in ${wait}ms...`);
+      await new Promise((resolve) => setTimeout(resolve, wait));
       return attempt(i + 1);
     }
-    if (i === retries - 1) {
-      throw new Error(`FEC API error: ${res.status} ${res.statusText} for ${url}`);
-    }
-    await new Promise((r) => setTimeout(r, 1000));
-    return attempt(i + 1);
+    throw new Error(`FEC API error: ${res.status} ${res.statusText} for ${safeUrl}`);
   }
   return attempt(0);
 }
@@ -41,10 +57,25 @@ export interface FECCandidateFinance {
   cycle: number;
 }
 
-export interface FECCommitteeContributor {
-  committee_name: string;
-  total: number;
+export interface FECCommittee {
   committee_id: string;
+  name: string;
+  designation: string | null; // P principal, A authorized, D leadership PAC, J joint
+  committee_type: string | null;
+  cycles: number[] | null;
+  website: string | null;
+}
+
+export interface FECCommitteeTotals {
+  cycle: number;
+  receipts: number | null;
+  disbursements: number | null;
+  last_cash_on_hand_end_period: number | null;
+}
+
+export interface FECEmployerTotal {
+  employer: string | null;
+  total: number | null;
 }
 
 export interface FECCandidate {
@@ -125,6 +156,44 @@ export async function fetchCandidateFinancials(
   let url = `${BASE_URL}/candidate/${candidateId}/totals?per_page=20&sort_null_only=false&api_key=${getApiKey()}`;
   if (cycle) url += `&cycle=${cycle}`;
 
+  const res = await fetchWithRetry(url);
+  const data = await res.json();
+  return data.results || [];
+}
+
+/**
+ * Fetch every committee linked to a candidacy: principal campaign committee,
+ * other authorized committees, leadership PACs, joint fundraising committees.
+ */
+export async function fetchCandidateCommittees(
+  candidateId: string
+): Promise<FECCommittee[]> {
+  const url = `${BASE_URL}/candidate/${candidateId}/committees/?per_page=100&api_key=${getApiKey()}`;
+  return fetchAllPages<FECCommittee>(url);
+}
+
+/**
+ * Fetch per-cycle financial totals for one committee.
+ */
+export async function fetchCommitteeTotals(
+  committeeId: string
+): Promise<FECCommitteeTotals[]> {
+  const url = `${BASE_URL}/committee/${committeeId}/totals/?per_page=100&api_key=${getApiKey()}`;
+  return fetchAllPages<FECCommitteeTotals>(url);
+}
+
+/**
+ * Fetch a committee's individual contributions aggregated by donor employer
+ * for one cycle — the standard "top contributors" cut for Schedule A data.
+ */
+export async function fetchTopContributorsByEmployer(
+  committeeId: string,
+  cycle: number,
+  perPage = 20
+): Promise<FECEmployerTotal[]> {
+  const url =
+    `${BASE_URL}/schedules/schedule_a/by_employer/?committee_id=${committeeId}` +
+    `&cycle=${cycle}&sort=-total&per_page=${perPage}&api_key=${getApiKey()}`;
   const res = await fetchWithRetry(url);
   const data = await res.json();
   return data.results || [];

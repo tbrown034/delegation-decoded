@@ -108,9 +108,10 @@ export async function fetchBillsPage(
   congress: number,
   offset: number,
   limit: number = 250,
-  fromDateTime?: string
+  fromDateTime?: string,
+  sort: "updateDate+desc" | "updateDate+asc" = "updateDate+desc"
 ): Promise<{ bills: CongressBill[]; nextUrl?: string; total: number }> {
-  let url = `${BASE_URL}/bill/${congress}?offset=${offset}&limit=${limit}&sort=updateDate+desc&format=json&api_key=${getApiKey()}`;
+  let url = `${BASE_URL}/bill/${congress}?offset=${offset}&limit=${limit}&sort=${sort}&format=json&api_key=${getApiKey()}`;
   if (fromDateTime) {
     url += `&fromDateTime=${fromDateTime}`;
   }

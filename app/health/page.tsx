@@ -94,6 +94,72 @@ export default async function HealthPage() {
 
       <section className="mt-10">
         <h2 className="text-xs font-medium uppercase tracking-wider text-neutral-500">
+          Official member biographies
+        </h2>
+        <p className="mt-1 text-sm text-neutral-600">
+          Sources must be official House or Senate sites. Extracted facts stay unpublished and unavailable to Ask until a human verifies the source and exact quote.
+        </p>
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <Stat label="Verified sites" value={report.memberBiographies.verifiedSites} />
+          <Stat label="Crawl errors" value={report.memberBiographies.crawlErrors} tone={report.memberBiographies.crawlErrors > 0 ? "warn" : "ok"} />
+          <Stat label="Members published" value={report.memberBiographies.membersWithVerifiedFacts} />
+          <Stat label="Facts queued" value={report.memberBiographies.pendingFacts} tone={report.memberBiographies.pendingFacts > 0 ? "warn" : "ok"} />
+          <Stat label="Facts verified" value={report.memberBiographies.verifiedFacts} />
+        </div>
+      </section>
+
+      <section className="mt-10">
+        <h2 className="text-xs font-medium uppercase tracking-wider text-neutral-500">
+          Candidate-site research
+        </h2>
+        <p className="mt-1 text-sm text-neutral-600">
+          Sites are linked through FEC committee filings. Model-extracted claims stay unpublished until a human verifies the source and quote.
+        </p>
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <Stat label="Verified sites" value={report.candidateResearch.verifiedSites} />
+          <Stat label="Crawl errors" value={report.candidateResearch.crawlErrors} tone={report.candidateResearch.crawlErrors > 0 ? "warn" : "ok"} />
+          <Stat label="Claims queued" value={report.candidateResearch.pendingClaims} tone={report.candidateResearch.pendingClaims > 0 ? "warn" : "ok"} />
+          <Stat label="Claims verified" value={report.candidateResearch.verifiedClaims} />
+          <Stat label="Service queued" value={report.candidateResearch.pendingService} tone={report.candidateResearch.pendingService > 0 ? "warn" : "ok"} />
+          <Stat label="Service verified" value={report.candidateResearch.verifiedService} />
+        </div>
+      </section>
+
+      <section className="mt-10">
+        <h2 className="text-xs font-medium uppercase tracking-wider text-neutral-500">
+          2026 race verification
+        </h2>
+        <p className="mt-1 text-sm text-neutral-600">
+          State-authority adapters roll out independently. FEC-only means campaign-finance filers, not a verified ballot.
+        </p>
+        <div className="mt-4 overflow-hidden rounded border border-neutral-200">
+          <table className="w-full text-sm">
+            <thead className="bg-neutral-50 text-left text-[11px] uppercase tracking-wider text-neutral-500">
+              <tr>
+                <th className="px-3 py-2">State</th>
+                <th className="px-3 py-2">Coverage</th>
+                <th className="hidden px-3 py-2 sm:table-cell">Authority</th>
+                <th className="px-3 py-2 text-right">Verified</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-100">
+              {report.electionCoverage.map((state) => (
+                <tr key={state.stateCode}>
+                  <td className="px-3 py-2 font-mono text-[12px]">{state.stateCode}</td>
+                  <td className={`px-3 py-2 text-xs ${state.coverage === "verified_ballot" ? "text-emerald-700" : state.coverage === "verification_pending" ? "text-amber-700" : "text-neutral-500"}`}>
+                    {state.coverage === "verified_ballot" ? "State verified" : state.coverage === "verification_pending" ? "Verification pending" : state.coverage === "fec_only" ? "FEC only" : "Adapter pending"}
+                  </td>
+                  <td className="hidden px-3 py-2 text-xs text-neutral-500 sm:table-cell">{state.authorityName}</td>
+                  <td className="px-3 py-2 text-right font-mono text-xs text-neutral-500">{state.verifiedContests}/{state.totalContests}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="mt-10">
+        <h2 className="text-xs font-medium uppercase tracking-wider text-neutral-500">
           Latest run per source
         </h2>
         <div className="mt-4 overflow-hidden rounded border border-neutral-200">

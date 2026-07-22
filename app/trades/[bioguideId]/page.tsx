@@ -17,8 +17,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const member = await getMemberByBioguideId(bioguideId);
   if (!member) return { title: "Member Not Found" };
   return {
-    title: `${member.fullName} — Disclosed trades`,
-    description: `Stock trades disclosed by ${member.fullName} under the STOCK Act.`,
+    title: `${member.fullName} — Stock disclosures preview`,
+    description: `Preview disclosure infrastructure for ${member.fullName}; coverage is still under validation.`,
+    robots: { index: false, follow: true },
   };
 }
 

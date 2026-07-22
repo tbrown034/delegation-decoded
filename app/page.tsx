@@ -18,7 +18,7 @@ import AskClient from "@/components/ask-client";
 export const metadata: Metadata = {
   title: "Delegation Decoded",
   description:
-    "Congressional accountability tracking organized by state delegation.",
+    "A state-by-state reporting guide to Congress and the 2026 midterms, built from official records.",
 };
 
 function formatFreshnessAge(completedAt: string | null, nowMs: number): string {
@@ -69,15 +69,14 @@ export default async function Home() {
       {/* Headline */}
       <div className="mb-10">
         <p className="mb-2 font-mono text-[11px] uppercase tracking-widest text-neutral-400">
-          The US Congress — House and Senate
+          A public-records guide to the 2026 midterms
         </p>
         <h1 className="font-serif text-4xl font-semibold tracking-tight sm:text-5xl">
-          535 voting members. 50 delegations.
+          Your congressional delegation, decoded for the midterms.
         </h1>
         <p className="mt-3 max-w-lg text-neutral-500">
-          Set your location and ask about your members of Congress in plain
-          language — votes, bills, committees, and campaign money, answered
-          only from official government records.
+          Find your lawmakers, examine their votes, bills and campaign money,
+          and see who has filed to run — all from official records.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-xs text-neutral-400">
           <span>
@@ -102,22 +101,58 @@ export default async function Home() {
         </div>
       </div>
 
-      {/* Ask — the AI front door */}
+      <div className="mb-8 grid gap-3 sm:grid-cols-3">
+        <Link
+          href="/find"
+          className="rounded border border-neutral-200 bg-white p-4 no-underline transition-colors hover:border-neutral-400"
+        >
+          <p className="font-serif text-lg font-semibold text-neutral-900">
+            Find my delegation
+          </p>
+          <p className="mt-1 text-sm text-neutral-500">
+            Match an address to its senators and House district.
+          </p>
+        </Link>
+        <a
+          href="#states"
+          className="rounded border border-neutral-200 bg-white p-4 no-underline transition-colors hover:border-neutral-400"
+        >
+          <p className="font-serif text-lg font-semibold text-neutral-900">
+            Explore a state
+          </p>
+          <p className="mt-1 text-sm text-neutral-500">
+            Review a delegation before asking the records assistant.
+          </p>
+        </a>
+        <Link
+          href="/for-journalists"
+          className="rounded border border-neutral-200 bg-white p-4 no-underline transition-colors hover:border-neutral-400"
+        >
+          <p className="font-serif text-lg font-semibold text-neutral-900">
+            Report with the data
+          </p>
+          <p className="mt-1 text-sm text-neutral-500">
+            Download records, check freshness and follow source links.
+          </p>
+        </Link>
+      </div>
+
+      {/* Grounded lookup complements, rather than replaces, direct records. */}
       <div className="mb-12 rounded-lg border border-neutral-200 bg-stone-50 p-5 sm:p-6">
         <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <span className="rounded-full border border-neutral-300 bg-white px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-neutral-600">
-            AI lookup
+            Records assistant
           </span>
           <p className="text-sm text-neutral-500">
-            Grounded in official records — it cites what it checked, and says
-            so when the data can&apos;t answer.
+            Ask in plain language after setting a location. Answers stay inside
+            that delegation and show which records were checked.
           </p>
         </div>
         <AskClient />
       </div>
 
       {/* Congress at a glance: state cartogram / House / Senate seat charts */}
-      <div className="mb-10">
+      <div id="states" className="mb-10 scroll-mt-6">
         <div className="mb-4 flex items-baseline justify-between">
           <h2 className="text-xs font-medium uppercase tracking-wide text-neutral-400">
             Congress at a glance

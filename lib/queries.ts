@@ -9,6 +9,8 @@ import {
   billSponsorships,
   campaignFinance,
   topContributors,
+  financeCommittees,
+  committeeFinance,
   votes,
   votePositions,
   events,
@@ -19,6 +21,12 @@ import {
   syncLog,
 } from "./schema";
 import { eq, and, desc, sql, count } from "drizzle-orm";
+export {
+  getMemberSeatRaces,
+  getPublishedCampaignResearch,
+  getRaceCandidates,
+} from "./elections/queries";
+export { getPublishedMemberBiography } from "./biography-queries";
 
 // ─── State queries ───────────────────────────────────────────────────────────
 
@@ -116,51 +124,6 @@ export async function getMemberTerms(bioguideId: string) {
     .from(terms)
     .where(eq(terms.bioguideId, bioguideId))
     .orderBy(desc(terms.startDate));
-}
-
-// 2026 candidates who have filed FEC paperwork for a given race. This is a
-// filing list, not a ballot: state deadlines and primaries decide the ballot.
-// Callers must check hasData to tell "no filers for this race" apart from
-// "candidate data has not been ingested yet" — the two mean opposite things.
-export async function getRaceCandidates(
-  stateCode: string,
-  office: "H" | "S",
-  district: number | null,
-  electionYear = 2026
-) {
-  const rows = (await db.execute(sql`
-    SELECT candidate_id, name, party, office, state_code, district,
-           incumbent_challenge, total_receipts, first_file_date, last_file_date
-    FROM election_candidates
-    WHERE state_code = ${stateCode.toUpperCase()}
-      AND office = ${office}
-      AND election_year = ${electionYear}
-      AND (${office} = 'S' OR district IS NOT DISTINCT FROM ${district})
-    ORDER BY total_receipts DESC NULLS LAST, name ASC
-  `)) as unknown as {
-    rows: {
-      candidate_id: string;
-      name: string;
-      party: string | null;
-      office: string;
-      state_code: string;
-      district: number | null;
-      incumbent_challenge: string | null;
-      total_receipts: number | null;
-      first_file_date: string | null;
-      last_file_date: string | null;
-    }[];
-  };
-  // Per-office guard: a Senate-only (or House-only) ingest must not make the
-  // other chamber's races read as "nobody has filed".
-  const total = (await db.execute(
-    sql`SELECT COUNT(*)::int AS n FROM election_candidates
-        WHERE election_year = ${electionYear} AND office = ${office}`
-  )) as unknown as { rows: { n: number }[] };
-  return {
-    hasData: Number(total.rows?.[0]?.n ?? 0) > 0,
-    candidates: rows.rows ?? [],
-  };
 }
 
 // Name search across every sitting member, for /ask questions about members
@@ -272,6 +235,70 @@ export async function getMemberBills(bioguideId: string, limit = 20) {
     .limit(limit);
 }
 
+export interface BillSearchOpts {
+  topic?: string;
+  policyArea?: string;
+  congress?: number;
+  role?: "sponsor" | "cosponsor";
+  dateFrom?: string;
+  dateTo?: string;
+  limit?: number;
+}
+
+export interface BillSearchRow {
+  bill_id: string;
+  bill_type: string;
+  bill_number: number;
+  congress: number;
+  title: string;
+  introduced_date: string | null;
+  latest_action_text: string | null;
+  policy_area: string | null;
+  role: string;
+  total_matched: number;
+}
+
+// Same idea as searchMemberVotes: the member's full sponsorship history with
+// optional topic, policy-area, congress, role, and date filters.
+export async function searchMemberBills(
+  bioguideId: string,
+  opts: BillSearchOpts = {}
+) {
+  const limit = Math.min(Math.max(opts.limit ?? 10, 1), 25);
+  const conditions = [sql`bs.bioguide_id = ${bioguideId}`];
+  const words = (opts.topic ?? "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 5);
+  for (const word of words) {
+    const like = `%${word}%`;
+    conditions.push(
+      sql`(b.title || ' ' || COALESCE(b.policy_area, '')) ILIKE ${like}`
+    );
+  }
+  if (opts.policyArea) {
+    conditions.push(sql`b.policy_area ILIKE ${`%${opts.policyArea}%`}`);
+  }
+  if (opts.congress) conditions.push(sql`b.congress = ${opts.congress}`);
+  if (opts.role) conditions.push(sql`bs.role = ${opts.role}`);
+  if (opts.dateFrom) conditions.push(sql`b.introduced_date >= ${opts.dateFrom}`);
+  if (opts.dateTo) conditions.push(sql`b.introduced_date <= ${opts.dateTo}`);
+
+  const result = (await db.execute(sql`
+    SELECT b.bill_id, b.bill_type, b.bill_number, b.congress, b.title,
+           b.introduced_date, b.latest_action_text, b.policy_area,
+           bs.role, COUNT(*) OVER ()::int AS total_matched
+    FROM bill_sponsorships bs
+    JOIN bills b ON bs.bill_id = b.bill_id
+    WHERE ${sql.join(conditions, sql` AND `)}
+    ORDER BY b.introduced_date DESC NULLS LAST
+    LIMIT ${limit}
+  `)) as unknown as { rows: BillSearchRow[] };
+  const records = result.rows ?? [];
+  return { totalMatched: records[0]?.total_matched ?? 0, records };
+}
+
 export async function getMemberBillCount(bioguideId: string) {
   const [[sponsored], [cosponsored]] = await Promise.all([
     db
@@ -331,11 +358,18 @@ export async function getRecentStateBills(stateCode: string, limit = 15) {
 
 // ─── Finance queries ─────────────────────────────────────────────────────────
 
-export async function getMemberFinance(bioguideId: string) {
+export async function getMemberFinance(bioguideId: string, cycle?: number) {
   return db
     .select()
     .from(campaignFinance)
-    .where(eq(campaignFinance.bioguideId, bioguideId))
+    .where(
+      cycle
+        ? and(
+            eq(campaignFinance.bioguideId, bioguideId),
+            eq(campaignFinance.electionCycle, cycle)
+          )
+        : eq(campaignFinance.bioguideId, bioguideId)
+    )
     .orderBy(desc(campaignFinance.electionCycle));
 }
 
@@ -356,6 +390,35 @@ export async function getMemberTopContributors(
     )
     .orderBy(desc(topContributors.totalAmount))
     .limit(10);
+}
+
+// A member's linked FEC committees (principal, authorized, leadership PAC,
+// joint fundraising) with the requested cycle's totals attached.
+export async function getMemberFinanceCommittees(
+  bioguideId: string,
+  cycle = 2026
+) {
+  return db
+    .select({
+      committeeId: financeCommittees.committeeId,
+      name: financeCommittees.name,
+      designation: financeCommittees.designation,
+      totalReceipts: committeeFinance.totalReceipts,
+      cashOnHand: committeeFinance.cashOnHand,
+    })
+    .from(financeCommittees)
+    .leftJoin(
+      committeeFinance,
+      and(
+        eq(committeeFinance.committeeId, financeCommittees.committeeId),
+        eq(committeeFinance.electionCycle, cycle)
+      )
+    )
+    .where(eq(financeCommittees.bioguideId, bioguideId))
+    .orderBy(
+      financeCommittees.designation,
+      desc(committeeFinance.totalReceipts)
+    );
 }
 
 export async function getStateDelegationFinance(stateCode: string) {
@@ -406,6 +469,69 @@ export async function getMemberVoteSummary(bioguideId: string) {
     summary.total += r.count;
   }
   return summary;
+}
+
+export interface VoteSearchOpts {
+  topic?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  congress?: number;
+  limit?: number;
+}
+
+export interface VoteSearchRow {
+  vote_id: string;
+  chamber: string;
+  congress: number;
+  roll_number: number;
+  vote_date: string;
+  question: string | null;
+  description: string | null;
+  result: string | null;
+  yeas: number;
+  nays: number;
+  position: string;
+  total_matched: number;
+}
+
+// Searches a member's full ingested roll-call history rather than paging the
+// most recent N. Topic words AND together over the vote text plus the linked
+// bill's title and policy area; ILIKE is fine because the scan is bounded by
+// idx_votepos_member to one member's positions.
+export async function searchMemberVotes(
+  bioguideId: string,
+  opts: VoteSearchOpts = {}
+) {
+  const limit = Math.min(Math.max(opts.limit ?? 10, 1), 25);
+  const conditions = [sql`vp.bioguide_id = ${bioguideId}`];
+  const words = (opts.topic ?? "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 5);
+  for (const word of words) {
+    const like = `%${word}%`;
+    conditions.push(
+      sql`(COALESCE(v.question, '') || ' ' || COALESCE(v.description, '') || ' ' || COALESCE(b.title, '') || ' ' || COALESCE(b.policy_area, '')) ILIKE ${like}`
+    );
+  }
+  if (opts.dateFrom) conditions.push(sql`v.vote_date >= ${opts.dateFrom}`);
+  if (opts.dateTo) conditions.push(sql`v.vote_date <= ${opts.dateTo}`);
+  if (opts.congress) conditions.push(sql`v.congress = ${opts.congress}`);
+
+  const result = (await db.execute(sql`
+    SELECT v.vote_id, v.chamber, v.congress, v.roll_number, v.vote_date,
+           v.question, v.description, v.result, v.yeas, v.nays,
+           vp.position, COUNT(*) OVER ()::int AS total_matched
+    FROM vote_positions vp
+    JOIN votes v ON vp.vote_id = v.vote_id
+    LEFT JOIN bills b ON v.bill_id = b.bill_id
+    WHERE ${sql.join(conditions, sql` AND `)}
+    ORDER BY v.vote_date DESC, v.roll_number DESC
+    LIMIT ${limit}
+  `)) as unknown as { rows: VoteSearchRow[] };
+  const records = result.rows ?? [];
+  return { totalMatched: records[0]?.total_matched ?? 0, records };
 }
 
 export async function getMemberRecentVotes(bioguideId: string, limit = 15) {
@@ -626,13 +752,13 @@ export async function getMemberCoverageDetail(
     },
     {
       source: "trades",
-      label: "STOCK Act trades",
+      label: "Stock disclosures — coming feature",
       count: trades,
       status: trades > 0 ? "present" : "expected_empty",
       description:
         trades > 0
-          ? `Parsed line items from ${filings} disclosed PTR filing${filings === 1 ? "" : "s"}.`
-          : "No Periodic Transaction Reports filed in the coverage window. Most members of Congress do not actively trade individual securities.",
+          ? `Preview infrastructure has parsed line items from ${filings} PTR filing${filings === 1 ? "" : "s"}; coverage is not yet comprehensive.`
+          : "No validated preview rows are loaded for this member. This is not evidence that the member did not file or trade.",
     },
   ];
 
@@ -926,6 +1052,7 @@ export async function getSyncSummary() {
         (SELECT COUNT(*) FROM committee_assignments) AS committees,
         (SELECT COUNT(*) FROM bills) AS bills,
         (SELECT COUNT(*) FROM campaign_finance) AS campaign_finance,
+        (SELECT COUNT(*) FROM finance_committees) AS finance_committees,
         (SELECT COUNT(*) FROM vote_positions) AS votes,
         (SELECT COUNT(*) FROM press_releases) AS press_releases,
         (SELECT COUNT(*) FROM stock_transactions) AS disclosures,

@@ -8,7 +8,9 @@ import { Search } from "./search";
 const links = [
   { href: "/", label: "States" },
   { href: "/ask", label: "Ask" },
+  { href: "/races", label: "Races" },
   { href: "/compare", label: "Compare" },
+  { href: "/for-journalists", label: "Journalists" },
   { href: "/about", label: "About" },
 ];
 
@@ -90,6 +92,9 @@ export function Nav() {
       {open && (
         <div className="absolute left-0 right-0 top-full z-50 border-b border-neutral-200 bg-white md:hidden">
           <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 py-3">
+            <div className="mb-2">
+              <Search />
+            </div>
             {links.map((link) => {
               const active =
                 pathname === link.href ||

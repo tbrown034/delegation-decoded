@@ -15,7 +15,7 @@ Congressional accountability tracking organized by state delegation. 538 members
 - Next.js 16 (App Router only, Server Components by default), React 19, TypeScript
 - Tailwind CSS 4
 - Neon serverless Postgres + Drizzle ORM
-- Anthropic API: Haiku 4.5 powers /ask (eval-picked via scripts/eval-ask.ts; override with ASK_MODEL); Sonnet 4.6 for House PTR vision parsing
+- /ask is dual-provider: OpenAI gpt-5.6-terra primary (Responses API), Anthropic claude-sonnet-5 fallback. Overrides: ASK_OPENAI_MODEL, ASK_ANTHROPIC_MODEL, ASK_PRIMARY_PROVIDER. Eval via scripts/eval-ask.ts. Anthropic Sonnet 4.6 for House PTR vision parsing
 - Deployed on Vercel
 - pnpm preferred
 
@@ -24,7 +24,7 @@ Congressional accountability tracking organized by state delegation. 538 members
 ```
 /                            home: AI ask bars (location + question), 50-state grid, activity feed, data freshness
 /about                       methodology, sources, limitations, AI transparency
-/ask                         location-first natural-language lookup (Claude tool calling over lib/queries)
+/ask                         location-first dual-provider tool-calling lookup over scoped records
 /api/ask                     grounded tool-loop endpoint (POST: question + stateCode)
 /api/ask/locate              state name/code or address → delegation resolution
 /find                        Census-Geocoder address-to-delegation lookup
@@ -39,6 +39,8 @@ Congressional accountability tracking organized by state delegation. 538 members
 /trades/methodology          how the trade pipeline works + comparison vs CapitolTrades
 /for-journalists             bulk CSV downloads + freshness + reporting tips
 /health                      live pipeline status (coverage, sync_log, active issues)
+/races                       national 2026 race index with state-verification labels
+/race/[contestId]            current candidate field, primary history, and source provenance
 /api/data/trades.csv         streaming CSV of every parsed transaction
 /api/data/filings.csv        streaming CSV of every PTR filing
 /api/data/finance.csv        streaming CSV of campaign finance summaries
@@ -62,6 +64,9 @@ scripts/ingest/
   votes.ts                Clerk House XML + Senate XML → roll calls + positions
   finance.ts              FEC API → campaign_finance + top_contributors
   candidates.ts           FEC Form 2 filings → election_candidates (2026 races, statutory candidates only; daily). /ask's get_race_candidates cross-checks FEC "incumbent" filers against sitting members so a departed filer is never presented as the officeholder.
+  elections.ts            State-authority race adapter runner. Starts with Indiana mid-cycle backfill; private Blob snapshots precede append-only status/result writes. FEC remains the labeled fallback where no adapter is verified.
+  candidate-sites.ts      Bounded crawler for FEC committee-reported campaign sites. Private page snapshots precede strict OpenAI extraction with Anthropic fallback; every claim remains needs_review until human verification.
+  member-biographies.ts   Bounded crawler for roster-verified house.gov/senate.gov sites. CMS recon + private snapshots precede evidence-linked extraction; every fact remains needs_review until attributed human verification.
   disclosures-house.ts    House Clerk PTR PDFs → Sonnet vision parse
   disclosures-senate.ts   Senate eFD HTML tables → deterministic parse
   press-releases.ts       Member office RSS feeds → press_releases
@@ -91,6 +96,9 @@ scripts/
   low-confidence.ts       Rows below 80% confidence.
   missing-pdfs.ts         PDFs on disk vs DB.
   random-sample.ts        Random 20-row spot check.
+  review-candidate-research.ts  Read-only review queue by default; explicit --apply verifies or rejects campaign claims and prior-service records.
+  review-member-biographies.ts  Read-only official-biography queue; an applied decision requires --reviewer and stores review attribution.
+  eval-candidate-extraction.ts  Paid synthetic smoke test for both campaign extraction providers; no database, crawler or Blob writes.
 
 scripts/audit/
   divergence.ts           Compares our latest tx_date for curated high-volume traders against capitoltrades.com public profiles. Logs to sync_log under source='capitoltrades_divergence'; surfaces in /health when drift exceeds 4 days.

@@ -4,6 +4,60 @@ A chronological record of development sessions and significant changes.
 
 ---
 
+## 2026-07-22 — Verified biographies and exact member-profile Ask
+
+**Session Summary:**
+- Added a verification-first biography layer for lawmakers and challengers. Lawmaker sources must be official House or Senate domains discovered from the congressional roster; challenger sites must come from a current FEC principal or authorized committee record tied to a state-authority candidacy.
+- Member-page Ask scope now follows the member's exact physical seat. House members see only their district; senators see only their seat class and any known special election for that class. The browser never supplies this scope.
+- Published biography facts now appear on member and race pages and are available through strict Ask tools. Model-extracted records remain hidden until a named human reviewer verifies the source and quote.
+
+**Notable Changes:**
+- Built Capitol Releases-style recon with CMS classification, robots handling and bounded same-domain crawling. Source fetches are HTTPS-only, DNS-checked against private, loopback, link-local and metadata addresses, redirect-revalidated, content-type checked and capped by time and bytes.
+- Private Vercel Blob snapshots are content-addressed and linked to every extracted claim. Scripts and forms are removed before model input; scraped text is explicitly treated as hostile. Validators discard any claim whose exact quote does not occur in the captured page.
+- GPT-5.6 Terra remains the Ask and extraction primary; Claude Sonnet 5 is the independent fallback. Ask uses the Responses API, strict direct tools and exact SQL instead of embedding structured records. Biography and challenger claims receive claim-level citations, and unissued citation markers are stripped.
+- Added per-IP and global/provider Ask budgets, same-origin and body guards, HMAC identifiers, hard request/tool/token limits, zero SDK retries, provider fallback, review attribution and health reporting. Unchanged official and campaign pages now skip both Blob uploads and model extraction.
+- Added weekly incremental member research and a manually batched biography backfill workflow. The health page reports official-site crawl failures, review queues and published coverage.
+- Verification: TypeScript, ESLint, `git diff --check`, 29/29 tests, `pnpm audit --prod` and `next build` pass. Exact member-scope paid evals passed on Terra and Sonnet 5; the final runs were 3.6s and 4.8s. A live Jim Banks crawl found four official pages, and local HTTP checks returned 200 for member, races, race and health routes.
+- The in-app browser was unavailable, so visual and click QA remains unverified. The biography schema was not applied to the external database, no review records were published, and nothing was pushed or deployed.
+
+---
+
+## 2026-07-22 — Verification-first 2026 races and campaign research
+
+**Session Summary:**
+- Added a normalized, append-only election layer over the existing FEC staging table: contests, stages, people, candidacies, repeating ballot lines, status events, results and ranked-choice rounds. Senate contest IDs include seat class; special elections require a manual official-source URL.
+- Built the mid-cycle bootstrap around historical backfill rather than a pre-cycle monitor. Indiana is the first adapter. Its current statewide feed still marks the primary results unofficial and its general candidate workbook says it is incomplete, so the product labels those records verification pending instead of certified.
+- Shipped `/races`, `/race/[contestId]`, state-page race lists, race CSV, sitemap entries and a full `/health` coverage matrix. State-authority data dual-reads first; uncovered states and pre-schema deployments retain the existing clearly labeled FEC-only fallback.
+
+**Notable Changes:**
+- Official source bytes are hash-addressed in private Vercel Blob storage before election writes. The daily workflow uses the existing scheduler plus due rows and manual dispatch; special elections remain manual registry entries because governor proclamations have no reliable national feed.
+- Added FEC committee-reported campaign-site discovery, an HTTPS-only and DNS-pinned crawler, private/link-local/metadata blocking, redirect revalidation, robots handling, host allowlisting, page/byte/time limits and immutable private page snapshots. Model text is treated as hostile input; scripts, forms and navigation are excluded.
+- Campaign extraction uses GPT-5.6 Terra Structured Outputs with Claude Sonnet 5 fallback. Both live synthetic provider evals passed. Every output must carry an exact quote found in the cited snapshot; invalid quotes are dropped, and valid records remain `needs_review` until `review-candidate-research.ts --apply` verifies or rejects them. Race pages publish only verified claims and prior service.
+- Campaign extraction ships with per-run candidate, page, character, provider-call and token caps. Weekly ingestion records partial failures in `sync_log`; `/health` surfaces crawl errors and the review queue.
+- Paid Ask evaluation found and fixed a real Anthropic fallback outage: a nullable enum schema returned HTTP 400, and compiling all eight strict tools exceeded the route deadline. The fallback now uses a deterministic topic router, strict relevant schemas, forced first retrieval, server-side sentinel cleanup and a forced terminal answer after evidence. OpenAI passed 18/18. Anthropic passed 17/18 in the final full run; the only failed finance-routing regression then passed its isolated rerun after the router fix. Forced OpenAI-to-Anthropic failover passed.
+- Hardened FEC API retries with timeouts, bounded `Retry-After`, 5xx handling and API-key redaction. CSV exports now neutralize spreadsheet formulas in untrusted text. `pnpm audit --audit-level high` reports no known vulnerabilities.
+- Verification: 23/23 tests, TypeScript, ESLint and `next build` pass. Indiana dry-run parsed 61 current records with no writes. Thirteen core routes and exports returned 200 from the production build. The in-app browser exposed no browser target, so visual/click QA remains unverified. No schema was applied to the external database, and nothing was pushed or deployed.
+
+---
+
+## 2026-07-22 — Midterm product rebuild and scoped records assistant
+
+**Session Summary:**
+- Repositioned the product around voters, journalists and the 2026 midterms. The homepage now leads to address lookup, state records and journalist exports; state and member pages each have a server-enforced scoped assistant.
+- Demoted STOCK Act pages to a no-indexed “coming feature” preview. Removed trade promotion from navigation, search, sitemap, homepage/state social cards and generic member-coverage language while preserving the ingestion and preview routes.
+- Rebuilt `/api/ask` as a provider-neutral strict tool loop. GPT-5.6 Terra is primary and Claude Sonnet 5 is fallback; both must finish through `submit_answer`, and factual answers without a completed record retrieval are rejected.
+
+**Notable Changes:**
+- State scope allows only members and races in that state. Member scope allows only that Bioguide ID and seat. Stock/disclosure tools are intentionally absent. Exact SQL retrieval remains the factual layer; embedding search is reserved for future long-form document corpora.
+- Added OpenAI Responses API support, one-provider failover, provider-attempt budgets, per-IP limits, same-origin JSON POST guards, byte-limited bodies, request cancellation, a shared 45-second deadline, zero SDK retries, HMACed IP/safety/cache identifiers, non-plaintext cache keys and daily expired-row cleanup.
+- Model evaluation: GPT-5.6 Terra passed 12/12 scoped, grounding and injection cases at a 2.93-second average. Claude Sonnet 5 passed 10/12 in the full run; the terminal-status miss and one transient timeout both passed targeted reruns. A controlled invalid-OpenAI-key test completed through Sonnet with `fallbackUsed: true`.
+- Added nonce-based Content Security Policy through `proxy.ts`, generic page-error copy, additional response headers, search rate limiting and an actual POST-only `/find` flow so street addresses no longer enter URLs.
+- Upgraded Next and its lint config to 16.2.10, added OpenAI SDK 6.47, and pinned patched transitive packages across npm and pnpm. Full `npm audit` and `pnpm audit` both report zero known vulnerabilities.
+- Added live roster, 2026 FEC-filer and roll-call-position CSVs for journalists. The vote export initially exceeded Neon’s 64 MB response limit; route verification caught it and the final implementation streams cursor-paginated 10,000-row batches.
+- Verification: `pnpm exec tsc --noEmit`, `pnpm lint`, 5/5 security tests, `pnpm audit --prod` and `pnpm build` pass. Local route/header checks confirmed scoped page copy, CSP, no-index stock metadata, CSV headers and a real member-scoped Ask response from Terra. The in-app browser had no available tab, so visual/click testing remains unverified. Nothing was pushed or deployed.
+
+---
+
 ## 2026-04-25 — Bulletproof STOCK Act trades feature
 
 **Session summary:**
@@ -242,5 +296,23 @@ Picked up a timed-out external agent's react-doctor refactor pass, verified it, 
 - Two Opus reviews gated the work (mid-loop diff review; full pre-push review). Verdicts: ship / fix-first, with the fix-first item (hardcoded /about roster snapshot) resolved in 7c81c96.
 - Seven commits, 9c5cbf1..7c81c96, each behind a clean next build. Not pushed.
 - Still user-gated: push, rename (yourdelegation.com / knowyourdelegation.com / delegationwatch.org available Jul 19), House Clerk PTR key rotation (dead ~87 days), Anthropic Console spend cap, Vercel WAF.
+
+---
+## 2026-07-22 — Ask polish: deep retrieval, claim citations, follow-ups, SSE; finance committees + 118th backfill
+
+**Session Summary:**
+- Retrieval filters: get_member_votes and get_member_bills now take topic / date_from / date_to / congress (and finance takes cycle) backed by new searchMemberVotes / searchMemberBills in lib/queries.ts — per-word ILIKE over vote text plus linked bill title and policy area, with matched/showing totals so the model discloses "10 of 21 matching votes shown." Prompt bumped to midterms-grounded-v4.
+- Claim-level citations, cost-neutral: the engine annotates every retrieved record with a ref (v1, f2...); the model appends bracket markers; lib/ask-citations.ts strips markers the registry never issued, renumbers survivors, and the client renders superscript footnotes plus a collapsible Sources drawer with dated, linked records. No second model call (~30 extra output tokens).
+- Scoped follow-ups: the client sends the last two exchanges; the route (body cap 2K -> 8K) truncates and sanitizes them; the engine renders them as pronouns-only context. The answered-requires-trace guard still forces fresh retrieval, follow-ups bypass the shared answer cache in both directions, and scope stays server-locked. "What about her donors?" works on a state page now.
+- SSE progress: with Accept: text/event-stream the route streams verified tool events ("Checked roll-call votes — 10 records") and a terminal result identical to the JSON path, which stays untouched for eval and tests. No token-level answer streaming by design — answers must pass link and citation validation whole.
+- Eval upgrade: expectTools (subset match on trace tool+args), dbTruth (live Neon ground truth with tolerant money/date matchers), latency/token budget WARNs, and a failover case asserting fallbackUsed. 17 cases; new topic-votes, bills-topic, latest-vote, finance-cycle all pass on gpt-5.6-terra.
+- Finance committees (new data layer): scripts/ingest/finance-committees.ts pulls each member's linked committees (principal, leadership PAC, joint), per-cycle committee totals, and top contributors by donor employer — finally populating the top_contributors table that has been empty in prod since launch (finance.ts skipped contributors to save requests). Also fixed finance.ts staleness: existing members now get a current-cycle refresh instead of freezing at first ingest. Wired into get_member_finance ("does Sen. X have a leadership PAC?" is answerable once the weekly runs).
+- 118th Congress backfill: votes.ts and bills.ts take --congress=118; votes batch-insert positions (also speeds the daily run), bills get a resumable ingest_cursors offset and a per-run detail-fetch cap. New ingest-backfill.yml workflow_dispatch. Coverage prose on /about is now computed from MIN/MAX(congress) in the DB so it can never claim coverage the backfill hasn't delivered.
+- Health: fixed a dead check — staleness thresholds were keyed by entity names but indexed by sync_log.source, so they never fired; now keyed by entity_type. New checks: empty finance-committee tables warn until the first ingest, and a successful votes backfill whose rows vanish goes crit.
+
+**Notable Changes:**
+- AGENTS.md corrected: /ask is dual-provider (gpt-5.6-terra primary, claude-sonnet-5 fallback), not Haiku. The devlog's earlier find_member claim was wrong — no such tool exists in code; its dead client label was removed rather than wired up, since it contradicts the hard page-scope rule.
+- Verified: clean next build, 11/11 tests (new tests/ask-citations.test.ts; npm test now globs tests/*.test.ts), 4/4 targeted paid evals, and a live browser pass on /state/IN — streamed progress, footnotes, Sources drawer, and a follow-up that resolved "her" and honestly reported the empty contributor tables.
+- User-gated next steps: push, dispatch ingest-backfill.yml for congress 118 (bills needs ~6 re-runs until "Backfill complete"), and one weekly-ingest dispatch to populate finance committees and refresh frozen 2026 totals (the browser test surfaced Houchin's 2026 receipts recorded as $0 — the staleness fix corrects it on that run).
 
 ---

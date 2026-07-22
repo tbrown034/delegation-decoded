@@ -27,12 +27,33 @@ interface TraceEntry {
   input: Record<string, unknown>;
 }
 
+interface Citation {
+  n: number;
+  ref: string;
+  tool: string;
+  label: string;
+  href: string | null;
+}
+
+type ProgressEvent =
+  | { type: "provider"; provider: string; fallback: boolean }
+  | { type: "tool"; tool: string; detail?: string }
+  | { type: "tool_result"; tool: string; records: number };
+
 interface Exchange {
   question: string;
   answer: string;
+  citations: Citation[];
   trace: TraceEntry[];
   cached?: boolean;
+  provider?: "anthropic" | "openai";
+  model?: string;
+  fallbackUsed?: boolean;
 }
+
+type FixedAskScope =
+  | { type: "state"; stateCode: string }
+  | { type: "member"; bioguideId: string };
 
 const SUGGESTIONS = [
   "Who represents me in Congress?",
@@ -53,7 +74,7 @@ const MORE_EXAMPLES: { group: string; items: string[] }[] = [
     items: [
       "Who are my senators' top campaign contributors?",
       "How much of my representative's money comes from PACs?",
-      "How much has AOC raised?",
+      "How much did this delegation raise for the 2026 cycle?",
     ],
   },
   {
@@ -64,16 +85,15 @@ const MORE_EXAMPLES: { group: string; items: string[] }[] = [
     ],
   },
   {
-    group: "Other states",
+    group: "2026 races",
     items: [
-      "Who are North Dakota's senators?",
-      "Compare my senators' fundraising to Bernie Sanders'.",
+      "Which congressional seats here are up in 2026?",
+      "Who has filed with the FEC for these races?",
     ],
   },
 ];
 
 const TOOL_LABELS: Record<string, string> = {
-  find_member: "member lookup",
   get_race_candidates: "FEC candidate filings",
   get_delegation: "delegation roster",
   get_member_votes: "roll-call votes",
@@ -81,9 +101,17 @@ const TOOL_LABELS: Record<string, string> = {
   get_member_bills: "Congress.gov bills",
   get_member_committees: "committee assignments",
   get_member_terms: "term dates",
+  get_member_biography: "reviewed official biography",
 };
 
-const ALLOWED_HOSTS = ["congress.gov", "www.congress.gov", "fec.gov", "www.fec.gov"];
+const ALLOWED_HOSTS = [
+  "congress.gov",
+  "www.congress.gov",
+  "fec.gov",
+  "www.fec.gov",
+  "vote.gov",
+  "www.vote.gov",
+];
 
 // Where a "Checked:" footer chip should point: the page that holds the data
 // the tool read. Citations the reader can actually click beat bare assertions.
@@ -102,6 +130,7 @@ function traceHref(t: TraceEntry): string | null {
     case "get_member_finance":
     case "get_member_bills":
     case "get_member_terms":
+    case "get_member_biography":
     case "get_member_committees":
       return id && /^[A-Z][0-9]{6}$/.test(id) ? `/member/${id}` : null;
     default:
@@ -113,7 +142,7 @@ function traceHref(t: TraceEntry): string | null {
 // protocol-relative tricks like //evil.example and /\evil.example, which
 // a bare startsWith("/") check lets through.
 const INTERNAL_HREF_RE =
-  /^\/(member|bill|state|committee)\/[A-Za-z0-9][A-Za-z0-9._-]*$/;
+  /^\/(member|bill|state|committee|race)\/[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 // Minimal renderer for the model's constrained markdown: paragraphs,
 // [text](href) links (entity routes or allow-listed official hosts), **bold**.
@@ -130,13 +159,24 @@ function renderAnswer(text: string): ReactNode[] {
 
 function renderInline(text: string, keyBase: number): ReactNode[] {
   const nodes: ReactNode[] = [];
-  const pattern = /\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*/g;
+  const pattern = /\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*|\[(\d{1,2})\]/g;
   let last = 0;
   let match: RegExpExecArray | null;
   let k = 0;
   while ((match = pattern.exec(text)) !== null) {
     if (match.index > last) nodes.push(text.slice(last, match.index));
-    if (match[1] !== undefined) {
+    if (match[4] !== undefined) {
+      // Server-validated footnote marker: every number maps to a retrieved
+      // record listed in the Sources drawer below the answer.
+      nodes.push(
+        <sup
+          key={`${keyBase}-${k++}`}
+          className="ml-0.5 font-mono text-[10px] text-neutral-400"
+        >
+          [{match[4]}]
+        </sup>
+      );
+    } else if (match[1] !== undefined) {
       const href = match[2];
       if (INTERNAL_HREF_RE.test(href)) {
         nodes.push(
@@ -178,14 +218,57 @@ const partyColor = (party: string) =>
       ? "text-red-700"
       : "text-neutral-700";
 
-// Honest wait status: time-based escalation copy only. It never names a
-// record type it cannot know is being read — no fabricated progress.
-function PendingStatus() {
+// Pair "tool" events with their "tool_result" in arrival order so each line
+// upgrades from "Checking..." to "Checked — N records" as the loop verifies
+// it. Every line mirrors a call the server actually made — no fabricated
+// progress.
+function progressLines(progress: ProgressEvent[]): string[] {
+  const lines: string[] = [];
+  const pending: number[] = [];
+  for (const event of progress) {
+    if (event.type === "tool") {
+      const label = TOOL_LABELS[event.tool] ?? event.tool;
+      lines.push(
+        `Checking ${label}${event.detail ? ` for "${event.detail}"` : ""}...`
+      );
+      pending.push(lines.length - 1);
+    } else if (event.type === "tool_result") {
+      const label = TOOL_LABELS[event.tool] ?? event.tool;
+      const line = `Checked ${label} — ${event.records} record${event.records === 1 ? "" : "s"}`;
+      const idx = pending.shift();
+      if (idx != null) lines[idx] = line;
+      else lines.push(line);
+    } else if (event.type === "provider" && event.fallback) {
+      lines.push("Primary provider unavailable — retrying with the fallback...");
+    }
+  }
+  return lines.slice(-4);
+}
+
+// Honest wait status: verified progress events when streaming, time-based
+// escalation copy as the fallback. It never names a record type it cannot
+// know is being read.
+function PendingStatus({ progress }: { progress: ProgressEvent[] }) {
   const [seconds, setSeconds] = useState(0);
   useEffect(() => {
     const t = setInterval(() => setSeconds((s) => s + 1), 1000);
     return () => clearInterval(t);
   }, []);
+  const lines = progressLines(progress);
+  if (lines.length > 0) {
+    return (
+      <div className="text-sm text-neutral-500" role="status">
+        {lines.map((line, i) => (
+          <p key={i} className="mt-0.5 first:mt-0 flex items-center gap-2">
+            {i === lines.length - 1 && (
+              <span className="size-2 animate-pulse rounded-full bg-neutral-400" aria-hidden />
+            )}
+            <span>{line}</span>
+          </p>
+        ))}
+      </div>
+    );
+  }
   const copy =
     seconds < 8
       ? "Checking official records..."
@@ -218,10 +301,12 @@ function hasDanglingReferent(q: string): boolean {
 
 export default function AskClient({
   initialLocated,
+  scope,
 }: {
   // When set (state pages), the surface is pre-scoped: no location bar, no
   // delegation card — the page around it already shows the roster.
   initialLocated?: Located;
+  scope?: FixedAskScope;
 } = {}) {
   const fixedLocation = Boolean(initialLocated);
   const [locationInput, setLocationInput] = useState("");
@@ -236,6 +321,7 @@ export default function AskClient({
   const [budgetExhausted, setBudgetExhausted] = useState(false);
   const [referentNudge, setReferentNudge] = useState(false);
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
+  const [progress, setProgress] = useState<ProgressEvent[]>([]);
   const [showExamples, setShowExamples] = useState(false);
   const askInputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -269,10 +355,46 @@ export default function AskClient({
     }
   }
 
+  function pushExchange(question: string, data: Record<string, unknown>) {
+    setExchanges((prev) => [
+      ...prev,
+      {
+        question,
+        answer: typeof data.answer === "string" ? data.answer : "",
+        citations: Array.isArray(data.citations)
+          ? (data.citations as Citation[])
+          : [],
+        trace: Array.isArray(data.trace) ? (data.trace as TraceEntry[]) : [],
+        cached: data.cached === true,
+        provider:
+          data.provider === "anthropic" || data.provider === "openai"
+            ? data.provider
+            : undefined,
+        model: typeof data.model === "string" ? data.model : undefined,
+        fallbackUsed: data.fallbackUsed === true,
+      },
+    ]);
+  }
+
+  function noteRateLimit(message: string, question: string, retryAfterSeconds?: number) {
+    // A working limit is not an error: neutral styling, a concrete retry
+    // time, and the daily budget puts the whole surface to sleep rather
+    // than inviting retries.
+    const wait =
+      retryAfterSeconds && retryAfterSeconds > 0
+        ? ` Try again in about ${Math.max(1, Math.ceil(retryAfterSeconds / 60))} minutes.`
+        : "";
+    setRateLimitNote(`${message}${wait}`);
+    if (message.includes("daily budget")) setBudgetExhausted(true);
+    setQuestion(question);
+  }
+
   async function ask(q: string) {
     const trimmed = q.trim();
     if (!trimmed || !located || asking || budgetExhausted) return;
-    if (hasDanglingReferent(trimmed)) {
+    // With follow-ups, "she" can resolve against the prior exchange — the
+    // nudge only fires when there is no earlier answer to point at.
+    if (exchanges.length === 0 && hasDanglingReferent(trimmed)) {
       setReferentNudge(true);
       setQuestion(trimmed);
       askInputRef.current?.focus();
@@ -284,39 +406,107 @@ export default function AskClient({
     setRateLimitNote(null);
     setQuestion("");
     setShowExamples(false);
+    setProgress([]);
+    const history = exchanges
+      .slice(-2)
+      .map((e) => ({ question: e.question, answer: e.answer }));
     const controller = new AbortController();
     abortRef.current = controller;
     try {
       const r = await fetch("/api/ask", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+        },
         signal: controller.signal,
         body: JSON.stringify({
           question: trimmed,
-          stateCode: located.stateCode,
-          district: located.district,
+          scope:
+            scope ??
+            {
+              type: "state",
+              stateCode: located.stateCode,
+              district: located.district,
+            },
+          history,
         }),
       });
-      const json = await r.json();
-      if (r.status === 429) {
-        // A working limit is not an error: neutral styling, a concrete
-        // retry time, and the daily budget puts the whole surface to sleep
-        // rather than inviting retries.
-        const retryAfter = parseInt(r.headers.get("Retry-After") ?? "", 10);
-        const wait =
-          Number.isFinite(retryAfter) && retryAfter > 0
-            ? ` Try again in about ${Math.max(1, Math.ceil(retryAfter / 60))} minutes.`
-            : "";
-        setRateLimitNote(`${json.error ?? "Limit reached."}${wait}`);
-        if ((json.error ?? "").includes("daily budget")) setBudgetExhausted(true);
-        setQuestion(trimmed);
+
+      const contentType = r.headers.get("content-type") ?? "";
+      if (!contentType.includes("text/event-stream")) {
+        // Pre-stream rejections (rate limits, validation) come back as JSON.
+        const json = await r.json();
+        if (r.status === 429) {
+          const retryAfter = parseInt(r.headers.get("Retry-After") ?? "", 10);
+          noteRateLimit(
+            json.error ?? "Limit reached.",
+            trimmed,
+            Number.isFinite(retryAfter) ? retryAfter : undefined
+          );
+          return;
+        }
+        if (!r.ok) {
+          setAskError(json.error ?? "The lookup failed. Try again.");
+          return;
+        }
+        pushExchange(trimmed, json);
         return;
       }
-      if (!r.ok) {
-        setAskError(json.error ?? "The lookup failed. Try again.");
+
+      // SSE: verified progress events while the loop runs, then a terminal
+      // result or error event carrying the same payload as the JSON path.
+      const reader = r.body?.getReader();
+      if (!reader) {
+        setAskError("The lookup failed. Try again.");
         return;
       }
-      setExchanges((prev) => [...prev, { question: trimmed, answer: json.answer, trace: json.trace ?? [], cached: json.cached === true }]);
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let terminalSeen = false;
+      const handleEvent = (name: string, data: unknown) => {
+        if (name === "progress" && data && typeof data === "object") {
+          setProgress((prev) => [...prev, data as ProgressEvent]);
+          return;
+        }
+        if (name === "result" && data && typeof data === "object") {
+          terminalSeen = true;
+          pushExchange(trimmed, data as Record<string, unknown>);
+          return;
+        }
+        if (name === "error" && data && typeof data === "object") {
+          terminalSeen = true;
+          const payload = data as Record<string, unknown>;
+          const message =
+            typeof payload.error === "string" ? payload.error : "The lookup failed.";
+          if (payload.status === 429) noteRateLimit(message, trimmed);
+          else setAskError(message);
+        }
+      };
+      let finished = false;
+      while (!finished) {
+        const chunk = await reader.read();
+        finished = chunk.done;
+        buffer += decoder.decode(chunk.value ?? new Uint8Array(), {
+          stream: !finished,
+        });
+        let boundary;
+        while ((boundary = buffer.indexOf("\n\n")) !== -1) {
+          const rawEvent = buffer.slice(0, boundary);
+          buffer = buffer.slice(boundary + 2);
+          const eventMatch = /^event: (.+)$/m.exec(rawEvent);
+          const dataMatch = /^data: (.+)$/m.exec(rawEvent);
+          if (!eventMatch || !dataMatch) continue;
+          try {
+            handleEvent(eventMatch[1], JSON.parse(dataMatch[1]));
+          } catch {
+            // Malformed frame; skip.
+          }
+        }
+      }
+      if (!terminalSeen) {
+        setAskError("The lookup ended without an answer. Try again.");
+      }
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
         // Reader cancelled; restore the question so it isn't lost.
@@ -342,18 +532,45 @@ export default function AskClient({
         null)
       : null;
   const focusMembers = rep ? [...senators, rep] : senators;
+  const scopedMember = scope?.type === "member" ? located?.members[0] ?? null : null;
 
   // Chips with real names outperform generic ones, and they teach the
   // "name the member" question shape this stateless backend needs.
-  const suggestions = [
-    "Who represents me in Congress?",
-    rep
-      ? `How did ${rep.fullName} vote recently?`
-      : "How did my representative vote recently?",
-    senators[0]
-      ? `Who are ${senators[0].fullName}'s top campaign contributors?`
-      : SUGGESTIONS[2],
-  ];
+  const suggestions = scopedMember
+    ? [
+        `What does ${scopedMember.fullName}'s official biography say about their background?`,
+        `How did ${scopedMember.fullName} vote recently?`,
+        `Who are ${scopedMember.fullName}'s top campaign contributors?`,
+      ]
+    : [
+        "Who represents me in Congress?",
+        rep
+          ? `How did ${rep.fullName} vote recently?`
+          : "How did my representative vote recently?",
+        senators[0]
+          ? `Who are ${senators[0].fullName}'s top campaign contributors?`
+          : SUGGESTIONS[2],
+      ];
+
+  const exampleGroups = scopedMember
+    ? [
+        {
+          group: "Record",
+          items: [
+            `What does ${scopedMember.fullName}'s official biography say?`,
+            `What bills has ${scopedMember.fullName} sponsored?`,
+            `What committees does ${scopedMember.fullName} sit on?`,
+          ],
+        },
+        {
+          group: "2026 race",
+          items: [
+            `Is ${scopedMember.fullName}'s seat up in 2026?`,
+            "Who has filed with the FEC for this seat?",
+          ],
+        },
+      ]
+    : MORE_EXAMPLES;
 
   return (
     <div>
@@ -449,7 +666,9 @@ export default function AskClient({
             budgetExhausted
               ? "The assistant is done for today — records below still work"
               : located
-                ? `Ask about the ${located.stateName} delegation — or any member of Congress`
+                ? scope?.type === "member"
+                  ? `Ask about ${located.members[0]?.fullName ?? "this lawmaker"}`
+                  : `Ask about the ${located.stateName} delegation`
                 : "Set a location first, then ask..."
           }
           aria-label="Your question"
@@ -469,15 +688,16 @@ export default function AskClient({
 
       {located && !budgetExhausted && (
         <p className="mt-2 text-xs text-neutral-400">
-          Answers come only from official records — votes, bills, campaign
-          money, committees. Each question stands alone.
+          Answers come only from retrieved records — votes, bills, campaign
+          money, committees and reviewed official-site biographies. Follow-ups can build on your last two answers;
+          every fact is re-checked against the records.
         </p>
       )}
 
       {referentNudge && (
         <div className="mt-3 rounded border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-700">
-          Questions don&apos;t carry over, so &quot;he&quot; or &quot;she&quot; has
-          nothing to point at. Name the member instead
+          There&apos;s no earlier answer yet for &quot;he&quot; or &quot;she&quot;
+          to point at. Name the member instead
           {senators[0] ? ` — like "${senators[0].fullName}'s top donors".` : "."}
         </div>
       )}
@@ -538,7 +758,7 @@ export default function AskClient({
           )}
           {showExamples && !asking && (
             <div className="mt-2 grid gap-3 rounded border border-neutral-200 bg-neutral-50 px-4 py-3 sm:grid-cols-2">
-              {MORE_EXAMPLES.map((g) => (
+              {exampleGroups.map((g) => (
                 <div key={g.group}>
                   <p className="text-xs uppercase tracking-wide text-neutral-400">{g.group}</p>
                   <ul className="mt-1 space-y-1">
@@ -575,7 +795,7 @@ export default function AskClient({
             <li className="rounded border border-neutral-200 bg-white p-4">
               <p className="text-sm font-medium text-neutral-900">{pendingQuestion}</p>
               <div className="mt-3 flex items-center justify-between gap-3">
-                <PendingStatus />
+                <PendingStatus progress={progress} />
                 <button
                   type="button"
                   onClick={cancelAsk}
@@ -590,6 +810,30 @@ export default function AskClient({
             <li key={exchanges.length - i} className="rounded border border-neutral-200 bg-white p-4">
               <p className="text-sm font-medium text-neutral-900">{ex.question}</p>
               <div className="mt-3">{renderAnswer(ex.answer)}</div>
+              {ex.citations.length > 0 && (
+                <details className="mt-3">
+                  <summary className="cursor-pointer text-xs text-neutral-400 hover:text-neutral-700">
+                    Sources ({ex.citations.length})
+                  </summary>
+                  <ol className="mt-2 space-y-1">
+                    {ex.citations.map((c) => (
+                      <li key={c.n} className="flex gap-2 text-xs text-neutral-600">
+                        <span className="font-mono text-neutral-400">{c.n}.</span>
+                        {c.href ? (
+                          <Link
+                            href={c.href}
+                            className="underline decoration-neutral-200 underline-offset-2 hover:text-neutral-900"
+                          >
+                            {c.label}
+                          </Link>
+                        ) : (
+                          <span>{c.label}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ol>
+                </details>
+              )}
               <p className="mt-3 border-t border-neutral-100 pt-2 text-xs text-neutral-400">
                 {ex.trace.length > 0 ? (
                   <>
@@ -624,7 +868,12 @@ export default function AskClient({
                 )}
                 Answers draw only on official records in this site&apos;s database.
                 {ex.cached && " Served from today's cache."}
-                {" "}Each question is answered on its own — name the member you mean.
+                {ex.provider && (
+                  <>
+                    {" "}Processed by {ex.provider === "anthropic" ? "Anthropic" : "OpenAI"}
+                    {ex.fallbackUsed ? " after the primary provider was unavailable" : ""}.
+                  </>
+                )}
               </p>
             </li>
           ))}

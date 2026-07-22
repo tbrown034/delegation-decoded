@@ -11,9 +11,10 @@ import { TradeSparkline } from "@/components/trade-sparkline";
 import { TradesWipNotice } from "@/components/trades-wip-notice";
 
 export const metadata: Metadata = {
-  title: "Trades, Delegation Decoded",
+  title: "Stock disclosures — Coming feature",
   description:
-    "Stock trades disclosed by members of Congress under the STOCK Act.",
+    "Preview infrastructure for a congressional STOCK Act disclosure feature still under validation.",
+  robots: { index: false, follow: true },
 };
 
 const BUY_COLOR = "#16a34a";
@@ -222,16 +223,15 @@ export default async function TradesLandingPage() {
     <div className="mx-auto max-w-5xl px-4 py-8">
       <header className="mb-6 max-w-3xl">
         <p className="font-mono text-xs uppercase tracking-wide text-neutral-500">
-          Disclosures · Trades
+          Coming feature · Stock disclosures
         </p>
         <h1 className="mt-1 font-serif text-4xl font-semibold leading-tight tracking-tight">
-          What is Congress buying and selling?
+          Stock disclosure preview
         </h1>
         <p className="mt-3 text-base text-neutral-700">
-          Members of Congress must disclose their stock trades, but filings
-          are scattered across PDFs and hard to search. Each mark below is one
-          trade, green for purchases, red for sales, sized by the disclosed
-          amount range.
+          This working index turns official filings into searchable rows while
+          coverage and parser accuracy are audited. Each mark below is one
+          loaded preview row, not proof of comprehensive member coverage.
         </p>
         <p className="mt-2 font-mono text-xs text-neutral-500">
           Most recent filing:{" "}
@@ -397,9 +397,6 @@ function CoveragePanel({
 }) {
   if (!earliestFiling || !latestFiling || activeMembers === 0) return null;
 
-  const traderPct = activeMembers ? Math.round((traders / activeMembers) * 100) : 0;
-  const nonTraders = activeMembers - traders;
-
   return (
     <section className="mb-8 rounded border border-neutral-200 bg-stone-50 p-4 text-sm leading-relaxed text-neutral-700">
       <p className="font-mono text-[10px] uppercase tracking-wide text-neutral-500">
@@ -410,20 +407,18 @@ function CoveragePanel({
         <span className="font-medium text-neutral-900">
           {fmtFilingDate(earliestFiling)} – {fmtFilingDate(latestFiling)}
         </span>
-        . Of{" "}
-        <span className="font-medium text-neutral-900">
-          {activeMembers} active members
-        </span>
-        ,{" "}
-        <span className="font-medium text-neutral-900">{traders}</span> ({traderPct}%) have reported individual securities transactions in this window. The remaining {nonTraders} either don&rsquo;t trade individual stocks, hold assets via blind trusts or index funds (no STOCK Act trigger), or have not filed a PTR for this period.
+        . Loaded rows are associated with{" "}
+        <span className="font-medium text-neutral-900">{traders}</span> current
+        members. That count describes this preview database only; it cannot be
+        used to infer how many of the {activeMembers} current members traded or filed.
       </p>
       <p className="mt-2 text-[12px] text-neutral-500">
-        New filings are ingested within ~24h of being posted to the House Clerk and Senate eFD portals.{" "}
+        Pipeline freshness and active ingest issues are published on the health page.{" "}
         <Link
-          href="/trades/methodology"
+          href="/health"
           className="underline hover:text-neutral-900"
         >
-          How this compares to other trackers →
+          Check live status →
         </Link>
       </p>
     </section>

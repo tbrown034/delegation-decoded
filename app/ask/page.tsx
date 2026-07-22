@@ -27,7 +27,8 @@ export default function AskPage() {
 
       <p className="mt-10 text-xs text-neutral-400">
         The assistant cannot browse the web or answer from general knowledge.
-        Every claim links back to a member, bill, or filing you can verify. Read
+        Every answer lists the record categories checked and links named members
+        and bills to pages you can verify. Read
         more about our sources on the{" "}
         <Link href="/about" className="underline hover:text-neutral-600">
           methodology page

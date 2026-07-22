@@ -172,6 +172,57 @@ CREATE TABLE IF NOT EXISTS top_contributors (
 
 CREATE INDEX IF NOT EXISTS idx_contributors_member ON top_contributors(bioguide_id);
 CREATE INDEX IF NOT EXISTS idx_contributors_cycle ON top_contributors(election_cycle);
+-- Upsert target for the FEC by-employer ingest.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_contributor_member_cycle_name
+  ON top_contributors(bioguide_id, election_cycle, contributor_name);
+
+-- =============================================================================
+-- Finance committees
+-- =============================================================================
+
+-- FEC committees linked to a sitting member's candidacy: the principal
+-- campaign committee, other authorized committees, leadership PACs, and
+-- joint fundraising committees.
+CREATE TABLE IF NOT EXISTS finance_committees (
+  committee_id     VARCHAR(20) PRIMARY KEY,
+  bioguide_id      VARCHAR(10) NOT NULL REFERENCES members(bioguide_id) ON DELETE CASCADE,
+  fec_candidate_id VARCHAR(20) NOT NULL,
+  name             TEXT NOT NULL,
+  designation      CHAR(1),   -- P principal, A authorized, D leadership PAC, J joint
+  committee_type   CHAR(1),
+  first_cycle      INTEGER,
+  last_cycle       INTEGER,
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_fincom_member ON finance_committees(bioguide_id);
+
+-- Per-cycle totals for each linked committee.
+CREATE TABLE IF NOT EXISTS committee_finance (
+  id                  SERIAL PRIMARY KEY,
+  committee_id        VARCHAR(20) NOT NULL REFERENCES finance_committees(committee_id) ON DELETE CASCADE,
+  election_cycle      INTEGER NOT NULL,
+  total_receipts      BIGINT,
+  total_disbursements BIGINT,
+  cash_on_hand        BIGINT,
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(committee_id, election_cycle)
+);
+
+-- =============================================================================
+-- Ingest cursors
+-- =============================================================================
+
+-- Resumable positions for long-running backfills (e.g. the 118th-Congress
+-- bills scan), so a re-run continues where the last one stopped instead of
+-- re-scanning from offset 0.
+CREATE TABLE IF NOT EXISTS ingest_cursors (
+  source     TEXT NOT NULL,
+  key        TEXT NOT NULL,
+  cursor     TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (source, key)
+);
 
 -- =============================================================================
 -- Sync tracking
@@ -297,6 +348,362 @@ CREATE TABLE IF NOT EXISTS election_candidates (
 
 CREATE INDEX IF NOT EXISTS idx_candidates_race
   ON election_candidates(state_code, office, district, election_year);
+
+-- =============================================================================
+-- Verification-first election tracker
+--
+-- election_candidates remains the FEC staging table. The tables below hold
+-- state-authority ballot and result records, with append-only status history.
+-- Public race pages dual-read these tables and fall back to FEC filings only
+-- when a state adapter has not reached verified coverage.
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS election_sources (
+  source_id                    TEXT PRIMARY KEY,
+  state_code                   CHAR(2) REFERENCES states(code),
+  authority_name               TEXT NOT NULL,
+  source_kind                  TEXT NOT NULL,
+  source_url                   TEXT NOT NULL,
+  adapter_key                  TEXT,
+  coverage_status              TEXT NOT NULL DEFAULT 'adapter_pending',
+  is_authoritative             BOOLEAN NOT NULL DEFAULT false,
+  certification_window_days    INTEGER,
+  next_expected_event          DATE,
+  next_check_at                TIMESTAMPTZ,
+  last_checked_at              TIMESTAMPTZ,
+  last_success_at              TIMESTAMPTZ,
+  notes                        TEXT,
+  updated_at                   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (coverage_status IN ('verified_ballot', 'verification_pending', 'adapter_pending', 'fec_only'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_election_sources_state
+  ON election_sources(state_code, coverage_status);
+CREATE INDEX IF NOT EXISTS idx_election_sources_due
+  ON election_sources(next_check_at) WHERE next_check_at IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS election_contests (
+  contest_id              TEXT PRIMARY KEY,
+  election_cycle          INTEGER NOT NULL,
+  state_code              CHAR(2) NOT NULL REFERENCES states(code),
+  office                  CHAR(1) NOT NULL,
+  district                INTEGER,
+  senate_class            SMALLINT,
+  election_type           TEXT NOT NULL DEFAULT 'regular',
+  title                   TEXT NOT NULL,
+  current_stage           TEXT,
+  coverage_status         TEXT NOT NULL DEFAULT 'fec_only',
+  certified_through       DATE,
+  next_expected_event     DATE,
+  primary_source_id       TEXT REFERENCES election_sources(source_id),
+  special_election_url    TEXT,
+  updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (office IN ('H', 'S')),
+  CHECK (election_type IN ('regular', 'special')),
+  CHECK (coverage_status IN ('verified_ballot', 'verification_pending', 'fec_only')),
+  CHECK ((office = 'H' AND senate_class IS NULL) OR (office = 'S' AND senate_class BETWEEN 1 AND 3)),
+  CHECK ((office = 'S' AND district IS NULL) OR office = 'H'),
+  CHECK (election_type = 'regular' OR special_election_url IS NOT NULL)
+);
+
+CREATE INDEX IF NOT EXISTS idx_election_contests_state
+  ON election_contests(election_cycle, state_code, office, district);
+CREATE INDEX IF NOT EXISTS idx_election_contests_coverage
+  ON election_contests(coverage_status, state_code);
+
+CREATE TABLE IF NOT EXISTS election_stages (
+  stage_id            TEXT PRIMARY KEY,
+  contest_id          TEXT NOT NULL REFERENCES election_contests(contest_id) ON DELETE CASCADE,
+  stage_kind          TEXT NOT NULL,
+  party               TEXT,
+  election_date       DATE NOT NULL,
+  sequence_number     INTEGER NOT NULL,
+  result_status       TEXT NOT NULL DEFAULT 'not_started',
+  certified_at        TIMESTAMPTZ,
+  source_id           TEXT REFERENCES election_sources(source_id),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (contest_id, stage_kind, party, sequence_number),
+  CHECK (result_status IN ('not_started', 'unofficial', 'certified', 'complete_no_certification'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_election_stages_contest
+  ON election_stages(contest_id, sequence_number);
+CREATE INDEX IF NOT EXISTS idx_election_stages_date
+  ON election_stages(election_date);
+
+CREATE TABLE IF NOT EXISTS candidate_people (
+  person_id             TEXT PRIMARY KEY,
+  display_name          TEXT NOT NULL,
+  normalized_name       TEXT NOT NULL,
+  first_name            TEXT,
+  last_name             TEXT,
+  bioguide_id           VARCHAR(10) REFERENCES members(bioguide_id),
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_candidate_people_name
+  ON candidate_people(normalized_name);
+
+CREATE TABLE IF NOT EXISTS candidate_identifiers (
+  person_id          TEXT NOT NULL REFERENCES candidate_people(person_id) ON DELETE CASCADE,
+  identifier_type    TEXT NOT NULL,
+  identifier_value   TEXT NOT NULL,
+  valid_from          DATE,
+  valid_to            DATE,
+  source_id           TEXT REFERENCES election_sources(source_id),
+  PRIMARY KEY (person_id, identifier_type, identifier_value),
+  UNIQUE (identifier_type, identifier_value)
+);
+
+CREATE TABLE IF NOT EXISTS candidacies (
+  candidacy_id          TEXT PRIMARY KEY,
+  contest_id            TEXT NOT NULL REFERENCES election_contests(contest_id) ON DELETE CASCADE,
+  person_id             TEXT NOT NULL REFERENCES candidate_people(person_id),
+  party                 TEXT,
+  current_status        TEXT NOT NULL,
+  is_active             BOOLEAN NOT NULL DEFAULT true,
+  fec_candidate_id      VARCHAR(20),
+  verified_source_id    TEXT REFERENCES election_sources(source_id),
+  verified_at           TIMESTAMPTZ,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (contest_id, person_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_candidacies_contest
+  ON candidacies(contest_id, is_active, party);
+CREATE INDEX IF NOT EXISTS idx_candidacies_fec
+  ON candidacies(fec_candidate_id) WHERE fec_candidate_id IS NOT NULL;
+
+-- Ballot line is repeating because fusion states can list one candidacy on
+-- multiple party lines. stage_id is nullable for a line that applies to the
+-- current contest generally rather than one election stage.
+CREATE TABLE IF NOT EXISTS candidacy_ballot_lines (
+  ballot_line_id     TEXT PRIMARY KEY,
+  candidacy_id       TEXT NOT NULL REFERENCES candidacies(candidacy_id) ON DELETE CASCADE,
+  stage_id           TEXT REFERENCES election_stages(stage_id) ON DELETE CASCADE,
+  party_label        TEXT NOT NULL,
+  ballot_order       INTEGER,
+  source_id          TEXT REFERENCES election_sources(source_id),
+  UNIQUE (candidacy_id, stage_id, party_label)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ballot_lines_candidacy
+  ON candidacy_ballot_lines(candidacy_id, stage_id);
+
+CREATE TABLE IF NOT EXISTS election_source_snapshots (
+  snapshot_sha256    CHAR(64) PRIMARY KEY,
+  source_id          TEXT NOT NULL REFERENCES election_sources(source_id),
+  original_url       TEXT NOT NULL,
+  blob_url           TEXT NOT NULL,
+  content_type       TEXT NOT NULL,
+  content_length     BIGINT NOT NULL,
+  etag               TEXT,
+  last_modified      TEXT,
+  fetched_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_election_snapshots_source
+  ON election_source_snapshots(source_id, fetched_at DESC);
+
+-- Append-only history. election_stage_id is deliberately nullable because
+-- events such as fec_filed describe a contest-level candidacy, not a stage.
+CREATE TABLE IF NOT EXISTS candidate_status_events (
+  event_id              TEXT PRIMARY KEY,
+  candidacy_id          TEXT NOT NULL REFERENCES candidacies(candidacy_id) ON DELETE CASCADE,
+  election_stage_id     TEXT REFERENCES election_stages(stage_id) ON DELETE CASCADE,
+  status                TEXT NOT NULL,
+  effective_date        DATE,
+  observed_at           TIMESTAMPTZ NOT NULL,
+  source_id             TEXT NOT NULL REFERENCES election_sources(source_id),
+  snapshot_sha256       CHAR(64) REFERENCES election_source_snapshots(snapshot_sha256),
+  details               JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_candidate_status_timeline
+  ON candidate_status_events(candidacy_id, observed_at DESC);
+
+CREATE TABLE IF NOT EXISTS election_results (
+  result_id            TEXT PRIMARY KEY,
+  stage_id             TEXT NOT NULL REFERENCES election_stages(stage_id) ON DELETE CASCADE,
+  candidacy_id         TEXT NOT NULL REFERENCES candidacies(candidacy_id) ON DELETE CASCADE,
+  total_votes          BIGINT,
+  vote_share           NUMERIC(8,5),
+  is_winner            BOOLEAN NOT NULL DEFAULT false,
+  result_status        TEXT NOT NULL,
+  source_id            TEXT NOT NULL REFERENCES election_sources(source_id),
+  snapshot_sha256      CHAR(64) REFERENCES election_source_snapshots(snapshot_sha256),
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (stage_id, candidacy_id),
+  CHECK (result_status IN ('unofficial', 'certified', 'complete_no_certification'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_election_results_stage
+  ON election_results(stage_id, is_winner, total_votes DESC);
+
+-- Ranked-choice and other multi-round tabulations live here. A first-round
+-- aggregate can coexist with the final certified round without overwriting it.
+CREATE TABLE IF NOT EXISTS election_result_rounds (
+  result_id          TEXT NOT NULL REFERENCES election_results(result_id) ON DELETE CASCADE,
+  round_number       INTEGER NOT NULL,
+  votes              BIGINT,
+  vote_share         NUMERIC(8,5),
+  is_continuing      BOOLEAN,
+  is_eliminated      BOOLEAN,
+  PRIMARY KEY (result_id, round_number)
+);
+
+CREATE TABLE IF NOT EXISTS candidate_campaign_sites (
+  candidacy_id         TEXT PRIMARY KEY REFERENCES candidacies(candidacy_id) ON DELETE CASCADE,
+  site_url             TEXT NOT NULL,
+  verification_status TEXT NOT NULL DEFAULT 'pending',
+  verified_source_url TEXT,
+  last_crawled_at      TIMESTAMPTZ,
+  content_sha256       CHAR(64),
+  crawl_error          TEXT,
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (verification_status IN ('pending', 'verified', 'rejected', 'blocked'))
+);
+
+-- Campaign pages are untrusted input. Every fetched page is preserved as an
+-- immutable private blob before extraction so a published claim can be traced
+-- to the exact bytes the extractor saw.
+CREATE TABLE IF NOT EXISTS candidate_site_snapshots (
+  snapshot_id          TEXT PRIMARY KEY,
+  candidacy_id         TEXT NOT NULL REFERENCES candidacies(candidacy_id) ON DELETE CASCADE,
+  page_url             TEXT NOT NULL,
+  final_url            TEXT NOT NULL,
+  content_sha256       CHAR(64) NOT NULL,
+  blob_url             TEXT NOT NULL,
+  content_type         TEXT NOT NULL,
+  content_length       BIGINT NOT NULL,
+  etag                 TEXT,
+  last_modified        TEXT,
+  fetched_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (candidacy_id, page_url, content_sha256)
+);
+
+CREATE INDEX IF NOT EXISTS idx_candidate_site_snapshots_candidacy
+  ON candidate_site_snapshots(candidacy_id, fetched_at DESC);
+
+CREATE TABLE IF NOT EXISTS candidate_site_claims (
+  claim_id             TEXT PRIMARY KEY,
+  candidacy_id         TEXT NOT NULL REFERENCES candidacies(candidacy_id) ON DELETE CASCADE,
+  claim_type           TEXT NOT NULL,
+  claim_text           TEXT NOT NULL,
+  source_url           TEXT NOT NULL,
+  source_quote         TEXT NOT NULL,
+  source_snapshot_id   TEXT NOT NULL REFERENCES candidate_site_snapshots(snapshot_id),
+  extractor_provider   TEXT NOT NULL,
+  extractor_model      TEXT,
+  confidence           INTEGER,
+  review_status        TEXT NOT NULL DEFAULT 'needs_review',
+  reviewed_at          TIMESTAMPTZ,
+  reviewed_by          TEXT,
+  extracted_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (confidence IS NULL OR confidence BETWEEN 0 AND 100),
+  CHECK (review_status IN ('needs_review', 'verified', 'rejected'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_candidate_claims_candidacy
+  ON candidate_site_claims(candidacy_id, review_status);
+
+ALTER TABLE candidate_site_claims
+  ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
+ALTER TABLE candidate_site_claims
+  ADD COLUMN IF NOT EXISTS reviewed_by TEXT;
+
+CREATE TABLE IF NOT EXISTS candidate_prior_service (
+  service_id          TEXT PRIMARY KEY,
+  person_id           TEXT NOT NULL REFERENCES candidate_people(person_id) ON DELETE CASCADE,
+  office_title        TEXT NOT NULL,
+  jurisdiction        TEXT,
+  started_on          DATE,
+  ended_on            DATE,
+  source_url          TEXT NOT NULL,
+  source_quote        TEXT NOT NULL,
+  source_snapshot_id  TEXT NOT NULL REFERENCES candidate_site_snapshots(snapshot_id),
+  extractor_provider  TEXT NOT NULL,
+  extractor_model     TEXT NOT NULL,
+  extracted_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  verification_status TEXT NOT NULL DEFAULT 'needs_review',
+  reviewed_at         TIMESTAMPTZ,
+  reviewed_by         TEXT,
+  CHECK (verification_status IN ('needs_review', 'verified', 'rejected'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_candidate_service_person
+  ON candidate_prior_service(person_id, verification_status);
+
+ALTER TABLE candidate_prior_service
+  ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
+ALTER TABLE candidate_prior_service
+  ADD COLUMN IF NOT EXISTS reviewed_by TEXT;
+
+-- Official House/Senate biography research. The member website itself comes
+-- from the @unitedstates current-legislator record and must remain on a
+-- house.gov or senate.gov host. Extracted facts are never public until review.
+CREATE TABLE IF NOT EXISTS member_official_sites (
+  bioguide_id          VARCHAR(10) PRIMARY KEY REFERENCES members(bioguide_id) ON DELETE CASCADE,
+  site_url             TEXT NOT NULL,
+  biography_url        TEXT,
+  site_type            TEXT NOT NULL DEFAULT 'official_congressional',
+  cms_family           TEXT,
+  verification_status TEXT NOT NULL DEFAULT 'verified',
+  verified_source_url TEXT NOT NULL,
+  last_crawled_at      TIMESTAMPTZ,
+  content_sha256       CHAR(64),
+  crawl_error          TEXT,
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (site_type = 'official_congressional'),
+  CHECK (verification_status IN ('verified', 'rejected', 'blocked'))
+);
+
+CREATE TABLE IF NOT EXISTS member_site_snapshots (
+  snapshot_id          TEXT PRIMARY KEY,
+  bioguide_id          VARCHAR(10) NOT NULL REFERENCES members(bioguide_id) ON DELETE CASCADE,
+  page_url             TEXT NOT NULL,
+  final_url            TEXT NOT NULL,
+  content_sha256       CHAR(64) NOT NULL,
+  blob_url             TEXT NOT NULL,
+  content_type         TEXT NOT NULL,
+  content_length       BIGINT NOT NULL,
+  etag                 TEXT,
+  last_modified        TEXT,
+  fetched_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (bioguide_id, page_url, content_sha256)
+);
+
+CREATE INDEX IF NOT EXISTS idx_member_site_snapshots_member
+  ON member_site_snapshots(bioguide_id, fetched_at DESC);
+
+CREATE TABLE IF NOT EXISTS member_biography_claims (
+  claim_id             TEXT PRIMARY KEY,
+  bioguide_id          VARCHAR(10) NOT NULL REFERENCES members(bioguide_id) ON DELETE CASCADE,
+  claim_text           TEXT NOT NULL,
+  source_url           TEXT NOT NULL,
+  source_quote         TEXT NOT NULL,
+  source_snapshot_id   TEXT NOT NULL REFERENCES member_site_snapshots(snapshot_id),
+  extractor_provider   TEXT NOT NULL,
+  extractor_model      TEXT NOT NULL,
+  confidence           INTEGER,
+  review_status        TEXT NOT NULL DEFAULT 'needs_review',
+  reviewed_at          TIMESTAMPTZ,
+  reviewed_by          TEXT,
+  extracted_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (confidence IS NULL OR confidence BETWEEN 0 AND 100),
+  CHECK (review_status IN ('needs_review', 'verified', 'rejected'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_member_biography_claims_member
+  ON member_biography_claims(bioguide_id, review_status);
+
+ALTER TABLE member_biography_claims
+  ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
+ALTER TABLE member_biography_claims
+  ADD COLUMN IF NOT EXISTS reviewed_by TEXT;
 
 -- =============================================================================
 -- /ask assistant: rate-limit counters + answer cache

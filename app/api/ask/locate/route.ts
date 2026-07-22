@@ -2,7 +2,11 @@ import { NextRequest } from "next/server";
 import { resolveLocation } from "@/lib/geocode";
 import { getMembersByState } from "@/lib/queries";
 import { checkIpLimit } from "@/lib/ask-limits";
-import { clientIp, rejectCrossSite } from "@/lib/request-guards";
+import {
+  clientIp,
+  readLimitedJson,
+  rejectCrossSite,
+} from "@/lib/request-guards";
 
 // POST, not GET: street addresses must never ride in a URL, where hosting
 // and proxy logs would retain them. Responses are explicitly no-store.
@@ -13,15 +17,19 @@ export async function POST(request: NextRequest) {
   const crossSite = rejectCrossSite(request);
   if (crossSite) return crossSite;
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
+  const parsed = await readLimitedJson(request, 1_024);
+  if (!parsed.ok) {
     return Response.json(
-      { error: "Invalid request." },
-      { status: 400, headers: NO_STORE }
+      {
+        error:
+          parsed.reason === "too_large"
+            ? "Request body is too large."
+            : "Invalid request.",
+      },
+      { status: parsed.reason === "too_large" ? 413 : 400, headers: NO_STORE }
     );
   }
+  const body = parsed.body;
   const q =
     typeof (body as Record<string, unknown>)?.q === "string"
       ? ((body as Record<string, unknown>).q as string).trim()
@@ -35,7 +43,18 @@ export async function POST(request: NextRequest) {
 
   const rate = await checkIpLimit(clientIp(request), "locate");
   if (!rate.allowed) {
-    return Response.json({ error: rate.reason }, { status: 429, headers: NO_STORE });
+    return Response.json(
+      { error: rate.reason },
+      {
+        status: 429,
+        headers: {
+          ...NO_STORE,
+          ...(rate.retryAfterSeconds
+            ? { "Retry-After": String(rate.retryAfterSeconds) }
+            : {}),
+        },
+      }
+    );
   }
 
   const location = await resolveLocation(q);

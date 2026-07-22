@@ -7,9 +7,9 @@ export const runtime = "nodejs";
 const BASE_URL =
   process.env.NEXT_PUBLIC_SITE_URL ?? "https://delegation-decoded.vercel.app";
 
-const SITE_TITLE = "Delegation Decoded — STOCK Act trades";
+const SITE_TITLE = "Delegation Decoded — Stock disclosure preview";
 const SITE_DESCRIPTION =
-  "Latest disclosed congressional stock trades, sourced from House Clerk PTR PDFs and the Senate eFD portal.";
+  "Preview rows from a coming congressional stock disclosure feature; coverage is still under validation.";
 
 function escape(s: string): string {
   return s
@@ -92,6 +92,7 @@ export async function GET() {
     headers: {
       "Content-Type": "application/rss+xml; charset=utf-8",
       "Cache-Control": "public, max-age=900, s-maxage=900",
+      "X-Robots-Tag": "noindex, follow",
     },
   });
 }

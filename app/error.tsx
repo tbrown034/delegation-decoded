@@ -14,7 +14,8 @@ export default function Error({
         Something went wrong
       </h1>
       <p className="mt-2 text-sm text-neutral-500">
-        {error.message || "An unexpected error occurred while loading this page."}
+        An unexpected error occurred while loading this page.
+        {error.digest ? ` Reference: ${error.digest}` : ""}
       </p>
       <button
         type="button"

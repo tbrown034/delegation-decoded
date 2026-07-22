@@ -4,6 +4,18 @@ Non-interactive `codex exec` review of the ask feature, captured verbatim.
 Round 1 of the portfolio-polish loop shipped before these arrived; treat the
 prioritized top five as the Round 2 worklist.
 
+## Implementation status — July 22, 2026
+
+The findings below are preserved as the original review record. The application
+now resolves all ten code-level findings: validation precedes spend, model
+attempts have separate global/provider budgets, browser POSTs are same-origin
+and byte-limited, location lookup is POST/no-store, page scope is enforced in
+every tool executor, final answers require a terminal tool and completed
+retrieval, links use exact allowlists, provider calls share a deadline with no
+SDK retries, prompts and IP-derived identifiers are HMACed, and daily retention
+cleanup deletes expired rows. A Vercel edge/WAF rule remains deployment
+configuration rather than repository code.
+
 
 ### Findings
 

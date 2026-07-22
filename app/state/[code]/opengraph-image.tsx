@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 import { db } from "@/lib/db";
-import { eq, and, sql } from "drizzle-orm";
-import { members, states, stockTransactions } from "@/lib/schema";
+import { eq, and, count } from "drizzle-orm";
+import { electionCandidates, members, states } from "@/lib/schema";
 import { OgStat } from "@/components/og-stat";
 import { OgPartyDot } from "@/components/og-party-dot";
 
@@ -35,17 +35,21 @@ export default async function opengraphImage({ params }: Params) {
   const { code } = await params;
   const upper = code.toUpperCase();
 
-  const [[state], memberRows, [tradeAgg]] = await Promise.all([
+  const [[state], memberRows, [candidateAgg]] = await Promise.all([
     db.select().from(states).where(eq(states.code, upper)).limit(1),
     db
       .select({ chamber: members.chamber, party: members.party })
       .from(members)
       .where(and(eq(members.stateCode, upper), eq(members.inOffice, true))),
     db
-      .select({ n: sql<number>`COUNT(${stockTransactions.id})::int` })
-      .from(stockTransactions)
-      .innerJoin(members, eq(members.bioguideId, stockTransactions.bioguideId))
-      .where(eq(members.stateCode, upper)),
+      .select({ n: count() })
+      .from(electionCandidates)
+      .where(
+        and(
+          eq(electionCandidates.stateCode, upper),
+          eq(electionCandidates.electionYear, 2026)
+        )
+      ),
   ]);
 
   const senate = memberRows.filter((m) => m.chamber === "senate").length;
@@ -88,7 +92,7 @@ export default async function opengraphImage({ params }: Params) {
         >
           <OgStat label="senate" value={senate.toString()} valueSize={56} valueLetterSpacing={-1.5} />
           <OgStat label="house" value={house.toString()} valueSize={56} valueLetterSpacing={-1.5} />
-          <OgStat label="trades" value={(tradeAgg?.n ?? 0).toLocaleString()} valueSize={56} valueLetterSpacing={-1.5} />
+          <OgStat label="2026 FEC filers" value={(candidateAgg?.n ?? 0).toLocaleString()} valueSize={56} valueLetterSpacing={-1.5} />
         </div>
 
         <div
@@ -124,4 +128,3 @@ export default async function opengraphImage({ params }: Params) {
     { ...size }
   );
 }
-

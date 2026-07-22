@@ -50,27 +50,19 @@ async function main() {
       .from(campaignFinance);
     const hasFinance = new Set(existingFinance.map((r) => r.bioguideId));
 
-    // Only process members missing data
-    const toProcess = membersWithFec.filter(
-      (m) => !hasFinance.has(m.bioguideId)
-    );
+    // Members with no rows get their full cycle history; members that already
+    // have data get a current-cycle refresh so 2026 totals track new filings
+    // instead of freezing at first ingest.
+    const CURRENT_CYCLE = 2026;
+    const toProcess = membersWithFec.map((m) => ({
+      ...m,
+      fullHistory: !hasFinance.has(m.bioguideId),
+    }));
+    const newMembers = toProcess.filter((m) => m.fullHistory).length;
 
     console.log(
-      `${membersWithFec.length} members with FEC IDs, ${hasFinance.size} already have data, ${toProcess.length} to process`
+      `${membersWithFec.length} members with FEC IDs: ${newMembers} need full history, ${toProcess.length - newMembers} get a ${CURRENT_CYCLE}-cycle refresh`
     );
-
-    if (toProcess.length === 0) {
-      console.log("All members have finance data. Nothing to do.");
-      await db
-        .update(syncLog)
-        .set({
-          status: "success",
-          completedAt: new Date(),
-          recordsCount: 0,
-        })
-        .where(sql`id = ${syncEntry.id}`);
-      return;
-    }
 
     let financeCount = 0;
     let errors = 0;
@@ -81,8 +73,11 @@ async function main() {
       const fecId = member.fecCandidateId!;
 
       try {
-        // Fetch financial totals only (skip contributors to halve request count)
-        const financials = await fetchCandidateFinancials(fecId);
+        // Financial totals only; contributors come from finance-committees.ts.
+        const financials = await fetchCandidateFinancials(
+          fecId,
+          member.fullHistory ? undefined : CURRENT_CYCLE
+        );
 
         for (const f of financials) {
           if (!f.cycle) continue; // Skip records without a valid cycle

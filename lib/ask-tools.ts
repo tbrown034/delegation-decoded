@@ -1,149 +1,258 @@
-import type Anthropic from "@anthropic-ai/sdk";
 import {
   getMembersByState,
-  getMemberRecentVotes,
   getMemberVoteSummary,
   getMemberFinance,
   getMemberTopContributors,
-  getMemberBills,
+  getMemberFinanceCommittees,
   getMemberCommittees,
   getMemberTerms,
-  findMembersByName,
+  getMemberSeatRaces,
+  getPublishedCampaignResearch,
+  getPublishedMemberBiography,
   getRaceCandidates,
+  searchMemberVotes,
+  searchMemberBills,
 } from "./queries";
+import {
+  memberSeatLabel,
+  resolveMemberSeat,
+  type MemberSeat,
+} from "./elections/member-seat";
+import type { RaceCandidateResult } from "./elections/types";
+import type { PublishedCandidateResearch } from "./elections/queries";
 
-// Tool surface for /api/ask. Every tool wraps a read query from lib/queries.ts
-// so the model can only see data we already publish. Descriptions state WHEN
-// to call each tool — recent Opus models under-trigger tools without that.
+export type AskScope =
+  | { type: "state"; stateCode: string; district: number | null }
+  | {
+      type: "member";
+      stateCode: string;
+      bioguideId: string;
+      seat: MemberSeat;
+    };
 
-export const askTools: Anthropic.Tool[] = [
-  {
-    name: "find_member",
-    description:
-      "Call this to resolve ANY current member of Congress by name to their bioguide_id, state, party, chamber, and district — especially members outside the reader's delegation. Works on full names, last names, and partial fragments. Expand nicknames to real names before searching (AOC = Ocasio-Cortez, Bernie = Sanders). If a search returns nothing, retry once with a shorter fragment of the last name before concluding the member is not in the current Congress.",
-    input_schema: {
-      type: "object",
-      properties: {
-        name: {
-          type: "string",
-          description:
-            "Member name or fragment, e.g. 'Ocasio-Cortez', 'Sanders', 'Pelosi'",
-        },
-      },
-      required: ["name"],
-    },
-  },
+export interface AskToolContext {
+  scope: AskScope;
+  allowedMemberIds: ReadonlySet<string>;
+}
+
+export interface ToolTraceEntry {
+  tool: string;
+  input: Record<string, unknown>;
+}
+
+export interface AskToolDefinition {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  terminal?: boolean;
+}
+
+const objectSchema = (
+  properties: Record<string, unknown>,
+  required = Object.keys(properties)
+) => ({
+  type: "object",
+  properties,
+  required,
+  additionalProperties: false,
+});
+
+const tools: AskToolDefinition[] = [
   {
     name: "get_delegation",
     description:
-      "Call this when you need the roster of a state's congressional delegation: every current senator and representative with party, chamber, district, and bioguide_id. Use find_member instead when you have a person's name but not their state.",
-    input_schema: {
-      type: "object",
-      properties: {
-        state_code: {
-          type: "string",
-          description: "Two-letter state code, e.g. IN",
-        },
-      },
-      required: ["state_code"],
-    },
+      "Get the current congressional delegation for the page's state. Use this for roster, party, chamber, and district questions.",
+    inputSchema: objectSchema({
+      state_code: { type: "string", description: "The page's two-letter state code." },
+    }),
   },
   {
     name: "get_member_votes",
     description:
-      "Call this when the question involves how a member voted: recent roll-call votes with the member's position (yea/nay), plus yea/nay/missed totals for the votes this site has ingested (the current 119th Congress, not the member's whole career). Source: House Clerk and Senate roll-call XML.",
-    input_schema: {
-      type: "object",
-      properties: {
-        bioguide_id: { type: "string" },
-        limit: {
-          type: "integer",
-          description: "How many recent votes to return, default 10, max 25",
-        },
+      "Get a scoped member's roll-call votes and totals from House Clerk and Senate XML. For topic questions, pass topic to search the member's full ingested vote history; with every filter null it returns the most recent votes.",
+    inputSchema: objectSchema({
+      bioguide_id: { type: "string" },
+      topic: {
+        type: ["string", "null"],
+        description:
+          "Keyword(s) searched over vote question, description, and linked bill title and policy area. Null for most-recent votes.",
       },
-      required: ["bioguide_id"],
-    },
+      date_from: {
+        type: ["string", "null"],
+        description: "Earliest vote date, YYYY-MM-DD, or null.",
+      },
+      date_to: {
+        type: ["string", "null"],
+        description: "Latest vote date, YYYY-MM-DD, or null.",
+      },
+      congress: {
+        type: ["integer", "null"],
+        description: "Congress number (118 or 119), or null for all ingested.",
+      },
+      limit: { type: ["integer", "null"] },
+    }),
   },
   {
     name: "get_member_finance",
     description:
-      "Call this when the question involves campaign money: per-cycle total raised, individual vs PAC receipts, the small-dollar (under $200) dollar total, and top contributors by organization (each tagged with its cycle). Source: FEC campaign finance filings.",
-    input_schema: {
-      type: "object",
-      properties: {
-        bioguide_id: { type: "string" },
+      "Get a scoped member's FEC campaign-finance totals, linked committees (including any leadership PAC), and top contributors by donor employer. Pass cycle for one election cycle; null returns recent cycles.",
+    inputSchema: objectSchema({
+      bioguide_id: { type: "string" },
+      cycle: {
+        type: ["integer", "null"],
+        description: "Even election year, e.g. 2026, or null for recent cycles.",
       },
-      required: ["bioguide_id"],
-    },
+    }),
   },
   {
     name: "get_member_bills",
     description:
-      "Call this when the question involves legislation a member sponsored or cosponsored: bill IDs, titles, policy areas, and latest action. Source: Congress.gov.",
-    input_schema: {
-      type: "object",
-      properties: {
-        bioguide_id: { type: "string" },
-        limit: {
-          type: "integer",
-          description: "How many bills to return, default 10, max 25",
-        },
+      "Get legislation a scoped member sponsored or cosponsored from Congress.gov. For topic questions, pass topic or policy_area to search the member's full sponsorship history; with every filter null it returns the most recent bills.",
+    inputSchema: objectSchema({
+      bioguide_id: { type: "string" },
+      topic: {
+        type: ["string", "null"],
+        description:
+          "Keyword(s) searched over bill title and policy area. Null for most-recent bills.",
       },
-      required: ["bioguide_id"],
-    },
+      policy_area: {
+        type: ["string", "null"],
+        description:
+          "Congress.gov policy area, e.g. Health or Immigration, or null.",
+      },
+      congress: {
+        type: ["integer", "null"],
+        description: "Congress number (118 or 119), or null for all ingested.",
+      },
+      role: {
+        anyOf: [
+          { type: "string", enum: ["sponsor", "cosponsor"] },
+          { type: "null" },
+        ],
+        description: "Restrict to sponsored or cosponsored bills, or null for both.",
+      },
+      date_from: {
+        type: ["string", "null"],
+        description: "Earliest introduced date, YYYY-MM-DD, or null.",
+      },
+      date_to: {
+        type: ["string", "null"],
+        description: "Latest introduced date, YYYY-MM-DD, or null.",
+      },
+      limit: { type: ["integer", "null"] },
+    }),
   },
   {
     name: "get_member_terms",
     description:
-      "Call this when the question involves how long a member has served, when their current term ends, or whether their seat is up for election in a given year. Returns every term with start and end dates. A Senate seat is on the November ballot in the year before its term's January end date; every House seat is up every two years.",
-    input_schema: {
-      type: "object",
-      properties: {
-        bioguide_id: { type: "string" },
-      },
-      required: ["bioguide_id"],
-    },
+      "Get a scoped member's congressional terms. Use for tenure and whether the seat is up in 2026.",
+    inputSchema: objectSchema({ bioguide_id: { type: "string" } }),
+  },
+  {
+    name: "get_member_biography",
+    description:
+      "Get human-reviewed biography facts extracted from a scoped lawmaker's official House or Senate website. These are statements from the lawmaker's official biography, not independent verification.",
+    inputSchema: objectSchema({ bioguide_id: { type: "string" } }),
   },
   {
     name: "get_race_candidates",
     description:
-      "Call this when the question involves who is RUNNING in a 2026 congressional race: everyone who has filed FEC candidacy paperwork (Form 2) for a given seat, with party, incumbent/challenger status, and money raised. This is a FILING list from the FEC, not the ballot — state deadlines and primaries decide the ballot, and this data does not include primary results. For Senate races, first confirm the seat is even up in 2026 via get_member_terms.",
-    input_schema: {
-      type: "object",
-      properties: {
-        state_code: {
-          type: "string",
-          description: "Two-letter state code, e.g. SC",
-        },
-        office: {
-          type: "string",
-          enum: ["H", "S"],
-          description: "H for a House district race, S for a Senate race",
-        },
-        district: {
-          type: "integer",
-          description:
-            "House district number (0 for at-large). Omit for Senate races.",
-        },
+      "Get the current 2026 candidate field for a race in the page's state. Covered states use state election-authority records; uncovered states return a clearly labeled FEC Form 2 filing fallback.",
+    inputSchema: objectSchema({
+      state_code: { type: "string" },
+      office: { type: "string", enum: ["H", "S"] },
+      district: { type: ["integer", "null"] },
+      senate_class: {
+        anyOf: [
+          { type: "integer", enum: [1, 2, 3] },
+          { type: "null" },
+        ],
       },
-      required: ["state_code", "office"],
-    },
+      election_type: {
+        anyOf: [
+          { type: "string", enum: ["regular", "special"] },
+          { type: "null" },
+        ],
+      },
+    }),
   },
   {
     name: "get_member_committees",
     description:
-      "Call this when the question involves committee assignments: which committees and subcommittees a member sits on and any leadership role.",
-    input_schema: {
-      type: "object",
-      properties: {
-        bioguide_id: { type: "string" },
+      "Get a scoped member's current committee and subcommittee assignments and leadership roles.",
+    inputSchema: objectSchema({ bioguide_id: { type: "string" } }),
+  },
+  {
+    name: "submit_answer",
+    description:
+      "Finish every request with the grounded answer. Call only after retrieving every record needed. Never return the answer as ordinary text.",
+    inputSchema: objectSchema({
+      status: {
+        type: "string",
+        enum: ["answered", "not_found", "out_of_scope", "declined"],
       },
-      required: ["bioguide_id"],
-    },
+      answer: { type: "string" },
+    }),
+    terminal: true,
   },
 ];
 
+export function getAskTools(scope: AskScope): AskToolDefinition[] {
+  return tools
+    .filter(
+      (tool) => !(scope.type === "member" && tool.name === "get_delegation")
+    )
+    .map((tool) =>
+      scope.type === "member" && tool.name === "get_race_candidates"
+        ? {
+            ...tool,
+            description: `Get the current 2026 candidate field only for this member's ${memberSeatLabel(scope.seat)}. The server selects the exact district or Senate class and regular/special contest; no race arguments are accepted.`,
+            inputSchema: objectSchema({}),
+          }
+        : tool
+    );
+}
+
+export function getAskToolsForQuestion(scope: AskScope, question: string) {
+  const normalized = question.toLowerCase();
+  const routingText = normalized.replace(/\belection cycle\b/g, "cycle");
+  const selected = new Set<string>(["submit_answer"]);
+  const routes: Array<[RegExp, string]> = [
+    [/\b(vote|voted|voting|roll[ -]?call)\b/, "get_member_votes"],
+    [/\b(bill|bills|legislation|legislative|sponsor|cosponsor)\b/, "get_member_bills"],
+    [/\b(finance|fundrais(?:e|es|ing)|rais(?:e|es|ed)|money|cash|donor|contributor|pac)\b/, "get_member_finance"],
+    [/\b(committee|committees|subcommittee|assignment)\b/, "get_member_committees"],
+    [/\b(term|terms|tenure|served|service|seat up|reelection|re-election)\b/, "get_member_terms"],
+    [/\b(bio|biography|background|career|education|occupation|who is)\b/, "get_member_biography"],
+    [/\b(race|candidate|candidates|challenger|running|primary|election)\b/, "get_race_candidates"],
+  ];
+  for (const [pattern, name] of routes) {
+    if (pattern.test(routingText)) selected.add(name);
+  }
+  const hasRetrieval = [...selected].some((name) => name !== "submit_answer");
+  if (
+    scope.type === "state" &&
+    (!hasRetrieval || /\b(who|senator|representative|delegation|roster|member|district)\b/.test(normalized))
+  ) {
+    selected.add("get_delegation");
+  }
+  if (!hasRetrieval && scope.type === "member" && /\b(record|work|done|about|overview)\b/.test(normalized)) {
+    for (const name of [
+      "get_member_votes",
+      "get_member_bills",
+      "get_member_finance",
+      "get_member_committees",
+      "get_member_terms",
+      "get_member_biography",
+    ]) {
+      selected.add(name);
+    }
+  }
+  return getAskTools(scope).filter((tool) => selected.has(tool.name));
+}
+
 const clamp = (n: unknown, def: number, max: number) => {
+  if (n === -1) return def;
   const v = typeof n === "number" && Number.isFinite(n) ? Math.floor(n) : def;
   return Math.min(Math.max(v, 1), max);
 };
@@ -151,192 +260,461 @@ const clamp = (n: unknown, def: number, max: number) => {
 const truncate = (s: string | null, len = 200) =>
   s && s.length > len ? `${s.slice(0, len)}...` : s;
 
-export interface ToolTraceEntry {
-  tool: string;
-  input: Record<string, unknown>;
+const BIOGUIDE_RE = /^[A-Z][0-9]{6}$/;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+export function isUnsetAskFilter(value: unknown) {
+  if (value == null || value === -1) return true;
+  if (typeof value !== "string") return false;
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized === "" ||
+    normalized === "null" ||
+    normalized === '""' ||
+    normalized.includes("antml")
+  );
 }
 
-// Bioguide IDs are one letter + six digits. Anything else from the model is
-// an invented parameter; fail it fast instead of running a doomed query.
-const BIOGUIDE_RE = /^[A-Z][0-9]{6}$/;
+// Filter parsing is fail-soft: a bad filter value returns an { error } the
+// model can read and correct on the next call, never a thrown request failure.
+function parseDateFilter(value: unknown, label: string) {
+  if (isUnsetAskFilter(value)) return { ok: undefined };
+  if (typeof value !== "string" || !DATE_RE.test(value.trim())) {
+    return { error: `${label} must be a YYYY-MM-DD date.` };
+  }
+  return { ok: value.trim() };
+}
+
+function parseCongressFilter(value: unknown) {
+  if (isUnsetAskFilter(value)) return { ok: undefined };
+  if (value === 118 || value === 119) return { ok: value };
+  return { error: "congress must be 118 or 119." };
+}
+
+function parseCycleFilter(value: unknown) {
+  if (isUnsetAskFilter(value)) return { ok: undefined };
+  if (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value % 2 === 0 &&
+    value >= 1988 &&
+    value <= 2026
+  ) {
+    return { ok: value };
+  }
+  return { error: "cycle must be an even election year between 1988 and 2026." };
+}
+
+function parseRoleFilter(
+  value: unknown
+): { ok: "sponsor" | "cosponsor" | undefined } | { error: string } {
+  if (value === "sponsor" || value === "cosponsor") return { ok: value };
+  if (isUnsetAskFilter(value)) return { ok: undefined };
+  return { error: "role must be sponsor or cosponsor." };
+}
+
+function parseTopicFilter(value: unknown) {
+  if (isUnsetAskFilter(value)) return undefined;
+  if (typeof value !== "string") return undefined;
+  return value.trim().slice(0, 80) || undefined;
+}
+
+function scopedBioguide(input: Record<string, unknown>, context: AskToolContext) {
+  const id =
+    typeof input.bioguide_id === "string"
+      ? input.bioguide_id.trim().toUpperCase()
+      : "";
+  if (!BIOGUIDE_RE.test(id)) {
+    return { error: "Invalid member identifier. Use an identifier from the page roster." };
+  }
+  if (!context.allowedMemberIds.has(id)) {
+    return { error: "That member is outside this page's delegation scope." };
+  }
+  return id;
+}
+
+function raceToolPayload(
+  result: RaceCandidateResult,
+  sitting: Awaited<ReturnType<typeof getMembersByState>>,
+  research: Map<string, PublishedCandidateResearch> = new Map()
+) {
+  const identity = {
+    contest_id: result.contestId,
+    office: result.office,
+    district: result.district,
+    senate_class: result.senateClass,
+    election_type: result.electionType,
+  };
+  if (!result.hasData) {
+    return {
+      ...identity,
+      source: result.sourceName,
+      source_url: result.sourceUrl,
+      coverage: "not_loaded",
+      records: [],
+      note:
+        result.coverageNote ??
+        "Candidate data is not loaded. Do not infer that nobody is running.",
+    };
+  }
+  const sittingFecIds = new Set(
+    sitting.map((member) => member.fecCandidateId).filter(Boolean)
+  );
+  const sittingNameKeys = new Set(
+    sitting.map(
+      (member) =>
+        `${member.firstName?.[0]?.toLowerCase() ?? ""}|${member.lastName?.toLowerCase() ?? ""}`
+    )
+  );
+  const isSitting = (candidate: { candidate_id: string; name: string }) => {
+    if (sittingFecIds.has(candidate.candidate_id)) return true;
+    const parts = candidate.name.trim().split(/\s+/);
+    if (parts.length < 2) return false;
+    return sittingNameKeys.has(
+      `${parts[0][0].toLowerCase()}|${parts[parts.length - 1].toLowerCase()}`
+    );
+  };
+  return {
+    ...identity,
+    source: result.sourceName,
+    source_url: result.sourceUrl,
+    coverage: result.coverage,
+    certified_through: result.certifiedThrough,
+    note:
+      result.coverageNote ??
+      (result.coverage === "verified_ballot"
+        ? "State-authority ballot records."
+        : result.coverage === "verification_pending"
+          ? "State-authority records are available, but certification or the final complete ballot list is pending. Preserve that qualification."
+          : "FEC filing fallback, not a ballot or proof that a candidate remains in the race."),
+    current_officeholders: sitting.map((member) => member.fullName),
+    records: result.candidates.map((candidate) => {
+      const profile = research.get(candidate.candidacyId);
+      return {
+        name: candidate.name,
+        party: candidate.party,
+        status:
+          result.coverage !== "fec_only"
+            ? candidate.status
+            : candidate.incumbent_challenge === "I"
+              ? isSitting(candidate)
+                ? "incumbent"
+                : "filed as incumbent but no longer in office"
+              : candidate.incumbent_challenge === "O"
+                ? "open-seat candidate"
+                : "challenger",
+        total_raised: candidate.total_receipts,
+        first_filed: candidate.first_file_date,
+        fec_candidate_id: candidate.candidate_id,
+        primary_votes: candidate.primaryVotes,
+        primary_result_status: candidate.resultStatus,
+        campaign_site: profile?.siteUrl ?? null,
+        campaign_biography:
+          profile?.claims
+            .filter((claim) => claim.claimType === "biography")
+            .map((claim) => ({
+              fact: claim.claimText,
+              source_url: claim.sourceUrl,
+            })) ?? [],
+        verified_prior_service:
+          profile?.priorService.map((service) => ({
+            office: service.officeTitle,
+            jurisdiction: service.jurisdiction,
+            started_on: service.startedOn,
+            ended_on: service.endedOn,
+            source_url: service.sourceUrl,
+          })) ?? [],
+      };
+    }),
+  };
+}
 
 export async function executeAskTool(
   name: string,
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
+  context: AskToolContext
 ): Promise<unknown> {
-  const bioguideId =
-    typeof input.bioguide_id === "string" ? input.bioguide_id.trim() : "";
-  if ("bioguide_id" in input && !BIOGUIDE_RE.test(bioguideId)) {
-    return {
-      error: `Invalid bioguide_id "${bioguideId}". Use find_member or get_delegation to get a real one.`,
-    };
-  }
+  if (name === "submit_answer") return { error: "Terminal tool is handled by the engine." };
 
-  switch (name) {
-    case "find_member": {
-      const q = typeof input.name === "string" ? input.name : "";
-      const rows = await findMembersByName(q);
-      return rows.map((m) => ({
-        bioguide_id: m.bioguide_id,
-        name: m.full_name,
-        party: m.party,
-        state: m.state_code,
-        chamber: m.chamber,
-        district: m.district,
-      }));
+  if (name === "get_delegation") {
+    const stateCode =
+      typeof input.state_code === "string" ? input.state_code.toUpperCase() : "";
+    if (context.scope.type === "member" || stateCode !== context.scope.stateCode) {
+      return { error: "That state is outside this page's scope." };
     }
-    case "get_delegation": {
-      const stateCode =
-        typeof input.state_code === "string" ? input.state_code.toUpperCase() : "";
-      const rows = await getMembersByState(stateCode);
-      return rows.map((m) => ({
+    const rows = await getMembersByState(stateCode);
+    return {
+      source: "current member roster",
+      records: rows.map((m) => ({
         bioguide_id: m.bioguideId,
         name: m.fullName,
         party: m.party,
         chamber: m.chamber,
         district: m.district,
-      }));
+      })),
+    };
+  }
+
+  if (name === "get_race_candidates") {
+    if (context.scope.type === "member") {
+      const memberScope = context.scope;
+      const [results, delegation] = await Promise.all([
+        getMemberSeatRaces(memberScope.stateCode, memberScope.seat),
+        getMembersByState(memberScope.stateCode),
+      ]);
+      const sitting = delegation.filter(
+        (member) => member.bioguideId === memberScope.bioguideId
+      );
+      const research = await Promise.all(
+        results.map((result) => getPublishedCampaignResearch(result.contestId))
+      );
+      return {
+        seat: memberSeatLabel(memberScope.seat),
+        contests: results.map((result, index) =>
+          raceToolPayload(result, sitting, research[index])
+        ),
+        note:
+          results.length > 0
+            ? "Only contests for this member's exact district or Senate class are included."
+            : "No 2026 contest is registered for this member's exact seat. Do not substitute the state's other Senate seat.",
+      };
     }
+    const stateCode =
+      typeof input.state_code === "string" ? input.state_code.toUpperCase() : "";
+    if (stateCode !== context.scope.stateCode) {
+      return { error: "That race is outside this page's state scope." };
+    }
+    const office = input.office === "S" ? "S" : input.office === "H" ? "H" : null;
+    const district =
+      typeof input.district === "number" && Number.isInteger(input.district)
+        ? input.district === -1 ? null : input.district
+        : null;
+    if (!office) return { error: "Office must be H or S." };
+    const senateClass =
+      office === "S" &&
+      typeof input.senate_class === "number" &&
+      [1, 2, 3].includes(input.senate_class)
+        ? (input.senate_class as 1 | 2 | 3)
+        : null;
+    const electionType =
+      input.election_type === "special" ? "special" : "regular";
+    if (office === "S" && !senateClass) {
+      return { error: "A Senate race requires its seat class." };
+    }
+    const [result, delegation] = await Promise.all([
+      getRaceCandidates(
+        stateCode,
+        office,
+        district,
+        2026,
+        senateClass ? { senateClass, electionType } : undefined
+      ),
+      getMembersByState(stateCode),
+    ]);
+    let sitting = delegation.filter(
+      (member) =>
+        office === "H" &&
+        member.chamber === "house" &&
+        (member.district ?? 0) === district
+    );
+    if (office === "S" && senateClass) {
+      const resolved = await Promise.all(
+        delegation
+          .filter((member) => member.chamber === "senate")
+          .map(async (member) => ({
+            member,
+            seat: resolveMemberSeat(member, await getMemberTerms(member.bioguideId)),
+          }))
+      );
+      sitting = resolved
+        .filter(
+          ({ seat }) =>
+            seat?.office === "S" && seat.senateClass === senateClass
+        )
+        .map(({ member }) => member);
+    }
+    return raceToolPayload(
+      result,
+      sitting,
+      await getPublishedCampaignResearch(result.contestId)
+    );
+  }
+
+  const bioguideId = scopedBioguide(input, context);
+  if (typeof bioguideId !== "string") return bioguideId;
+
+  switch (name) {
     case "get_member_votes": {
-      const limit = clamp(input.limit, 10, 25);
-      const [summary, recent] = await Promise.all([
+      const dateFrom = parseDateFilter(input.date_from, "date_from");
+      if ("error" in dateFrom) return dateFrom;
+      const dateTo = parseDateFilter(input.date_to, "date_to");
+      if ("error" in dateTo) return dateTo;
+      const congress = parseCongressFilter(input.congress);
+      if ("error" in congress) return congress;
+      const [summary, search] = await Promise.all([
         getMemberVoteSummary(bioguideId),
-        getMemberRecentVotes(bioguideId, limit),
+        searchMemberVotes(bioguideId, {
+          topic: parseTopicFilter(input.topic),
+          dateFrom: dateFrom.ok,
+          dateTo: dateTo.ok,
+          congress: congress.ok,
+          limit: clamp(input.limit, 10, 25),
+        }),
       ]);
       return {
+        source: "House Clerk and Senate roll-call XML",
+        coverage:
+          "119th Congress (2025-present), plus any backfilled earlier congresses; current members only",
         totals: summary,
-        recent_votes: recent.map((v) => ({
-          date: v.voteDate,
-          chamber: v.chamber,
-          roll: v.rollNumber,
-          question: truncate(v.question),
-          description: truncate(v.description),
-          result: v.result,
-          tally: `${v.yeas}-${v.nays}`,
-          member_position: v.position,
+        matched: search.totalMatched,
+        showing: search.records.length,
+        records: search.records.map((vote) => ({
+          date: vote.vote_date,
+          chamber: vote.chamber,
+          congress: vote.congress,
+          roll: vote.roll_number,
+          question: truncate(vote.question),
+          description: truncate(vote.description),
+          result: vote.result,
+          tally: `${vote.yeas}-${vote.nays}`,
+          member_position: vote.position,
         })),
       };
     }
     case "get_member_finance": {
-      const [finance, contributors] = await Promise.all([
-        getMemberFinance(bioguideId),
-        getMemberTopContributors(bioguideId),
+      const cycle = parseCycleFilter(input.cycle);
+      if ("error" in cycle) return cycle;
+      const [finance, contributors, committees] = await Promise.all([
+        getMemberFinance(bioguideId, cycle.ok),
+        getMemberTopContributors(bioguideId, cycle.ok),
+        getMemberFinanceCommittees(bioguideId),
       ]);
+      const shown = cycle.ok ? finance : finance.slice(0, 6);
+      const COMMITTEE_KINDS: Record<string, string> = {
+        P: "principal campaign committee",
+        A: "authorized committee",
+        D: "leadership PAC",
+        J: "joint fundraising committee",
+      };
       return {
-        by_cycle: finance.map((f) => ({
-          cycle: f.electionCycle,
-          total_receipts: f.totalReceipts,
-          individual: f.totalIndividual,
-          pac: f.totalPac,
-          small_dollar: f.smallIndividual,
+        source: "FEC campaign-finance filings",
+        cycles_on_file: finance.length,
+        ...(finance.length > shown.length
+          ? {
+              note: `Showing the ${shown.length} most recent cycles; pass cycle for older ones.`,
+            }
+          : {}),
+        by_cycle: shown.map((row) => ({
+          cycle: row.electionCycle,
+          total_receipts: row.totalReceipts,
+          individual: row.totalIndividual,
+          pac: row.totalPac,
+          small_dollar: row.smallIndividual,
         })),
-        top_contributors: contributors.map((c) => ({
-          organization: c.contributorName,
-          total: c.totalAmount,
-          cycle: c.electionCycle,
+        committees: committees.map((committee) => ({
+          name: committee.name,
+          kind:
+            COMMITTEE_KINDS[committee.designation ?? ""] ?? "other committee",
+          total_receipts_2026_cycle: committee.totalReceipts,
+        })),
+        ...(contributors.length > 0
+          ? {
+              top_contributors_note:
+                "Individual donations aggregated by the donor's reported employer, per FEC Schedule A.",
+            }
+          : {}),
+        top_contributors: contributors.map((row) => ({
+          organization: row.contributorName,
+          total: row.totalAmount,
+          cycle: row.electionCycle,
         })),
       };
     }
     case "get_member_bills": {
-      const limit = clamp(input.limit, 10, 25);
-      const rows = await getMemberBills(bioguideId, limit);
-      return rows.map((b) => ({
-        bill_id: b.billId,
-        label: `${b.billType.toUpperCase()} ${b.billNumber}`,
-        title: truncate(b.title, 160),
-        role: b.role,
-        introduced: b.introducedDate,
-        policy_area: b.policyArea,
-        latest_action: truncate(b.latestActionText, 160),
-      }));
+      const dateFrom = parseDateFilter(input.date_from, "date_from");
+      if ("error" in dateFrom) return dateFrom;
+      const dateTo = parseDateFilter(input.date_to, "date_to");
+      if ("error" in dateTo) return dateTo;
+      const congress = parseCongressFilter(input.congress);
+      if ("error" in congress) return congress;
+      const role = parseRoleFilter(input.role);
+      if ("error" in role) return role;
+      const search = await searchMemberBills(bioguideId, {
+        topic: parseTopicFilter(input.topic),
+        policyArea: parseTopicFilter(input.policy_area),
+        congress: congress.ok,
+        role: role.ok,
+        dateFrom: dateFrom.ok,
+        dateTo: dateTo.ok,
+        limit: clamp(input.limit, 10, 25),
+      });
+      return {
+        source: "Congress.gov",
+        coverage:
+          "119th Congress (2025-present), plus any backfilled earlier congresses; bills linked to current members only",
+        matched: search.totalMatched,
+        showing: search.records.length,
+        records: search.records.map((bill) => ({
+          bill_id: bill.bill_id,
+          label: `${bill.bill_type.toUpperCase()} ${bill.bill_number}`,
+          title: truncate(bill.title, 160),
+          role: bill.role,
+          congress: bill.congress,
+          introduced: bill.introduced_date,
+          policy_area: bill.policy_area,
+          latest_action: truncate(bill.latest_action_text, 160),
+        })),
+      };
     }
     case "get_member_terms": {
       const rows = await getMemberTerms(bioguideId);
-      return rows.map((t) => ({
-        chamber: t.chamber,
-        state: t.stateCode,
-        party: t.party,
-        start: t.startDate,
-        end: t.endDate,
-        is_current: t.isCurrent,
-      }));
+      return {
+        source: "current member roster and term records",
+        records: rows.map((term) => ({
+          chamber: term.chamber,
+          state: term.stateCode,
+          party: term.party,
+          start: term.startDate,
+          end: term.endDate,
+          is_current: term.isCurrent,
+        })),
+      };
     }
-    case "get_race_candidates": {
-      const stateCode =
-        typeof input.state_code === "string" ? input.state_code.toUpperCase() : "";
-      const office = input.office === "S" ? "S" : "H";
-      const district =
-        typeof input.district === "number" && Number.isInteger(input.district)
-          ? input.district
-          : null;
-      const [result, delegation] = await Promise.all([
-        getRaceCandidates(stateCode, office, district),
-        getMembersByState(stateCode),
-      ]);
-      if (!result.hasData) {
+    case "get_member_biography": {
+      const biography = await getPublishedMemberBiography(bioguideId);
+      if (!biography || biography.facts.length === 0) {
         return {
-          error:
-            "Candidate data has not been ingested yet. Do NOT say nobody is running — say this site's candidate data is not loaded and point the reader to fec.gov.",
+          source: "official House or Senate website",
+          coverage: "not_loaded",
+          records: [],
+          note: "No human-reviewed official biography facts are published for this lawmaker yet. Do not fill the gap from model memory.",
         };
       }
-      // FEC filings outlive the filer: a member who died or resigned after
-      // filing still shows as the race's incumbent (Lindsey Graham, July
-      // 2026). Cross-check "incumbent" filers against who actually sits in
-      // the seat today, by FEC id first and first-initial + last name second
-      // (initials survive Tim/Timothy nicknames).
-      const sitting = delegation.filter((m) =>
-        office === "S"
-          ? m.chamber === "senate"
-          : m.chamber === "house" &&
-            (district == null || m.district === district)
-      );
-      const sittingFecIds = new Set(
-        sitting.map((m) => m.fecCandidateId).filter(Boolean)
-      );
-      const sittingNameKeys = new Set(
-        sitting.map(
-          (m) =>
-            `${m.firstName?.[0]?.toLowerCase() ?? ""}|${m.lastName?.toLowerCase() ?? ""}`
-        )
-      );
-      const isSitting = (c: { candidate_id: string; name: string }) => {
-        if (sittingFecIds.has(c.candidate_id)) return true;
-        const parts = c.name.trim().split(/\s+/);
-        if (parts.length < 2) return false;
-        const key = `${parts[0][0].toLowerCase()}|${parts[parts.length - 1].toLowerCase()}`;
-        return sittingNameKeys.has(key);
-      };
       return {
-        note: "FEC filings, not the ballot. Primaries may have already narrowed this list; this data has no primary results.",
-        current_officeholders: sitting.map((m) => m.fullName),
-        candidates: result.candidates.map((c) => ({
-          name: c.name,
-          party: c.party,
-          status:
-            c.incumbent_challenge === "I"
-              ? isSitting(c)
-                ? "incumbent"
-                : "filed as incumbent but NO LONGER IN OFFICE (died or resigned after filing)"
-              : c.incumbent_challenge === "O"
-                ? "open-seat candidate"
-                : "challenger",
-          total_raised: c.total_receipts,
-          first_filed: c.first_file_date,
-          fec_candidate_id: c.candidate_id,
+        source: "official House or Senate website",
+        source_url: biography.biographyUrl ?? biography.siteUrl,
+        characterization:
+          "These are statements from the lawmaker's official biography, not independent verification.",
+        records: biography.facts.map((fact) => ({
+          fact: fact.claimText,
+          source_url: fact.sourceUrl,
         })),
       };
     }
     case "get_member_committees": {
       const rows = await getMemberCommittees(bioguideId);
-      return rows.map((c) => ({
-        committee_id: c.committeeId,
-        name: c.name,
-        chamber: c.chamber,
-        role: c.role,
-        is_subcommittee: c.parentId != null,
-      }));
+      return {
+        source: "committee assignment records",
+        records: rows.map((committee) => ({
+          committee_id: committee.committeeId,
+          name: committee.name,
+          chamber: committee.chamber,
+          role: committee.role,
+          is_subcommittee: committee.parentId != null,
+        })),
+      };
     }
     default:
-      return { error: `Unknown tool: ${name}` };
+      return { error: "Unknown retrieval tool." };
   }
 }
