@@ -15,6 +15,8 @@ export function normalizeCandidateName(name: string) {
 
 const FIRST_NAME_EQUIVALENTS: Record<string, string> = {
   brad: "bradley",
+  chris: "christopher",
+  jeff: "jeffrey",
   jim: "james",
   jimmy: "james",
   jd: "james",

@@ -110,6 +110,8 @@ test("an office switch with a new FEC ID creates a new candidacy instead of over
 test("state ballot names conservatively match FEC middle names and common first-name forms", () => {
   assert.equal(candidateNamesLikelySame("Jim Baird", "James R Baird"), true);
   assert.equal(candidateNamesLikelySame("Brad A. Meyer", "Bradley Allen Meyer"), true);
+  assert.equal(candidateNamesLikelySame("Chris Coons", "Christopher A. Coons"), true);
+  assert.equal(candidateNamesLikelySame("Jeff Smith", "Jeffrey A. Smith"), true);
   assert.equal(candidateNamesLikelySame("J.D. Ford", "James (J.D.) David Ford"), true);
   assert.equal(candidateNamesLikelySame("Mary Allen", "Mary Theresa Allen"), true);
   assert.equal(candidateNamesLikelySame("Mary Allen", "Mary Baker"), false);
