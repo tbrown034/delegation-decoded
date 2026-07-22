@@ -44,7 +44,7 @@ jobs:
           CONGRESS_API_KEY: ${{ secrets.CONGRESS_API_KEY }}
 
       - name: Crawl verified campaign sites and queue extracted claims for review
-        if: always()
+        if: ${{ !cancelled() }}
         run: npx tsx scripts/ingest/candidate-sites.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -60,7 +60,7 @@ jobs:
           CANDIDATE_EXTRACT_MAX_RUN_TOKENS: 250000
 
       - name: Crawl official member biographies and queue facts for review
-        if: always()
+        if: ${{ !cancelled() }}
         run: npx tsx scripts/ingest/member-biographies.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -75,7 +75,7 @@ jobs:
           MEMBER_BIO_MAX_RUN_TOKENS: 250000
 
       - name: Ingest campaign finance
-        if: always()
+        if: ${{ !cancelled() }}
         run: npx tsx scripts/ingest/finance.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -85,7 +85,7 @@ jobs:
       # ceiling. Keep all evidence collection ahead of both finance jobs so
       # candidate research gets the first small share of the weekly FEC quota.
       - name: Ingest finance committees and top contributors
-        if: always()
+        if: ${{ !cancelled() }}
         run: npx tsx scripts/ingest/finance-committees.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
