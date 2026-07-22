@@ -43,12 +43,6 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           CONGRESS_API_KEY: ${{ secrets.CONGRESS_API_KEY }}
 
-      - name: Ingest campaign finance
-        run: npx tsx scripts/ingest/finance.ts
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          FEC_API_KEY: ${{ secrets.FEC_API_KEY }}
-
       - name: Crawl verified campaign sites and queue extracted claims for review
         if: always()
         run: npx tsx scripts/ingest/candidate-sites.ts
@@ -80,10 +74,18 @@ jobs:
           MEMBER_BIO_MAX_PROVIDER_CALLS: 24
           MEMBER_BIO_MAX_RUN_TOKENS: 250000
 
+      - name: Ingest campaign finance
+        if: always()
+        run: npx tsx scripts/ingest/finance.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          FEC_API_KEY: ${{ secrets.FEC_API_KEY }}
+
       # This is the longest weekly FEC job and can approach the hourly API
-      # ceiling. Keep evidence collection ahead of it so candidate research is
-      # never starved by an unrelated finance timeout or rate-limit retry.
+      # ceiling. Keep all evidence collection ahead of both finance jobs so
+      # candidate research gets the first small share of the weekly FEC quota.
       - name: Ingest finance committees and top contributors
+        if: always()
         run: npx tsx scripts/ingest/finance-committees.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
