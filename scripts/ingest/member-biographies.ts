@@ -24,6 +24,7 @@ import {
 import {
   classifyCmsFamily,
   crawlOfficialBiographySite,
+  evidenceContentHash,
   isOfficialCongressionalSite,
   normalizeCampaignSiteUrl,
 } from "../lib/candidate-site-crawler";
@@ -327,14 +328,7 @@ async function processMember(
     );
     return 0;
   }
-  const aggregateHash = createHash("sha256")
-    .update(
-      crawled
-        .map((page) => createHash("sha256").update(page.result.body).digest("hex"))
-        .sort()
-        .join("")
-    )
-    .digest("hex");
+  const aggregateHash = evidenceContentHash(crawled);
   await db
     .update(memberOfficialSites)
     .set({

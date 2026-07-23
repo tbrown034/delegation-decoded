@@ -25,6 +25,7 @@ import {
 import { fetchCandidateCommittees, type FECCommittee } from "../lib/fec-api";
 import {
   crawlCampaignSite,
+  evidenceContentHash,
   normalizeCampaignSiteUrl,
 } from "../lib/candidate-site-crawler";
 import { storeCandidateSiteSnapshot } from "../lib/candidate-site-snapshots";
@@ -453,14 +454,7 @@ async function processCandidate(
     console.log(`${candidate.display_name}: ${crawled.length} crawlable campaign pages; no writes or model calls.`);
     return 0;
   }
-  const aggregateHash = createHash("sha256")
-    .update(
-      crawled
-        .map((page) => createHash("sha256").update(page.result.body).digest("hex"))
-        .sort()
-        .join("")
-    )
-    .digest("hex");
+  const aggregateHash = evidenceContentHash(crawled);
   if (!FORCE_REEXTRACT && candidate.content_sha256 === aggregateHash) {
     await db
       .update(candidateCampaignSites)

@@ -4,6 +4,23 @@ A chronological record of development sessions and significant changes.
 
 ---
 
+## 2026-07-22 — Rhode Island verified ballots and evidence-cost control
+
+**Session Summary:**
+- Added Rhode Island as the fourth state-authority adapter. The official Department of State workbook supplies explicit qualified-for-ballot-placement, primary-ballot and general-ballot fields for all three federal contests.
+- Activated 12 candidacies: 11 active ballot-qualified candidates and one candidate who did not qualify. The live load stored one private workbook snapshot, 12 append-only status events and 11 ballot lines; a second load left every count unchanged.
+- Completed the first campaign-evidence pass for all nine active candidacies with conservative FEC links. Two additional active candidates remain unlinked rather than being matched by guesswork.
+
+**Notable Changes:**
+- Built an exact-header, fail-closed workbook parser. Structured records retain only candidate name, party, office, district, qualification and ballot/result flags; they exclude the source voter ID, address, phone and email fields. Inflated OOXML is capped separately at 10 MB so a legitimate 487 KB workbook can be parsed without weakening zip-bomb protection.
+- The three contests are labeled `verified_ballot`, current stage `primary`, with September 9 as the next expected event. The adapter already understands later primary-winner, primary-loss, general-winner and general-loss flags without treating them as certified vote totals.
+- FEC linkage found nine of the 11 active candidacies. The evidence pass verified seven committee-reported sites, crawled six, blocked two with no current principal or authorized committee site and rejected one cross-host redirect. It stored 15 private page snapshots and queued 29 claims plus five prior-service records. All 34 records remain `needs_review`; none are published or available to Ask.
+- GitHub Actions runs `29969934091` and `29970014668` made nine successful Terra calls with 14,110 input tokens, 11,193 cache-write tokens and 5,216 output tokens. At the July 22 standard GPT-5.6 Terra rates, the measured model cost was about $0.12.
+- Fixed repeat-spend churn in both candidate and member biography pipelines. Change detection now hashes normalized evidence text plus canonical page URL instead of raw CMS HTML, so template, script and navigation changes no longer create new snapshots or model calls when the evidence visible to extraction is unchanged.
+- Verification: 39/39 tests, TypeScript, ESLint, `git diff --check`, workflow YAML, the Next.js 16.2.11 production build, both production dependency audits and a live source dry-run pass. The adapter was pushed as `62c9103` before activation.
+
+---
+
 ## 2026-07-22 — Florida election authority and challenger evidence
 
 **Session Summary:**

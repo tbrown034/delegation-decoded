@@ -24,6 +24,7 @@ import { parseXlsxRows } from "../scripts/lib/xlsx-rows";
 import { isBlockedAddress } from "../scripts/lib/safe-fetch";
 import {
   classifyCmsFamily,
+  evidenceContentHash,
   isOfficialCongressionalSite,
   parseCampaignHtml,
   parseRobots,
@@ -422,6 +423,24 @@ test("campaign HTML is treated as text and scripts or form instructions are excl
   assert.deepEqual(parsed.links, [
     { url: "https://candidate.example/issues", label: "Issues" },
   ]);
+});
+
+test("evidence hashes ignore template churn but change with visible source text", () => {
+  const first = parseCampaignHtml(
+    `<nav>Changing menu build 101</nav><main><p>Supports public records access.</p></main>`,
+    "https://candidate.example/about"
+  );
+  const second = parseCampaignHtml(
+    `<nav>Changing menu build 202</nav><main><p>Supports public records access.</p></main>`,
+    "https://candidate.example/about"
+  );
+  const changed = parseCampaignHtml(
+    `<main><p>Supports public records access and faster responses.</p></main>`,
+    "https://candidate.example/about"
+  );
+  const page = (text: string) => [{ url: "https://candidate.example/about", text }];
+  assert.equal(evidenceContentHash(page(first.text)), evidenceContentHash(page(second.text)));
+  assert.notEqual(evidenceContentHash(page(first.text)), evidenceContentHash(page(changed.text)));
 });
 
 test("campaign prior service preserves year-only dates without inventing a day", () => {

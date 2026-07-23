@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { parse, type DefaultTreeAdapterMap } from "parse5";
 import { safeFetchBuffer, type SafeFetchResult } from "./safe-fetch";
 
@@ -9,6 +10,18 @@ export type CrawledCampaignPage = {
   result: SafeFetchResult;
   text: string;
 };
+
+export function evidenceContentHash(
+  pages: Array<Pick<CrawledCampaignPage, "url" | "text">>
+) {
+  const hash = createHash("sha256").update("evidence-text-v1\0");
+  for (const page of [...pages].sort((left, right) => left.url.localeCompare(right.url))) {
+    const text = page.text.replace(/\s+/g, " ").trim();
+    hash.update(`${Buffer.byteLength(page.url)}:${page.url}`);
+    hash.update(`${Buffer.byteLength(text)}:${text}`);
+  }
+  return hash.digest("hex");
+}
 
 const RESEARCH_PATH = /\b(about|meet|bio|biography|issues?|priorities|platform|policy|policies|vision)\b/i;
 const OFFICIAL_BIOGRAPHY_PATH = /\b(about|bio|biography|meet|member|representative|senator)\b/i;
