@@ -393,6 +393,7 @@ function raceToolPayload(
       return {
         name: candidate.name,
         party: candidate.party,
+        ballot_lines: candidate.ballotLines,
         status:
           result.coverage !== "fec_only"
             ? candidate.status

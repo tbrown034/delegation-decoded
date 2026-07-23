@@ -4,6 +4,22 @@ A chronological record of development sessions and significant changes.
 
 ---
 
+## 2026-07-22 — Michigan primary ballot and challenger evidence
+
+**Session Summary:**
+- Added Michigan as the sixth state-authority adapter. The Bureau of Elections' August report is explicitly an `Official Candidate Listing`; the November report is explicitly `Unofficial`, so it is retained as provisional filing evidence without creating general-election ballot lines.
+- Activated 14 federal contests with 91 candidacies: 54 active primary-ballot candidates, 27 active provisional general filers, nine disqualifications and one withdrawal. Two consecutive loads left 91 events, 54 primary ballot lines, 42 stages and two private source snapshots unchanged, with zero duplicate person/contest groups and zero general ballot lines from the unofficial report.
+- Conservatively linked 40 active candidacies to FEC records and attempted campaign-site research for all 40. The other 41 active candidates remain unlinked rather than being matched by guesswork.
+
+**Notable Changes:**
+- Added exact report-identity, federal-office, party, status, filing-date and filing-method validation over the state HTML. The parser requires all 14 primary contests, fails closed on new federal values and keeps no address or contact fields.
+- The evidence pass verified 35 committee-reported sites, recorded five no-site blocks and crawled 24 successfully. Sixteen candidates retain bounded discovery or crawl errors. It stored 75 private page snapshots and queued 61 claims plus 13 prior-service records; all 74 remain `needs_review` and none are published or supplied to Ask.
+- GitHub Actions runs `29971600697`, `29971674359`, `29971763112`, `29971850832` and `29971908662` made 24 successful GPT-5.6 Terra calls. Usage was 81,646 input tokens, including 80,744 cache-write tokens, plus 22,782 output tokens. At the July 22 standard rates, the measured model cost was about $0.60.
+- Scoped Ask QA exposed and fixed a mixed-verification wording bug. The tool payload now states that `state_primary_ballot` records are verified for the primary while `state_general_filing_unofficial` records are provisional only; it also supplies ballot lines. State-scoped Senate and Debbie Dingell member-scoped tests then returned the correct candidates, verification split and race citations through Terra without fallback.
+- Live health remains `WARN` with no critical findings. Verification: two live backfills, 46/46 tests, TypeScript, ESLint, `git diff --check`, workflow YAML, the Next.js 16.2.11 production build and both production dependency audits pass.
+
+---
+
 ## 2026-07-22 — Nebraska certified primary adapter
 
 **Session Summary:**

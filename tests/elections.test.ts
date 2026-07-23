@@ -27,6 +27,7 @@ import {
 import { parseMichiganCandidateReportHtml } from "../scripts/lib/michigan-election-parser";
 import { parseXlsxRows } from "../scripts/lib/xlsx-rows";
 import { isBlockedAddress } from "../scripts/lib/safe-fetch";
+import { stateAuthorityCoverageNote } from "../lib/elections/types";
 import {
   classifyCmsFamily,
   evidenceContentHash,
@@ -631,6 +632,21 @@ test("Michigan federal records fail closed on an unknown candidate status", () =
         "primary"
       ),
     /status changed/
+  );
+});
+
+test("mixed-stage Michigan coverage cannot make verified primary records provisional", () => {
+  const note = stateAuthorityCoverageNote("verification_pending", [
+    { status: "state_primary_ballot" },
+    { status: "state_general_filing_unofficial" },
+  ]);
+  assert.match(note ?? "", /mixes two verification levels/);
+  assert.match(note ?? "", /Do not describe the entire field as provisional/);
+  assert.equal(
+    stateAuthorityCoverageNote("verified_ballot", [
+      { status: "state_primary_ballot" },
+    ]),
+    undefined
   );
 });
 

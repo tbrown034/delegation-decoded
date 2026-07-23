@@ -56,3 +56,16 @@ export type StateRaceCoverage = {
   verifiedContests: number;
   totalContests: number;
 };
+
+export function stateAuthorityCoverageNote(
+  coverage: RaceCoverage,
+  candidates: Pick<RaceCandidate, "status">[]
+) {
+  if (coverage !== "verification_pending") return undefined;
+  const statuses = new Set(candidates.map((candidate) => candidate.status));
+  if (!statuses.has("state_primary_ballot")) return undefined;
+  if (statuses.has("state_general_filing_unofficial")) {
+    return "This contest mixes two verification levels. A state_primary_ballot record is verified for the primary ballot. A state_general_filing_unofficial record is provisional filing evidence only and is not verified for the general-election ballot. Do not describe the entire field as provisional.";
+  }
+  return "A state_primary_ballot record is verified for the primary ballot. Contest-level verification remains pending only for later stages; do not describe these primary ballot records as provisional.";
+}

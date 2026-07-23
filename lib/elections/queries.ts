@@ -10,7 +10,11 @@ import {
   regularSenateClassForElectionYear,
   type MemberSeat,
 } from "./member-seat";
-import type { RaceCandidateResult, StateRaceCoverage } from "./types";
+import {
+  stateAuthorityCoverageNote,
+  type RaceCandidateResult,
+  type StateRaceCoverage,
+} from "./types";
 
 export type SenateRaceIdentity = {
   senateClass: 1 | 2 | 3;
@@ -171,6 +175,7 @@ async function getStateAuthorityRace(
     sourceUrl: contest.source_url,
     certifiedThrough: contest.certified_through,
     nextExpectedEvent: contest.next_expected_event,
+    coverageNote: stateAuthorityCoverageNote(contest.coverage_status, candidates),
     hasData: candidates.length > 0,
     candidates,
   };
