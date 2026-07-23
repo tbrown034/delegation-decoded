@@ -4,6 +4,21 @@ A chronological record of development sessions and significant changes.
 
 ---
 
+## 2026-07-22 — Nebraska certified primary adapter
+
+**Session Summary:**
+- Added Nebraska as the fifth state-authority adapter after New Hampshire's official site rejected unattended requests from the ingest environment. The New Hampshire source remains unimplemented rather than relying on a brittle or unofficial copy.
+- Nebraska's current federal workbook contains 12 candidates across U.S. Senate and three U.S. House contests. The certified-primary backfill contains 26 candidate results and 12 party nominees.
+- The adapter retains primary losers as inactive history. A certified Senate primary winner who is absent from the current state list is also inactive with an explicit `certified_primary_winner_not_on_current_list` status; the pipeline does not infer why the state removed the person from its current list.
+
+**Notable Changes:**
+- Reconciles every current partisan candidate against the top vote-getter in the state result pages, then uses the June 8 Board of State Canvassers record and official canvass PDF to set certified result status. Dan Osborn is admitted separately only because the state published a July 16 certification that his petition qualified him for the general ballot.
+- Added exact-header workbook parsing and bounded official-result HTML parsing. Structured records exclude the workbook's city, mailing address, phone and email fields. Seven source responses are retained as private hash-addressed snapshots before database writes.
+- The result site still renders the words “Unofficial Results.” The adapter preserves that value-source snapshot in event details but does not treat the page label as certification; the separate state canvass record controls certification status.
+- Live dry run parsed 38 source records with no writes: 12 current candidates plus 26 certified primary results. Verification: 42/42 tests, TypeScript, ESLint, `git diff --check`, workflow YAML, the Next.js 16.2.11 production build and both production dependency audits pass.
+
+---
+
 ## 2026-07-22 — Rhode Island verified ballots and evidence-cost control
 
 **Session Summary:**

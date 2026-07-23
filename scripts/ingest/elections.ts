@@ -22,6 +22,7 @@ import {
   ELECTION_SOURCE_REGISTRY,
   FLORIDA_2026_SOURCES,
   INDIANA_2026_SOURCES,
+  NEBRASKA_2026_SOURCES,
   RHODE_ISLAND_2026_SOURCES,
 } from "../../lib/elections/registry";
 import {
@@ -52,6 +53,15 @@ import {
   parseRhodeIslandCandidateWorkbook,
   type RhodeIslandCandidate,
 } from "../lib/rhode-island-election-parser";
+import {
+  parseNebraskaCurrentCandidateWorkbook,
+  parseNebraskaPrimaryResultPages,
+  validateNebraskaCanvassPdf,
+  validateNebraskaSourcePage,
+  type NebraskaCurrentCandidate,
+  type NebraskaPrimaryCandidate,
+  type NebraskaParty,
+} from "../lib/nebraska-election-parser";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const BACKFILL = process.argv.includes("--backfill");
@@ -61,6 +71,7 @@ const INDIANA_SOURCE_ID = "state-in";
 const DELAWARE_SOURCE_ID = "state-de";
 const FLORIDA_SOURCE_ID = "state-fl";
 const RHODE_ISLAND_SOURCE_ID = "state-ri";
+const NEBRASKA_SOURCE_ID = "state-ne";
 
 type Database = ReturnType<typeof drizzle>;
 
@@ -181,6 +192,123 @@ async function fetchRhodeIslandSource() {
   return {
     workbook,
     candidates: await parseRhodeIslandCandidateWorkbook(workbook.body),
+  };
+}
+
+async function fetchNebraskaSources() {
+  const sosHosts = new Set(["sos.nebraska.gov"]);
+  const resultHosts = new Set(["electionresults.nebraska.gov"]);
+  const [
+    landing,
+    workbook,
+    canvass,
+    certification,
+    statewideResults,
+    congressionalResults,
+    petitionCertification,
+  ] = await Promise.all([
+    safeFetchBuffer(NEBRASKA_2026_SOURCES.electionLanding, {
+      allowedHosts: sosHosts,
+      allowedContentTypes: ["text/html"],
+      maxBytes: 250_000,
+    }),
+    safeFetchBuffer(NEBRASKA_2026_SOURCES.currentCandidateWorkbook, {
+      allowedHosts: sosHosts,
+      allowedContentTypes: [
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      ],
+      maxBytes: 1_000_000,
+    }),
+    safeFetchBuffer(NEBRASKA_2026_SOURCES.primaryCanvass, {
+      allowedHosts: sosHosts,
+      allowedContentTypes: ["application/pdf"],
+      maxBytes: 4_000_000,
+    }),
+    safeFetchBuffer(NEBRASKA_2026_SOURCES.primaryCertification, {
+      allowedHosts: sosHosts,
+      allowedContentTypes: ["text/html"],
+      maxBytes: 250_000,
+    }),
+    safeFetchBuffer(NEBRASKA_2026_SOURCES.primaryStatewideResults, {
+      allowedHosts: resultHosts,
+      allowedContentTypes: ["text/html"],
+      maxBytes: 500_000,
+    }),
+    safeFetchBuffer(NEBRASKA_2026_SOURCES.primaryCongressionalResults, {
+      allowedHosts: resultHosts,
+      allowedContentTypes: ["text/html"],
+      maxBytes: 500_000,
+    }),
+    safeFetchBuffer(NEBRASKA_2026_SOURCES.petitionCertification, {
+      allowedHosts: sosHosts,
+      allowedContentTypes: ["text/html"],
+      maxBytes: 250_000,
+    }),
+  ]);
+
+  validateNebraskaSourcePage(landing.body.toString("utf8"), "2026 Elections", [
+    "Where can I find the official certified 2026 Primary election results?",
+    "Primary Election Official Results",
+    "Statewide_Candidate_Filing_List.xlsx",
+  ]);
+  validateNebraskaSourcePage(
+    certification.body.toString("utf8"),
+    "Board of State Canvassers reviews and certifies the 2026 primary election results",
+    ["June 8, 2026"]
+  );
+  validateNebraskaSourcePage(
+    petitionCertification.body.toString("utf8"),
+    "Secretary of State certifies Dan Osborn’s U.S. Senate candidate petition",
+    ["July 16, 2026"]
+  );
+  validateNebraskaCanvassPdf(canvass.body);
+  const [currentCandidates, primaryCandidates] = await Promise.all([
+    parseNebraskaCurrentCandidateWorkbook(workbook.body),
+    Promise.resolve(
+      parseNebraskaPrimaryResultPages([
+        statewideResults.body.toString("utf8"),
+        congressionalResults.body.toString("utf8"),
+      ])
+    ),
+  ]);
+
+  for (const candidate of currentCandidates) {
+    if (candidate.party === "By Petition") {
+      if (
+        candidate.office !== "S" ||
+        candidate.district !== null ||
+        candidate.normalizedName !== normalizeCandidateName("Dan Osborn")
+      ) {
+        throw new Error(
+          "Nebraska current list contains a petition candidate without an adapter certification source"
+        );
+      }
+      continue;
+    }
+    const result = primaryCandidates.find(
+      (primary) =>
+        primary.office === candidate.office &&
+        primary.district === candidate.district &&
+        primary.party === candidate.party &&
+        primary.normalizedName === candidate.normalizedName
+    );
+    if (!result?.isWinner) {
+      throw new Error(
+        "Nebraska current partisan candidate did not match a certified primary winner"
+      );
+    }
+  }
+
+  return {
+    landing,
+    workbook,
+    canvass,
+    certification,
+    statewideResults,
+    congressionalResults,
+    petitionCertification,
+    currentCandidates,
+    primaryCandidates,
   };
 }
 
@@ -305,6 +433,38 @@ async function fecMatchesForRhodeIsland(db: Database) {
     if (exact.length === 1) return exact[0].candidateId;
     if (exact.length > 1) return null;
     const likely = raceRows.filter((row) => candidateNamesLikelySame(row.name, ballotName));
+    return likely.length === 1 ? likely[0].candidateId : null;
+  };
+}
+
+async function fecMatchesForNebraska(db: Database) {
+  const rows = await db
+    .select({
+      candidateId: electionCandidates.candidateId,
+      name: electionCandidates.name,
+      office: electionCandidates.office,
+      district: electionCandidates.district,
+    })
+    .from(electionCandidates)
+    .where(
+      and(
+        eq(electionCandidates.stateCode, "NE"),
+        eq(electionCandidates.electionYear, 2026)
+      )
+    );
+
+  return (office: "H" | "S", district: number | null, ballotName: string) => {
+    const raceRows = rows.filter(
+      (row) => row.office === office && (office === "S" || row.district === district)
+    );
+    const exact = raceRows.filter(
+      (row) => normalizeCandidateName(row.name) === normalizeCandidateName(ballotName)
+    );
+    if (exact.length === 1) return exact[0].candidateId;
+    if (exact.length > 1) return null;
+    const likely = raceRows.filter((row) =>
+      candidateNamesLikelySame(row.name, ballotName)
+    );
     return likely.length === 1 ? likely[0].candidateId : null;
   };
 }
@@ -1487,9 +1647,420 @@ async function ingestRhodeIsland(db: Database) {
   return fetched.candidates.length;
 }
 
+function nebraskaPrimaryPartyCode(party: Exclude<NebraskaParty, "By Petition">) {
+  if (party === "Republican") return "R";
+  if (party === "Democratic") return "D";
+  if (party === "Libertarian") return "L";
+  return "LMN";
+}
+
+function nebraskaCandidateKey(candidate: {
+  office: "H" | "S";
+  district: number | null;
+  normalizedName: string;
+  party: NebraskaParty;
+}) {
+  return `${candidate.office}|${candidate.district ?? "statewide"}|${candidate.normalizedName}|${candidate.party}`;
+}
+
+async function ingestNebraska(db: Database) {
+  const fetched = await fetchNebraskaSources();
+  console.log(
+    `Nebraska: ${fetched.currentCandidates.length} current federal candidates; ${fetched.primaryCandidates.length} certified primary result records, including ${fetched.primaryCandidates.filter((candidate) => candidate.isWinner).length} nominees.`
+  );
+
+  if (DRY_RUN) {
+    return fetched.currentCandidates.length + fetched.primaryCandidates.length;
+  }
+
+  const [
+    landingSnapshot,
+    workbookSnapshot,
+    canvassSnapshot,
+    certificationSnapshot,
+    statewideResultSnapshot,
+    congressionalResultSnapshot,
+    petitionCertificationSnapshot,
+    fecMatches,
+  ] = await Promise.all([
+    storeElectionSnapshot(NEBRASKA_SOURCE_ID, fetched.landing),
+    storeElectionSnapshot(NEBRASKA_SOURCE_ID, fetched.workbook),
+    storeElectionSnapshot(NEBRASKA_SOURCE_ID, fetched.canvass),
+    storeElectionSnapshot(NEBRASKA_SOURCE_ID, fetched.certification),
+    storeElectionSnapshot(NEBRASKA_SOURCE_ID, fetched.statewideResults),
+    storeElectionSnapshot(NEBRASKA_SOURCE_ID, fetched.congressionalResults),
+    storeElectionSnapshot(NEBRASKA_SOURCE_ID, fetched.petitionCertification),
+    fecMatchesForNebraska(db),
+  ]);
+  const observedAt = new Date();
+  const certifiedAt = new Date("2026-06-08T12:00:00Z");
+  const tx = db;
+
+  for (const snapshot of [
+    landingSnapshot,
+    workbookSnapshot,
+    canvassSnapshot,
+    certificationSnapshot,
+    statewideResultSnapshot,
+    congressionalResultSnapshot,
+    petitionCertificationSnapshot,
+  ]) {
+    await tx
+      .insert(electionSourceSnapshots)
+      .values({
+        snapshotSha256: snapshot.sha256,
+        sourceId: NEBRASKA_SOURCE_ID,
+        originalUrl: snapshot.originalUrl,
+        blobUrl: snapshot.blobUrl,
+        contentType: snapshot.contentType,
+        contentLength: snapshot.contentLength,
+        etag: snapshot.etag,
+        lastModified: snapshot.lastModified,
+      })
+      .onConflictDoNothing();
+  }
+
+  const contests = [
+    {
+      contestId: senateContestId("NE", 2),
+      office: "S" as const,
+      district: null,
+      senateClass: 2,
+      title: "Nebraska U.S. Senate Class 2",
+    },
+    ...[1, 2, 3].map((district) => ({
+      contestId: houseContestId("NE", district),
+      office: "H" as const,
+      district,
+      senateClass: null,
+      title: `Nebraska U.S. House District ${district}`,
+    })),
+  ];
+
+  for (const contest of contests) {
+    await tx
+      .insert(electionContests)
+      .values({
+        contestId: contest.contestId,
+        electionCycle: 2026,
+        stateCode: "NE",
+        office: contest.office,
+        district: contest.district,
+        senateClass: contest.senateClass,
+        title: contest.title,
+        currentStage: "general",
+        coverageStatus: "verified_ballot",
+        certifiedThrough: "2026-05-12",
+        nextExpectedEvent: "2026-11-03",
+        primarySourceId: NEBRASKA_SOURCE_ID,
+        updatedAt: observedAt,
+      })
+      .onConflictDoUpdate({
+        target: electionContests.contestId,
+        set: {
+          title: contest.title,
+          currentStage: "general",
+          coverageStatus: "verified_ballot",
+          certifiedThrough: "2026-05-12",
+          nextExpectedEvent: "2026-11-03",
+          primarySourceId: NEBRASKA_SOURCE_ID,
+          updatedAt: observedAt,
+        },
+      });
+
+    const contestPrimary = fetched.primaryCandidates.filter(
+      (candidate) =>
+        candidate.office === contest.office &&
+        (candidate.office === "S" || candidate.district === contest.district)
+    );
+    const primaryParties = Array.from(
+      new Set(contestPrimary.map((candidate) => candidate.party))
+    );
+    for (const [index, party] of primaryParties.entries()) {
+      const stageId = `${contest.contestId}-primary-${nebraskaPrimaryPartyCode(party)}`;
+      await tx
+        .insert(electionStages)
+        .values({
+          stageId,
+          contestId: contest.contestId,
+          stageKind: "primary",
+          party,
+          electionDate: "2026-05-12",
+          sequenceNumber: index + 1,
+          resultStatus: "certified",
+          certifiedAt,
+          sourceId: NEBRASKA_SOURCE_ID,
+          updatedAt: observedAt,
+        })
+        .onConflictDoUpdate({
+          target: electionStages.stageId,
+          set: {
+            resultStatus: "certified",
+            certifiedAt,
+            sourceId: NEBRASKA_SOURCE_ID,
+            updatedAt: observedAt,
+          },
+        });
+    }
+
+    const generalStageId = `${contest.contestId}-general`;
+    await tx
+      .insert(electionStages)
+      .values({
+        stageId: generalStageId,
+        contestId: contest.contestId,
+        stageKind: "general",
+        electionDate: "2026-11-03",
+        sequenceNumber: 10,
+        resultStatus: "not_started",
+        sourceId: NEBRASKA_SOURCE_ID,
+        updatedAt: observedAt,
+      })
+      .onConflictDoUpdate({
+        target: electionStages.stageId,
+        set: { sourceId: NEBRASKA_SOURCE_ID, updatedAt: observedAt },
+      });
+
+    const combined = new Map<
+      string,
+      {
+        current: NebraskaCurrentCandidate | null;
+        primary: NebraskaPrimaryCandidate | null;
+      }
+    >();
+    for (const candidate of contestPrimary) {
+      combined.set(nebraskaCandidateKey(candidate), { current: null, primary: candidate });
+    }
+    for (const candidate of fetched.currentCandidates.filter(
+      (current) =>
+        current.office === contest.office &&
+        (current.office === "S" || current.district === contest.district)
+    )) {
+      const key = nebraskaCandidateKey(candidate);
+      combined.set(key, {
+        current: candidate,
+        primary: combined.get(key)?.primary ?? null,
+      });
+    }
+
+    for (const pair of combined.values()) {
+      const candidate = pair.current ?? pair.primary;
+      if (!candidate) continue;
+      const fecCandidateId = fecMatches(
+        candidate.office,
+        candidate.district,
+        candidate.name
+      );
+      const { personId, candidacyId } = candidateIdentity(
+        contest.contestId,
+        candidate.normalizedName,
+        partyCode(candidate.party),
+        fecCandidateId
+      );
+      const currentStatus = pair.current
+        ? pair.current.party === "By Petition"
+          ? "state_general_qualified"
+          : "general_ballot"
+        : pair.primary?.isWinner
+          ? "certified_primary_winner_not_on_current_list"
+          : "primary_defeated";
+      const isActive = pair.current != null;
+
+      await tx
+        .insert(candidatePeople)
+        .values({
+          personId,
+          displayName: candidate.name,
+          normalizedName: candidate.normalizedName,
+          updatedAt: observedAt,
+        })
+        .onConflictDoUpdate({
+          target: candidatePeople.personId,
+          set: {
+            displayName: candidate.name,
+            normalizedName: candidate.normalizedName,
+            updatedAt: observedAt,
+          },
+        });
+      await tx
+        .insert(candidacies)
+        .values({
+          candidacyId,
+          contestId: contest.contestId,
+          personId,
+          party: candidate.party,
+          currentStatus,
+          isActive,
+          fecCandidateId,
+          verifiedSourceId: NEBRASKA_SOURCE_ID,
+          verifiedAt: observedAt,
+          updatedAt: observedAt,
+        })
+        .onConflictDoUpdate({
+          target: candidacies.candidacyId,
+          set: {
+            party: candidate.party,
+            currentStatus,
+            isActive,
+            fecCandidateId,
+            verifiedSourceId: NEBRASKA_SOURCE_ID,
+            verifiedAt: observedAt,
+            updatedAt: observedAt,
+          },
+        });
+
+      if (pair.primary) {
+        const primaryStageId = `${contest.contestId}-primary-${nebraskaPrimaryPartyCode(pair.primary.party)}`;
+        const ballotLineId = stableElectionId(
+          "ballot",
+          candidacyId,
+          primaryStageId,
+          pair.primary.party
+        );
+        await tx
+          .insert(candidacyBallotLines)
+          .values({
+            ballotLineId,
+            candidacyId,
+            stageId: primaryStageId,
+            partyLabel: pair.primary.party,
+            sourceId: NEBRASKA_SOURCE_ID,
+          })
+          .onConflictDoUpdate({
+            target: candidacyBallotLines.ballotLineId,
+            set: { partyLabel: pair.primary.party, sourceId: NEBRASKA_SOURCE_ID },
+          });
+
+        const resultId = stableElectionId("result", primaryStageId, candidacyId);
+        await tx
+          .insert(electionResults)
+          .values({
+            resultId,
+            stageId: primaryStageId,
+            candidacyId,
+            totalVotes: pair.primary.totalVotes,
+            isWinner: pair.primary.isWinner,
+            resultStatus: "certified",
+            sourceId: NEBRASKA_SOURCE_ID,
+            snapshotSha256: canvassSnapshot.sha256,
+            updatedAt: observedAt,
+          })
+          .onConflictDoUpdate({
+            target: electionResults.resultId,
+            set: {
+              totalVotes: pair.primary.totalVotes,
+              isWinner: pair.primary.isWinner,
+              resultStatus: "certified",
+              snapshotSha256: canvassSnapshot.sha256,
+              updatedAt: observedAt,
+            },
+          });
+
+        const resultValueSnapshot =
+          pair.primary.office === "S"
+            ? statewideResultSnapshot
+            : congressionalResultSnapshot;
+        const status = pair.primary.isWinner ? "primary_winner" : "primary_defeated";
+        await tx
+          .insert(candidateStatusEvents)
+          .values({
+            eventId: stableElectionId(
+              "event",
+              candidacyId,
+              primaryStageId,
+              status,
+              canvassSnapshot.sha256
+            ),
+            candidacyId,
+            electionStageId: primaryStageId,
+            status,
+            effectiveDate: "2026-05-12",
+            observedAt,
+            sourceId: NEBRASKA_SOURCE_ID,
+            snapshotSha256: canvassSnapshot.sha256,
+            details: {
+              votes: pair.primary.totalVotes,
+              result_status: "certified",
+              result_value_snapshot_sha256: resultValueSnapshot.sha256,
+              certification_page_snapshot_sha256: certificationSnapshot.sha256,
+            },
+          })
+          .onConflictDoNothing();
+      }
+
+      if (pair.current) {
+        const ballotLineId = stableElectionId(
+          "ballot",
+          candidacyId,
+          generalStageId,
+          pair.current.party
+        );
+        await tx
+          .insert(candidacyBallotLines)
+          .values({
+            ballotLineId,
+            candidacyId,
+            stageId: generalStageId,
+            partyLabel: pair.current.party,
+            sourceId: NEBRASKA_SOURCE_ID,
+          })
+          .onConflictDoUpdate({
+            target: candidacyBallotLines.ballotLineId,
+            set: { partyLabel: pair.current.party, sourceId: NEBRASKA_SOURCE_ID },
+          });
+
+        const isPetition = pair.current.party === "By Petition";
+        const eventSnapshot = isPetition
+          ? petitionCertificationSnapshot
+          : workbookSnapshot;
+        await tx
+          .insert(candidateStatusEvents)
+          .values({
+            eventId: stableElectionId(
+              "event",
+              candidacyId,
+              generalStageId,
+              currentStatus
+            ),
+            candidacyId,
+            electionStageId: generalStageId,
+            status: currentStatus,
+            effectiveDate: isPetition ? "2026-07-16" : "2026-06-08",
+            observedAt,
+            sourceId: NEBRASKA_SOURCE_ID,
+            snapshotSha256: eventSnapshot.sha256,
+            details: {
+              qualification_basis: isPetition
+                ? "state_certified_candidate_petition"
+                : "certified_primary_nominee_on_current_state_list",
+              incumbency_status: pair.current.isIncumbent
+                ? "incumbent"
+                : "nonincumbent",
+            },
+          })
+          .onConflictDoNothing();
+      }
+    }
+  }
+
+  await tx
+    .update(electionSources)
+    .set({
+      coverageStatus: "verified_ballot",
+      lastCheckedAt: observedAt,
+      lastSuccessAt: observedAt,
+      nextExpectedEvent: "2026-11-03",
+      nextCheckAt: new Date(observedAt.getTime() + 24 * 60 * 60 * 1000),
+      updatedAt: observedAt,
+    })
+    .where(eq(electionSources.sourceId, NEBRASKA_SOURCE_ID));
+
+  return fetched.currentCandidates.length + fetched.primaryCandidates.length;
+}
+
 async function selectedStates(db: Database) {
   if (REQUESTED_STATE) return [REQUESTED_STATE];
-  if (BACKFILL) return ["IN", "DE", "FL", "RI"];
+  if (BACKFILL) return ["IN", "DE", "FL", "RI", "NE"];
   const due = await db
     .select({ stateCode: electionSources.stateCode })
     .from(electionSources)
@@ -1501,6 +2072,7 @@ async function selectedStates(db: Database) {
           "delaware-2026",
           "florida-2026",
           "rhode-island-2026",
+          "nebraska-2026",
         ])
       )
     );
@@ -1508,7 +2080,7 @@ async function selectedStates(db: Database) {
 }
 
 async function main() {
-  if (REQUESTED_STATE && !["IN", "DE", "FL", "RI"].includes(REQUESTED_STATE)) {
+  if (REQUESTED_STATE && !["IN", "DE", "FL", "RI", "NE"].includes(REQUESTED_STATE)) {
     throw new Error(`No verified adapter is available for ${REQUESTED_STATE}`);
   }
 
@@ -1516,14 +2088,15 @@ async function main() {
     const states = REQUESTED_STATE
       ? [REQUESTED_STATE]
       : BACKFILL
-        ? ["IN", "DE", "FL", "RI"]
-        : ["IN", "DE", "FL", "RI"];
+        ? ["IN", "DE", "FL", "RI", "NE"]
+        : ["IN", "DE", "FL", "RI", "NE"];
     let count = 0;
     for (const state of states) {
       if (state === "IN") count += await ingestIndiana({} as Database);
       if (state === "DE") count += await ingestDelaware({} as Database);
       if (state === "FL") count += await ingestFlorida({} as Database);
       if (state === "RI") count += await ingestRhodeIsland({} as Database);
+      if (state === "NE") count += await ingestNebraska({} as Database);
     }
     console.log(
       `Dry run complete. Parsed ${count} records across ${states.join(", ")}; no database or Blob writes.`
@@ -1554,6 +2127,7 @@ async function main() {
       if (state === "DE") records += await ingestDelaware(db);
       if (state === "FL") records += await ingestFlorida(db);
       if (state === "RI") records += await ingestRhodeIsland(db);
+      if (state === "NE") records += await ingestNebraska(db);
     }
     await db
       .update(syncLog)

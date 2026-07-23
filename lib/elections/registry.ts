@@ -131,6 +131,23 @@ stateSeeds[rhodeIslandIndex] = {
     "Current-cycle adapter: the official candidate workbook identifies candidates qualified for ballot placement, primary and general ballot inclusion, and later winner status. Structured records exclude the workbook's voter and contact fields.",
 };
 
+const nebraskaIndex = stateSeeds.findIndex((source) => source.stateCode === "NE");
+stateSeeds[nebraskaIndex] = {
+  sourceId: "state-ne",
+  stateCode: "NE",
+  authorityName: "Nebraska Secretary of State, Elections Division",
+  sourceKind: "state_election_authority",
+  sourceUrl: "https://sos.nebraska.gov/elections",
+  adapterKey: "nebraska-2026",
+  coverageStatus: "verified_ballot",
+  isAuthoritative: true,
+  certificationWindowDays: 27,
+  nextExpectedEvent: "2026-11-03",
+  nextCheckAt: new Date("2026-07-22T00:00:00Z"),
+  notes:
+    "Mid-cycle adapter: the current candidate workbook is reconciled against the June 8 certified primary canvass. Machine-readable state result pages supply totals; a separate official certification record proves the petition candidate's general-ballot qualification.",
+};
+
 export const ELECTION_SOURCE_REGISTRY: ElectionSourceSeed[] = [
   {
     sourceId: "fec-form2",
@@ -178,6 +195,22 @@ export const RHODE_ISLAND_2026_SOURCES = {
   candidateLanding: "https://vote.sos.ri.gov/Candidates/CandidateSearch",
   candidateWorkbook: "https://vote.sos.ri.gov/Forms/elections/Reports/Candidates.xlsx",
   candidateGuide: "https://vote.sos.ri.gov/Forms/Elections/Guides/2026RunforOffice.pdf",
+} as const;
+
+export const NEBRASKA_2026_SOURCES = {
+  electionLanding: "https://sos.nebraska.gov/elections",
+  currentCandidateWorkbook:
+    "https://sos.nebraska.gov/sites/default/files/doc/elections/2026/Statewide_Candidate_Filing_List.xlsx",
+  primaryCanvass:
+    "https://sos.nebraska.gov/sites/default/files/doc/elections/2026/2026_Primary_Canvass_Book.pdf",
+  primaryCertification:
+    "https://sos.nebraska.gov/board-state-canvassers-reviews-and-certifies-2026-primary-election-results",
+  primaryStatewideResults:
+    "https://electionresults.nebraska.gov/resultsSW.aspx?type=SW&map=CTY",
+  primaryCongressionalResults:
+    "https://electionresults.nebraska.gov/resultsSW.aspx?type=CG&map=DIST",
+  petitionCertification:
+    "https://sos.nebraska.gov/secretary-state-certifies-dan-osborns-us-senate-candidate-petition",
 } as const;
 
 export const ELECTION_CALENDAR_AS_OF = "2026-07-22";

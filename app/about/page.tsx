@@ -396,8 +396,8 @@ function AboutProcessDetails({
               The verified layer starts from state election-authority ballot and
               result records, stores each raw response as a hash-addressed private
               snapshot, and appends status events rather than rewriting history.
-              Indiana backfills a completed primary while Delaware, Florida and
-              Rhode Island track still-active primaries. Indiana remains verification pending because
+              Indiana and Nebraska backfill completed primaries while Delaware,
+              Florida and Rhode Island track still-active primaries. Indiana remains verification pending because
               the statewide primary feed marks itself unofficial and the state&apos;s
               general candidate spreadsheet warns that it is incomplete. Delaware
               remains verification pending because its official lists establish
@@ -407,7 +407,11 @@ function AboutProcessDetails({
               tracking system describes itself as an unofficial reference. Rhode
               Island&apos;s official workbook explicitly identifies ballot
               qualification and primary or general ballot inclusion, so those
-              contests are labeled verified ballot. The
+              contests are labeled verified ballot. Nebraska&apos;s current federal
+              list is reconciled against its June 8 certified primary canvass,
+              and its petition candidate is backed by a separate state
+              certification record, so those contests are also labeled verified
+              ballot. The
               structured parser excludes voter IDs, addresses, phone numbers and
               email addresses from candidate records; the complete source export
               is retained only as a private, content-addressed evidence snapshot.

@@ -20,6 +20,10 @@ import {
 import { parseDelawareCandidateRows } from "../scripts/lib/delaware-election-parser";
 import { parseFloridaCandidateTsv } from "../scripts/lib/florida-election-parser";
 import { parseRhodeIslandCandidateRows } from "../scripts/lib/rhode-island-election-parser";
+import {
+  parseNebraskaCurrentCandidateRows,
+  parseNebraskaPrimaryResultPages,
+} from "../scripts/lib/nebraska-election-parser";
 import { parseXlsxRows } from "../scripts/lib/xlsx-rows";
 import { isBlockedAddress } from "../scripts/lib/safe-fetch";
 import {
@@ -394,6 +398,135 @@ test("Rhode Island federal records fail closed on an unknown ballot status", () 
   const rows = rhodeIslandFixture();
   rows[1] = { ...rows[1], Z: "Pending" };
   assert.throws(() => parseRhodeIslandCandidateRows(rows), /unknown ballot qualification/);
+});
+
+const NEBRASKA_HEADERS = {
+  A: "Office",
+  B: "District Name (if applicable)",
+  C: "Term",
+  D: "Vote For",
+  E: "Party (if applicable)",
+  F: "Candidate Name",
+  G: "City of Residence",
+  H: "Incumbency Status",
+  I: "Mailing Address",
+  J: "Phone/Email",
+};
+
+test("Nebraska current list keeps federal status and drops contact fields", () => {
+  const parsed = parseNebraskaCurrentCandidateRows([
+    NEBRASKA_HEADERS,
+    {
+      A: "For United States Senator",
+      C: "6",
+      D: "1",
+      E: "By Petition",
+      F: "Dan Public",
+      G: "Omaha",
+      H: "Nonincumbent",
+      I: "123 Private Street",
+      J: "private@example.com",
+    },
+    ...[1, 2, 3].map((district) => ({
+      A: "For Representative in Congress",
+      B: `District 0${district} `,
+      C: "2",
+      D: "1",
+      E: district === 1 ? "Republican" : "Democratic",
+      F: `Candidate ${district}`,
+      G: "Lincoln",
+      H: district === 1 ? "Incumbent" : "Nonincumbent",
+      I: `${district} Private Street`,
+      J: `private-${district}@example.com`,
+    })),
+  ]);
+  assert.deepEqual(parsed[0], {
+    name: "Dan Public",
+    normalizedName: "dan public",
+    party: "By Petition",
+    office: "S",
+    district: null,
+    isIncumbent: false,
+  });
+  assert.equal(parsed.length, 4);
+  assert.equal("address" in parsed[0], false);
+  assert.equal("email" in parsed[0], false);
+  assert.equal("city" in parsed[0], false);
+});
+
+function nebraskaResultPage(
+  groups: Array<{
+    title: string;
+    code: "REP" | "DEM" | "LIB" | "LMN";
+    party: string;
+    candidates: Array<{ name: string; votes: string }>;
+  }>
+) {
+  return `<html><body>
+    <h1>Unofficial Results</h1><h2>Primary Election May 12, 2026</h2>
+    <p>Precincts Fully Reported</p>
+    ${groups
+      .map(
+        (group) => `<div class="wrapper-inside wrapper-border">
+          <div class="display-results-box-a"><h1>${group.title}</h1></div>
+          <input class="export-button" party="${group.code}">
+          ${group.candidates
+            .map(
+              (candidate) => `<div class="section group">
+                <div class="display-results-box-d"><h1>${candidate.name}</h1><h2>${group.party}</h2></div>
+                <div class="display-results-box-f"><h1>${candidate.votes}</h1></div>
+              </div>`
+            )
+            .join("")}
+        </div>`
+      )
+      .join("")}
+  </body></html>`;
+}
+
+test("Nebraska result pages derive one winner per party from official totals", () => {
+  const senate = nebraskaResultPage([
+    {
+      title: "For United States Senator - 6  Year Term",
+      code: "REP",
+      party: "Republican",
+      candidates: [
+        { name: "Lower Total", votes: "1,000" },
+        { name: "Higher Total", votes: "2,000" },
+      ],
+    },
+  ]);
+  const house = nebraskaResultPage(
+    [1, 2, 3].map((district) => ({
+      title: `For Representative in Congress - 2  Year Term - District 0${district}`,
+      code: "DEM" as const,
+      party: "Democratic",
+      candidates: [{ name: `House Winner ${district}`, votes: `${district},000` }],
+    }))
+  );
+  const parsed = parseNebraskaPrimaryResultPages([senate, house]);
+  assert.equal(parsed.length, 5);
+  assert.equal(parsed.find((candidate) => candidate.name === "Higher Total")?.isWinner, true);
+  assert.equal(parsed.find((candidate) => candidate.name === "Lower Total")?.isWinner, false);
+  assert.equal(parsed.find((candidate) => candidate.name === "Higher Total")?.totalVotes, 2000);
+});
+
+test("Nebraska federal records fail closed on an unknown current-list party", () => {
+  assert.throws(
+    () =>
+      parseNebraskaCurrentCandidateRows([
+        NEBRASKA_HEADERS,
+        {
+          A: "For United States Senator",
+          C: "6",
+          D: "1",
+          E: "New Party",
+          F: "Candidate",
+          H: "Nonincumbent",
+        },
+      ]),
+    /failed validation/
+  );
 });
 
 test("crawler address guard blocks loopback, private, link-local, and metadata ranges", () => {

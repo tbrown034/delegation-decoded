@@ -21,6 +21,7 @@ on:
           - DE
           - FL
           - RI
+          - NE
           - all
         default: due
 

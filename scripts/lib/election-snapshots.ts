@@ -6,6 +6,8 @@ function extensionFor(result: SafeFetchResult) {
   if (result.contentType === "application/json") return "json";
   if (result.contentType === "text/csv") return "csv";
   if (result.contentType === "application/tab-separated-values") return "tsv";
+  if (result.contentType === "text/html") return "html";
+  if (result.contentType === "application/pdf") return "pdf";
   if (
     result.contentType ===
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
