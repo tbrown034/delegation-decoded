@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { sanitizeAnswerLinks } from "../lib/ask-engine";
+import { ASK_SYSTEM_PROMPT, sanitizeAnswerLinks } from "../lib/ask-engine";
 import {
   executeAskTool,
   getAskTools,
@@ -16,6 +16,11 @@ const stateScope: AskScope = {
   stateCode: "IN",
   district: null,
 };
+
+test("Ask preserves Washington top-two party-preference language", () => {
+  assert.match(ASK_SYSTEM_PROMPT, /Washington uses a top-two primary/);
+  assert.match(ASK_SYSTEM_PROMPT, /never shorten them to "Democrat" or "Republican"/);
+});
 
 test("tool schemas are closed and stock disclosure tools are absent", () => {
   const tools = getAskTools(stateScope);

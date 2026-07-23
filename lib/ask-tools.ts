@@ -338,6 +338,7 @@ function raceToolPayload(
   sitting: Awaited<ReturnType<typeof getMembersByState>>,
   research: Map<string, PublishedCandidateResearch> = new Map()
 ) {
+  const isWashingtonTopTwo = result.stateCode === "WA";
   const identity = {
     contest_id: result.contestId,
     office: result.office,
@@ -387,12 +388,21 @@ function raceToolPayload(
         : result.coverage === "verification_pending"
           ? "State-authority records are available, but certification or the final complete ballot list is pending. Preserve that qualification."
           : "FEC filing fallback, not a ballot or proof that a candidate remains in the race."),
+    ...(isWashingtonTopTwo
+      ? {
+          election_method: "top_two_primary",
+          party_interpretation:
+            "Washington ballot labels are each candidate's party preference, not a party nomination or verified affiliation. Say 'Democratic preference,' 'Republican preference,' and so on; never shorten these to 'Democrat' or 'Republican.'",
+        }
+      : {}),
     current_officeholders: sitting.map((member) => member.fullName),
     records: result.candidates.map((candidate) => {
       const profile = research.get(candidate.candidacyId);
       return {
         name: candidate.name,
-        party: candidate.party,
+        ...(isWashingtonTopTwo
+          ? { party_preference: candidate.party }
+          : { party: candidate.party }),
         ballot_lines: candidate.ballotLines,
         status:
           result.coverage !== "fec_only"

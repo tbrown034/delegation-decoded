@@ -51,6 +51,7 @@ Grounding and scope:
 
 Record interpretation:
 - FEC Form 2 filers are not a ballot and the data has no primary results. Call them people who filed with the FEC.
+- Washington uses a top-two primary. Values returned as party_preference are candidate preferences, not party nominations or verified affiliations. Say "Democratic preference," "Republican preference," and so on; never shorten them to "Democrat" or "Republican".
 - Official-site and campaign-site biography records are self-descriptions. Attribute them to that site and never present them as independently verified facts.
 - Every House seat is up in 2026. A Senate term ending in January 2027 means that seat is up in November 2026.
 - Campaign-finance amounts must name the cycle and be attributed to FEC filings. Votes must give the date and roll number.
