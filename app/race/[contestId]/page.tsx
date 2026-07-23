@@ -28,6 +28,7 @@ export default async function RacePage({ params }: Props) {
   if (!race) notFound();
   const active = race.candidates.filter((candidate) => candidate.isActive);
   const inactive = race.candidates.filter((candidate) => !candidate.isActive);
+  const partyIsPreference = race.stateCode === "WA";
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
@@ -50,6 +51,12 @@ export default async function RacePage({ params }: Props) {
             ? "These people filed federal campaign-finance paperwork. That does not prove ballot access or that they remain in the race."
             : "The current field comes from the state election authority. Any unofficial primary result remains labeled unofficial, and an incomplete state list is not presented as final."}
         </p>
+        {partyIsPreference && (
+          <p className="mt-2 leading-relaxed">
+            Washington uses a top-two primary. Party labels below are each
+            candidate&apos;s preference, not a party nomination.
+          </p>
+        )}
         <a href={race.sourceUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-xs font-medium text-neutral-800 underline decoration-neutral-300 underline-offset-2">
           {race.sourceName}
         </a>
@@ -61,7 +68,11 @@ export default async function RacePage({ params }: Props) {
           <span className="font-mono text-xs text-neutral-400">{active.length} candidates</span>
         </div>
         {active.length > 0 ? (
-          <CandidateList candidates={active} research={research} />
+          <CandidateList
+            candidates={active}
+            research={research}
+            partyIsPreference={partyIsPreference}
+          />
         ) : (
           <p className="mt-3 text-sm text-neutral-500">No current candidate records are loaded. This is not evidence that nobody is running.</p>
         )}
@@ -71,7 +82,11 @@ export default async function RacePage({ params }: Props) {
         <section className="mt-10">
           <h2 className="font-serif text-xl font-semibold">Earlier or withdrawn candidates</h2>
           <p className="mt-1 text-xs text-neutral-500">Historical records remain visible; status events are append-only.</p>
-          <CandidateList candidates={inactive} research={research} />
+          <CandidateList
+            candidates={inactive}
+            research={research}
+            partyIsPreference={partyIsPreference}
+          />
         </section>
       )}
     </div>
@@ -81,9 +96,11 @@ export default async function RacePage({ params }: Props) {
 function CandidateList({
   candidates,
   research,
+  partyIsPreference,
 }: {
   candidates: NonNullable<Awaited<ReturnType<typeof getRaceByContestId>>>["candidates"];
   research: Map<string, PublishedCandidateResearch>;
+  partyIsPreference: boolean;
 }) {
   return (
     <ul className="mt-3 divide-y divide-neutral-100 rounded border border-neutral-200 bg-white">
@@ -99,7 +116,9 @@ function CandidateList({
             <div className="min-w-0">
               <p className="font-medium text-neutral-900">{candidate.name}</p>
               <p className="mt-0.5 text-xs text-neutral-500">
-                {candidate.party ?? "No party listed"} · {candidate.status.replaceAll("_", " ")}
+                {candidate.party
+                  ? `${candidate.party}${partyIsPreference ? " preference" : ""}`
+                  : "No party listed"} · {candidate.status.replaceAll("_", " ")}
               </p>
               {candidate.ballotLines.length > 1 && (
                 <p className="mt-1 text-xs text-neutral-500">Ballot lines: {candidate.ballotLines.join(", ")}</p>
