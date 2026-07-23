@@ -8,14 +8,20 @@ A chronological record of development sessions and significant changes.
 
 **Session Summary:**
 - Added Nebraska as the fifth state-authority adapter after New Hampshire's official site rejected unattended requests from the ingest environment. The New Hampshire source remains unimplemented rather than relying on a brittle or unofficial copy.
-- Nebraska's current federal workbook contains 12 candidates across U.S. Senate and three U.S. House contests. The certified-primary backfill contains 26 candidate results and 12 party nominees.
+- Activated four Nebraska contests with 27 distinct candidacies: 12 current and 15 historical. The certified-primary backfill contains 26 result rows and 12 party nominees; the live load also stored 38 ballot lines and 38 append-only status events.
 - The adapter retains primary losers as inactive history. A certified Senate primary winner who is absent from the current state list is also inactive with an explicit `certified_primary_winner_not_on_current_list` status; the pipeline does not infer why the state removed the person from its current list.
+- Linked nine current candidacies to FEC records and left three unmatched rather than guessing. The first campaign-evidence pass attempted all nine linked candidates, verified seven committee-reported sites, crawled six and recorded two no-site blocks plus one robots-policy failure.
 
 **Notable Changes:**
 - Reconciles every current partisan candidate against the top vote-getter in the state result pages, then uses the June 8 Board of State Canvassers record and official canvass PDF to set certified result status. Dan Osborn is admitted separately only because the state published a July 16 certification that his petition qualified him for the general ballot.
 - Added exact-header workbook parsing and bounded official-result HTML parsing. Structured records exclude the workbook's city, mailing address, phone and email fields. Seven source responses are retained as private hash-addressed snapshots before database writes.
 - The result site still renders the words “Unofficial Results.” The adapter preserves that value-source snapshot in event details but does not treat the page label as certification; the separate state canvass record controls certification status.
-- Live dry run parsed 38 source records with no writes: 12 current candidates plus 26 certified primary results. Verification: 42/42 tests, TypeScript, ESLint, `git diff --check`, workflow YAML, the Next.js 16.2.11 production build and both production dependency audits pass.
+- Two live backfill loads left all structured counts stable. Nine unique private source snapshots remain because two mutable official HTML responses changed bytes between runs; hash-addressed storage retained both versions rather than overwriting evidence.
+- GitHub Actions runs `29970851178` and `29970937486` made six successful GPT-5.6 Terra calls with 10,950 input tokens, including 9,962 cache-write tokens, and 5,561 output tokens. At the July 22 standard rates, the measured model cost was about $0.12.
+- The evidence pass stored 15 private campaign-page snapshots and queued 30 claims plus seven prior-service records. All 37 records remain `needs_review`; none are published or available to Ask.
+- Local production-route checks returned 200 for Nebraska's state, all four race, race-index, health and race-CSV routes. State-scoped Ask correctly returned the current Senate field and certified primary totals; Pete Ricketts' member-scoped Ask returned only his two current general-election challengers. Both calls used Terra without fallback.
+- Health remains `WARN` with no critical findings. The warning set consists of disclosed source, crawl, review and historical sync conditions, including nine Indiana certification expectations that are overdue under the current registry defaults.
+- Verification: two live backfills, 42/42 tests, TypeScript, ESLint, `git diff --check`, workflow YAML, the Next.js 16.2.11 production build and both production dependency audits pass.
 
 ---
 
