@@ -5,7 +5,7 @@ import AskClient from "@/components/ask-client";
 export const metadata: Metadata = {
   title: "Ask about your delegation, Delegation Decoded",
   description:
-    "Set your state or address, then ask plain-language questions about your members of Congress: votes, bills, committees, and campaign money, answered only from official records.",
+    "Ask plain-language questions about any member of Congress, or set your state or address to focus on your delegation: votes, bills, committees, and campaign money, answered only from official records.",
 };
 
 export default function AskPage() {
@@ -16,10 +16,11 @@ export default function AskPage() {
           Ask about your delegation
         </h1>
         <p className="mt-2 max-w-xl text-sm text-neutral-500">
-          Set your state or address, then ask in plain language. Answers come
-          only from official records already in this site&apos;s database:
-          Congress.gov, House and Senate roll calls, and FEC filings. If the
-          records can&apos;t answer, it says so.
+          Ask in plain language about any member of Congress, or set your state
+          or address to focus on your delegation. Answers come only from official
+          records already in this site&apos;s database: Congress.gov, House and
+          Senate roll calls, and FEC filings. If the records can&apos;t answer,
+          it says so.
         </p>
       </div>
 

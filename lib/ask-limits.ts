@@ -129,7 +129,9 @@ function cacheIdentity(question: string, scope: AskScope) {
   const scopeKey =
     scope.type === "member"
       ? `member:${scope.bioguideId}:seat:${scope.seat.office === "H" ? `H${scope.seat.district}` : `S${scope.seat.senateClass}`}`
-      : `state:${scope.stateCode}:district:${scope.district ?? "all"}`;
+      : scope.type === "state"
+        ? `state:${scope.stateCode}:district:${scope.district ?? "all"}`
+        : "national";
   return keyedHash(
     `dd-ask-cache:${ASK_PROMPT_VERSION}|${scopeKey}|${normalizedQuestion(question)}`,
     64
@@ -174,6 +176,9 @@ export async function getCachedAnswer(
   question: string,
   scope: AskScope
 ): Promise<CachedAnswer | null> {
+  // National answers vary too much to share and the cache row is keyed by a
+  // concrete state_code; skip the cache entirely, as follow-ups already do.
+  if (scope.type === "national") return null;
   const rows = (await db.execute(sql`
     SELECT answer, trace FROM ask_cache
     WHERE question_norm = ${cacheIdentity(question, scope)}
@@ -196,6 +201,7 @@ export async function setCachedAnswer(
   fallbackUsed: boolean,
   citations: Citation[] = []
 ): Promise<void> {
+  if (scope.type === "national") return;
   const payload = JSON.stringify({ trace, provider, model, fallbackUsed, citations });
   await db.execute(sql`
     INSERT INTO ask_cache (question_norm, state_code, district, answer, trace, created_at)

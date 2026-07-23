@@ -598,7 +598,7 @@ function AboutProcessDetails({
             strict schemas for every tool. Anthropic uses a deterministic topic
             router to expose only the relevant strict retrieval schemas, keeping
             grammar compilation within the request deadline. Both providers
-            send arguments through server-side type, range and page-scope
+            send arguments through server-side type, range and scope
             validation before any query runs. A terminal answer tool is required, and a factual answer is
             rejected unless at least one record lookup was completed.
           </p>

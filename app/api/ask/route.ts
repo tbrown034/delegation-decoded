@@ -55,6 +55,12 @@ async function parseScope(raw: Record<string, unknown>): Promise<AskScope | null
       ? (raw.scope as Record<string, unknown>)
       : raw;
 
+  // No location set: the reader chats across all 50 delegations. The engine
+  // resolves members by name and only ever reads sitting lawmakers.
+  if (requested.type === "national") {
+    return { type: "national" };
+  }
+
   if (requested.type === "member") {
     const bioguideId =
       typeof requested.bioguideId === "string"

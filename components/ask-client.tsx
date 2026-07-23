@@ -93,7 +93,40 @@ const MORE_EXAMPLES: { group: string; items: string[] }[] = [
   },
 ];
 
+// Shown when no location is set: name a state so the stateless backend can
+// scope each question. Every one is answerable from official records.
+const NATIONAL_SUGGESTIONS = [
+  "Who represents Texas in Congress?",
+  "How did California's senators vote recently?",
+  "Which Ohio seats are up in 2026?",
+];
+
+const NATIONAL_EXAMPLES: { group: string; items: string[] }[] = [
+  {
+    group: "Members",
+    items: [
+      "Who represents Florida in the House?",
+      "What committees do Michigan's senators sit on?",
+    ],
+  },
+  {
+    group: "Money",
+    items: [
+      "Who are Pennsylvania's senators' top contributors?",
+      "How much has Arizona's delegation raised this cycle?",
+    ],
+  },
+  {
+    group: "2026 races",
+    items: [
+      "Which Georgia seats are up in 2026?",
+      "Who has filed with the FEC in Nevada?",
+    ],
+  },
+];
+
 const TOOL_LABELS: Record<string, string> = {
+  find_members: "member search",
   get_race_candidates: "FEC candidate filings",
   get_delegation: "delegation roster",
   get_member_votes: "roll-call votes",
@@ -299,6 +332,17 @@ function hasDanglingReferent(q: string): boolean {
   return !/\s[A-Z][a-z]/.test(q);
 }
 
+// With no location set, "who represents me?" has nothing to resolve against.
+// Nudge to set a location or name a place — but only when the reader named no
+// member or state (any capitalized word after the first is treated as one).
+const SELF_REFERENCE_RE = /\b(my|me|i|mine|our|us)\b/i;
+
+function needsLocationForSelf(q: string): boolean {
+  if (!SELF_REFERENCE_RE.test(q)) return false;
+  const words = q.trim().split(/\s+/);
+  return !words.slice(1).some((w) => /^[A-Z][a-z]/.test(w));
+}
+
 export default function AskClient({
   initialLocated,
   scope,
@@ -320,6 +364,7 @@ export default function AskClient({
   const [rateLimitNote, setRateLimitNote] = useState<string | null>(null);
   const [budgetExhausted, setBudgetExhausted] = useState(false);
   const [referentNudge, setReferentNudge] = useState(false);
+  const [locationNudge, setLocationNudge] = useState(false);
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
   const [progress, setProgress] = useState<ProgressEvent[]>([]);
   const [showExamples, setShowExamples] = useState(false);
@@ -347,6 +392,7 @@ export default function AskClient({
       setLocated(json);
       setExchanges([]);
       setAskError(null);
+      setLocationNudge(false);
       askInputRef.current?.focus();
     } catch {
       setLocateError("Lookup failed. Check your connection and try again.");
@@ -391,7 +437,16 @@ export default function AskClient({
 
   async function ask(q: string) {
     const trimmed = q.trim();
-    if (!trimmed || !located || asking || budgetExhausted) return;
+    if (!trimmed || asking || budgetExhausted) return;
+    const national = !scope && !located;
+    // No location and a bare self-reference ("who represents me?") has nothing
+    // to resolve against — send them to the location bar before spending a call.
+    if (national && exchanges.length === 0 && needsLocationForSelf(trimmed)) {
+      setLocationNudge(true);
+      setQuestion(trimmed);
+      return;
+    }
+    setLocationNudge(false);
     // With follow-ups, "she" can resolve against the prior exchange — the
     // nudge only fires when there is no earlier answer to point at.
     if (exchanges.length === 0 && hasDanglingReferent(trimmed)) {
@@ -424,11 +479,13 @@ export default function AskClient({
           question: trimmed,
           scope:
             scope ??
-            {
-              type: "state",
-              stateCode: located.stateCode,
-              district: located.district,
-            },
+            (located
+              ? {
+                  type: "state",
+                  stateCode: located.stateCode,
+                  district: located.district,
+                }
+              : { type: "national" }),
           history,
         }),
       });
@@ -542,15 +599,17 @@ export default function AskClient({
         `How did ${scopedMember.fullName} vote recently?`,
         `Who are ${scopedMember.fullName}'s top campaign contributors?`,
       ]
-    : [
-        "Who represents me in Congress?",
-        rep
-          ? `How did ${rep.fullName} vote recently?`
-          : "How did my representative vote recently?",
-        senators[0]
-          ? `Who are ${senators[0].fullName}'s top campaign contributors?`
-          : SUGGESTIONS[2],
-      ];
+    : located
+      ? [
+          "Who represents me in Congress?",
+          rep
+            ? `How did ${rep.fullName} vote recently?`
+            : "How did my representative vote recently?",
+          senators[0]
+            ? `Who are ${senators[0].fullName}'s top campaign contributors?`
+            : SUGGESTIONS[2],
+        ]
+      : NATIONAL_SUGGESTIONS;
 
   const exampleGroups = scopedMember
     ? [
@@ -570,7 +629,9 @@ export default function AskClient({
           ],
         },
       ]
-    : MORE_EXAMPLES;
+    : located
+      ? MORE_EXAMPLES
+      : NATIONAL_EXAMPLES;
 
   return (
     <div>
@@ -597,6 +658,14 @@ export default function AskClient({
           {locating ? "Locating..." : "Set location"}
         </button>
       </form>
+      )}
+
+      {!fixedLocation && !located && (
+        <p className="mt-2 text-xs text-neutral-500">
+          Optional. Setting your location pins your district, highlights your own
+          lawmakers, and tailors answers to your delegation. Or ask about any
+          member of Congress below.
+        </p>
       )}
 
       {locateError && (
@@ -669,29 +738,37 @@ export default function AskClient({
                 ? scope?.type === "member"
                   ? `Ask about ${located.members[0]?.fullName ?? "this lawmaker"}`
                   : `Ask about the ${located.stateName} delegation`
-                : "Set a location first, then ask..."
+                : "Ask about any member of Congress, or set your location above..."
           }
           aria-label="Your question"
           maxLength={400}
-          disabled={!located || budgetExhausted}
+          disabled={budgetExhausted}
           enterKeyHint="send"
           className="flex-1 rounded border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-neutral-500 focus:outline-none disabled:bg-neutral-50 disabled:text-neutral-400"
         />
         <button
           type="submit"
-          disabled={!located || asking || budgetExhausted || !question.trim()}
+          disabled={asking || budgetExhausted || !question.trim()}
           className="rounded bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-50"
         >
           {asking ? "Checking..." : "Ask"}
         </button>
       </form>
 
-      {located && !budgetExhausted && (
+      {!budgetExhausted && (
         <p className="mt-2 text-xs text-neutral-400">
           Answers come only from retrieved records — votes, bills, campaign
           money, committees and reviewed official-site biographies. Follow-ups can build on your last two answers;
           every fact is re-checked against the records.
         </p>
+      )}
+
+      {locationNudge && (
+        <div className="mt-3 rounded border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-700">
+          No location is set, so there&apos;s nothing for &quot;me&quot; or
+          &quot;my&quot; to point at. Set your location above, or name a state —
+          like &quot;How did Ohio&apos;s senators vote?&quot;
+        </div>
       )}
 
       {referentNudge && (
@@ -718,8 +795,9 @@ export default function AskClient({
       )}
 
       {/* Example questions: chips before the first answer, a compact
-          dropdown after, so exploration never disappears. */}
-      {located && (
+          dropdown after, so exploration never disappears. Shown for the
+          national (no-location) surface too. */}
+      {(located || !fixedLocation) && (
         <div className="mt-3">
           {exchanges.length === 0 && !asking && (
             <ul className="flex flex-wrap gap-2">

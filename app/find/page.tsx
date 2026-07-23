@@ -19,8 +19,8 @@ export default function FindPage() {
         </h1>
         <p className="mt-2 max-w-xl text-sm text-neutral-500">
           Enter a state or US street address. A full address resolves the House
-          district as well as both senators, then opens the same scoped records
-          assistant used across the site.
+          district as well as both senators, then focuses the same records
+          assistant used across the site on your delegation.
         </p>
       </div>
 

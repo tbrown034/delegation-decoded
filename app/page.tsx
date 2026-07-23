@@ -144,8 +144,9 @@ export default async function Home() {
             Records assistant
           </span>
           <p className="text-sm text-neutral-500">
-            Ask in plain language after setting a location. Answers stay inside
-            that delegation and show which records were checked.
+            Ask in plain language about any member of Congress. Set your location
+            to focus on your own delegation and highlight your candidates. Every
+            answer shows which official records were checked.
           </p>
         </div>
         <AskClient />

@@ -1,4 +1,5 @@
 import {
+  findMembersByName,
   getMembersByState,
   getMemberVoteSummary,
   getMemberFinance,
@@ -13,6 +14,7 @@ import {
   searchMemberVotes,
   searchMemberBills,
 } from "./queries";
+import { STATE_BY_CODE } from "./states";
 import {
   memberSeatLabel,
   resolveMemberSeat,
@@ -28,7 +30,11 @@ export type AskScope =
       stateCode: string;
       bioguideId: string;
       seat: MemberSeat;
-    };
+    }
+  // No location set: the reader can ask about any sitting member. find_members
+  // resolves who they mean; allowedMemberIds holds the full current roster so
+  // only real, sitting lawmakers are ever readable.
+  | { type: "national" };
 
 export interface AskToolContext {
   scope: AskScope;
@@ -183,6 +189,21 @@ const tools: AskToolDefinition[] = [
     inputSchema: objectSchema({ bioguide_id: { type: "string" } }),
   },
   {
+    name: "find_members",
+    description:
+      "Search sitting members of Congress by name across all 50 states. Use this first when no location is set to resolve who the reader means, then read that member's records with the get_member_* tools using the returned bioguide_id. Optionally pass a two-letter state_code to restrict the search.",
+    inputSchema: objectSchema({
+      query: {
+        type: "string",
+        description: "A member name or partial name, e.g. \"Ocasio-Cortez\" or \"Warren\".",
+      },
+      state_code: {
+        type: ["string", "null"],
+        description: "Two-letter state code to restrict the search, or null for all states.",
+      },
+    }),
+  },
+  {
     name: "submit_answer",
     description:
       "Finish every request with the grounded answer. Call only after retrieving every record needed. Never return the answer as ordinary text.",
@@ -199,9 +220,13 @@ const tools: AskToolDefinition[] = [
 
 export function getAskTools(scope: AskScope): AskToolDefinition[] {
   return tools
-    .filter(
-      (tool) => !(scope.type === "member" && tool.name === "get_delegation")
-    )
+    .filter((tool) => {
+      // find_members only exists nationally; member pages keep a fixed roster
+      // and never expose get_delegation.
+      if (tool.name === "find_members") return scope.type === "national";
+      if (tool.name === "get_delegation") return scope.type !== "member";
+      return true;
+    })
     .map((tool) =>
       scope.type === "member" && tool.name === "get_race_candidates"
         ? {
@@ -234,6 +259,13 @@ export function getAskToolsForQuestion(scope: AskScope, question: string) {
     scope.type === "state" &&
     (!hasRetrieval || /\b(who|senator|representative|delegation|roster|member|district)\b/.test(normalized))
   ) {
+    selected.add("get_delegation");
+  }
+  // National questions must resolve who the reader means before reading
+  // records, and a bare roster question ("who represents Texas") answers
+  // straight from get_delegation. Both stay available every turn.
+  if (scope.type === "national") {
+    selected.add("find_members");
     selected.add("get_delegation");
   }
   if (!hasRetrieval && scope.type === "member" && /\b(record|work|done|about|overview)\b/.test(normalized)) {
@@ -447,11 +479,53 @@ export async function executeAskTool(
 ): Promise<unknown> {
   if (name === "submit_answer") return { error: "Terminal tool is handled by the engine." };
 
+  if (name === "find_members") {
+    if (context.scope.type !== "national") {
+      return { error: "Member search is only available when no location is set." };
+    }
+    const query = typeof input.query === "string" ? input.query.trim() : "";
+    if (query.length < 2) {
+      return { error: "Provide at least two characters of a member's name." };
+    }
+    const stateFilter =
+      typeof input.state_code === "string" &&
+      STATE_BY_CODE[input.state_code.toUpperCase()]
+        ? input.state_code.toUpperCase()
+        : null;
+    const rows = await findMembersByName(query, 12);
+    const matched = (
+      stateFilter ? rows.filter((m) => m.state_code === stateFilter) : rows
+    ).slice(0, 8);
+    return {
+      source: "current member roster",
+      matched: matched.length,
+      records: matched.map((m) => ({
+        bioguide_id: m.bioguide_id,
+        name: m.full_name,
+        party: m.party,
+        chamber: m.chamber,
+        state: m.state_code,
+        district: m.district,
+      })),
+      ...(matched.length === 0
+        ? {
+            note: "No sitting member matched. Do not guess a name; ask the reader to clarify.",
+          }
+        : {}),
+    };
+  }
+
   if (name === "get_delegation") {
     const stateCode =
       typeof input.state_code === "string" ? input.state_code.toUpperCase() : "";
-    if (context.scope.type === "member" || stateCode !== context.scope.stateCode) {
+    if (context.scope.type === "member") {
       return { error: "That state is outside this page's scope." };
+    }
+    if (context.scope.type === "state" && stateCode !== context.scope.stateCode) {
+      return { error: "That state is outside this page's scope." };
+    }
+    if (context.scope.type === "national" && !STATE_BY_CODE[stateCode]) {
+      return { error: "Unknown state. Use a two-letter state code." };
     }
     const rows = await getMembersByState(stateCode);
     return {
@@ -492,8 +566,11 @@ export async function executeAskTool(
     }
     const stateCode =
       typeof input.state_code === "string" ? input.state_code.toUpperCase() : "";
-    if (stateCode !== context.scope.stateCode) {
+    if (context.scope.type === "state" && stateCode !== context.scope.stateCode) {
       return { error: "That race is outside this page's state scope." };
+    }
+    if (context.scope.type === "national" && !STATE_BY_CODE[stateCode]) {
+      return { error: "Unknown state. Use a two-letter state code." };
     }
     const office = input.office === "S" ? "S" : input.office === "H" ? "H" : null;
     const district =
