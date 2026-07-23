@@ -49,6 +49,7 @@ jobs:
           MEMBER_BIO_MEMBER: ${{ inputs.bioguide_id }}
           MEMBER_BIO_MAX_PAGES: 4
           MEMBER_BIO_MAX_INPUT_CHARS: 28000
+          MEMBER_BIO_MAX_OUTPUT_TOKENS: 3000
           MEMBER_BIO_MAX_PROVIDER_CALLS: 100
           MEMBER_BIO_MAX_RUN_TOKENS: 1000000
 

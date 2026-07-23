@@ -71,6 +71,12 @@ function boundedInt(name: string, fallback: number, min: number, max: number) {
 const MAX_MEMBERS = boundedInt("MEMBER_BIO_MAX_MEMBERS", 12, 1, 50);
 const MAX_PAGES = boundedInt("MEMBER_BIO_MAX_PAGES", 4, 1, 6);
 const MAX_INPUT_CHARS = boundedInt("MEMBER_BIO_MAX_INPUT_CHARS", 28_000, 8_000, 60_000);
+const MAX_OUTPUT_TOKENS = boundedInt(
+  "MEMBER_BIO_MAX_OUTPUT_TOKENS",
+  3_000,
+  1_000,
+  6_000
+);
 const MAX_PROVIDER_CALLS = boundedInt("MEMBER_BIO_MAX_PROVIDER_CALLS", 24, 1, 100);
 const MAX_RUN_TOKENS = boundedInt("MEMBER_BIO_MAX_RUN_TOKENS", 250_000, 10_000, 1_000_000);
 const OPENAI_MODEL = process.env.MEMBER_BIO_OPENAI_MODEL || "gpt-5.6-terra";
@@ -120,13 +126,17 @@ async function runOpenAI(
         schema: BIOGRAPHY_RESEARCH_SCHEMA,
       },
     },
-    max_output_tokens: 1_800,
+    max_output_tokens: MAX_OUTPUT_TOKENS,
     store: false,
     safety_identifier: safetyId,
     prompt_cache_key: "dd-member-biography-v1",
   });
   if (response.error || response.incomplete_details || !response.output_text) {
-    throw new Error("OpenAI biography extraction did not complete");
+    const reason =
+      response.error?.message ??
+      response.incomplete_details?.reason ??
+      "missing structured output";
+    throw new Error(`OpenAI biography extraction did not complete (${reason})`);
   }
   return {
     provider: "openai",
@@ -145,7 +155,7 @@ async function runAnthropic(
   const client = new Anthropic({ timeout: 30_000, maxRetries: 0 });
   const response = await client.messages.create({
     model: ANTHROPIC_MODEL,
-    max_tokens: 1_800,
+    max_tokens: MAX_OUTPUT_TOKENS,
     output_config: { effort: "low" },
     system: SYSTEM_PROMPT,
     messages: [{ role: "user", content: input }],

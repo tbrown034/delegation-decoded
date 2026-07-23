@@ -120,6 +120,12 @@ function boundedInt(name: string, fallback: number, min: number, max: number) {
 const MAX_CANDIDATES = boundedInt("CANDIDATE_EXTRACT_MAX_CANDIDATES", 8, 1, 25);
 const MAX_PAGES = boundedInt("CANDIDATE_EXTRACT_MAX_PAGES", 5, 1, 8);
 const MAX_INPUT_CHARS = boundedInt("CANDIDATE_EXTRACT_MAX_INPUT_CHARS", 36_000, 8_000, 80_000);
+const MAX_OUTPUT_TOKENS = boundedInt(
+  "CANDIDATE_EXTRACT_MAX_OUTPUT_TOKENS",
+  4_000,
+  1_000,
+  8_000
+);
 const MAX_PROVIDER_CALLS = boundedInt("CANDIDATE_EXTRACT_MAX_PROVIDER_CALLS", 16, 1, 50);
 const MAX_RUN_TOKENS = boundedInt("CANDIDATE_EXTRACT_MAX_RUN_TOKENS", 250_000, 10_000, 1_000_000);
 const OPENAI_MODEL = process.env.CANDIDATE_EXTRACT_OPENAI_MODEL || "gpt-5.6-terra";
@@ -159,13 +165,17 @@ async function runOpenAI(input: string, pages: CampaignResearchPage[], safetyId:
         schema: CAMPAIGN_RESEARCH_SCHEMA,
       },
     },
-    max_output_tokens: 2_000,
+    max_output_tokens: MAX_OUTPUT_TOKENS,
     store: false,
     safety_identifier: safetyId,
     prompt_cache_key: "dd-candidate-research-v1",
   });
   if (response.error || response.incomplete_details || !response.output_text) {
-    throw new Error("OpenAI extraction did not complete");
+    const reason =
+      response.error?.message ??
+      response.incomplete_details?.reason ??
+      "missing structured output";
+    throw new Error(`OpenAI extraction did not complete (${reason})`);
   }
   const parsed = JSON.parse(response.output_text) as unknown;
   return {
@@ -184,7 +194,7 @@ async function runAnthropic(input: string, pages: CampaignResearchPage[]) {
   const client = new Anthropic({ timeout: 30_000, maxRetries: 0 });
   const response = await client.messages.create({
     model: ANTHROPIC_MODEL,
-    max_tokens: 2_000,
+    max_tokens: MAX_OUTPUT_TOKENS,
     output_config: { effort: "low" },
     system: SYSTEM_PROMPT,
     messages: [{ role: "user", content: input }],
