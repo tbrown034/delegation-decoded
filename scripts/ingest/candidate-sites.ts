@@ -48,8 +48,44 @@ type ExtractionResult = {
   model: string;
   output: CampaignResearchOutput;
   inputTokens: number;
+  cachedInputTokens: number;
+  cacheWriteInputTokens: number;
   outputTokens: number;
 };
+
+type RunBudget = {
+  calls: number;
+  tokens: number;
+  providerCalls: Record<Provider, number>;
+  usage: Record<Provider, {
+    inputTokens: number;
+    cachedInputTokens: number;
+    cacheWriteInputTokens: number;
+    outputTokens: number;
+  }>;
+};
+
+function emptyRunBudget(): RunBudget {
+  return {
+    calls: 0,
+    tokens: 0,
+    providerCalls: { openai: 0, anthropic: 0 },
+    usage: {
+      openai: {
+        inputTokens: 0,
+        cachedInputTokens: 0,
+        cacheWriteInputTokens: 0,
+        outputTokens: 0,
+      },
+      anthropic: {
+        inputTokens: 0,
+        cachedInputTokens: 0,
+        cacheWriteInputTokens: 0,
+        outputTokens: 0,
+      },
+    },
+  };
+}
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const FORCE_REEXTRACT =
@@ -136,6 +172,8 @@ async function runOpenAI(input: string, pages: CampaignResearchPage[], safetyId:
     model: OPENAI_MODEL,
     output: validateCampaignResearch(parsed, pages),
     inputTokens: response.usage?.input_tokens ?? 0,
+    cachedInputTokens: response.usage?.input_tokens_details?.cached_tokens ?? 0,
+    cacheWriteInputTokens: response.usage?.input_tokens_details?.cache_write_tokens ?? 0,
     outputTokens: response.usage?.output_tokens ?? 0,
   };
 }
@@ -169,11 +207,15 @@ async function runAnthropic(input: string, pages: CampaignResearchPage[]) {
       block.type === "tool_use" && block.name === "submit_candidate_campaign_research"
   );
   if (!tool) throw new Error("Anthropic extraction returned no structured result");
+  const cachedInputTokens = response.usage.cache_read_input_tokens ?? 0;
+  const cacheWriteInputTokens = response.usage.cache_creation_input_tokens ?? 0;
   return {
     provider: "anthropic" as const,
     model: ANTHROPIC_MODEL,
     output: validateCampaignResearch(tool.input, pages),
-    inputTokens: response.usage.input_tokens,
+    inputTokens: response.usage.input_tokens + cachedInputTokens + cacheWriteInputTokens,
+    cachedInputTokens,
+    cacheWriteInputTokens,
     outputTokens: response.usage.output_tokens,
   };
 }
@@ -182,13 +224,13 @@ async function extractResearch(
   input: string,
   pages: CampaignResearchPage[],
   safetyId: string,
-  consumeCall: () => void
+  consumeCall: (provider: Provider) => void
 ): Promise<ExtractionResult> {
   const errors: string[] = [];
   for (const provider of providerOrder()) {
     if (provider === "openai" && !process.env.OPENAI_API_KEY) continue;
     if (provider === "anthropic" && !process.env.ANTHROPIC_API_KEY) continue;
-    consumeCall();
+    consumeCall(provider);
     try {
       return provider === "openai"
         ? await runOpenAI(input, pages, safetyId)
@@ -403,7 +445,7 @@ async function saveResearch(
 async function processCandidate(
   db: Database,
   candidate: CandidateRow,
-  budget: { calls: number; tokens: number }
+  budget: RunBudget
 ) {
   const site = await resolveCampaignSite(db, candidate);
   const crawled = await crawlCampaignSite(site.siteUrl, MAX_PAGES);
@@ -445,13 +487,19 @@ async function processCandidate(
     throw new Error("Campaign extraction stopped at the configured run token budget");
   }
   const safetyId = `candidate-${createHash("sha256").update(candidate.candidacy_id).digest("hex").slice(0, 24)}`;
-  const extraction = await extractResearch(input, researchPages, safetyId, () => {
+  const extraction = await extractResearch(input, researchPages, safetyId, (provider) => {
     if (budget.calls >= MAX_PROVIDER_CALLS) {
       throw new Error("Campaign extraction stopped at the configured provider-call budget");
     }
     budget.calls += 1;
+    budget.providerCalls[provider] += 1;
   });
   budget.tokens += extraction.inputTokens + extraction.outputTokens;
+  const providerUsage = budget.usage[extraction.provider];
+  providerUsage.inputTokens += extraction.inputTokens;
+  providerUsage.cachedInputTokens += extraction.cachedInputTokens;
+  providerUsage.cacheWriteInputTokens += extraction.cacheWriteInputTokens;
+  providerUsage.outputTokens += extraction.outputTokens;
   if (budget.tokens > MAX_RUN_TOKENS) {
     throw new Error("Campaign extraction exceeded the configured run token budget");
   }
@@ -490,7 +538,7 @@ async function main() {
   }
   if (DRY_RUN) {
     for (const candidate of candidates) {
-      await processCandidate(db, candidate, { calls: 0, tokens: 0 });
+      await processCandidate(db, candidate, emptyRunBudget());
     }
     return;
   }
@@ -499,7 +547,7 @@ async function main() {
     .insert(syncLog)
     .values({ source: "candidate_campaign_sites", entityType: "candidate_research", status: "running" })
     .returning();
-  const budget = { calls: 0, tokens: 0 };
+  const budget = emptyRunBudget();
   let records = 0;
   let successes = 0;
   const failures: string[] = [];
@@ -527,8 +575,17 @@ async function main() {
     })
     .where(eq(syncLog.id, run.id));
   if (failed) throw new Error("Every due campaign-site extraction failed; inspect sync_log");
+  const usageSummary = (["openai", "anthropic"] as const)
+    .filter((provider) => budget.providerCalls[provider] > 0)
+    .map((provider) => {
+      const usage = budget.usage[provider];
+      return `${provider}=${budget.providerCalls[provider]} calls, ${usage.inputTokens} input ` +
+        `(${usage.cachedInputTokens} cache-read, ${usage.cacheWriteInputTokens} cache-write), ${usage.outputTokens} output`;
+    })
+    .join("; ");
   console.log(
-    `Candidate-site ingest complete: ${successes}/${candidates.length} candidates, ${records} review-queued records, ${budget.calls} provider calls, ${budget.tokens} tokens.`
+    `Candidate-site ingest complete: ${successes}/${candidates.length} candidates, ${records} review-queued records, ${budget.calls} provider calls, ${budget.tokens} tokens ` +
+      `(${usageSummary}).`
   );
 }
 

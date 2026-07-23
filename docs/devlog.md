@@ -4,6 +4,26 @@ A chronological record of development sessions and significant changes.
 
 ---
 
+## 2026-07-22 — Florida election authority and challenger evidence
+
+**Session Summary:**
+- Added Florida as the third state-authority adapter. It ingests the Division of Elections' official 2026 federal candidate export, covers all 28 U.S. House districts plus the Class 3 U.S. Senate special election and retains the source file as a private content-addressed snapshot.
+- Activated 283 candidacies across 29 contests: 196 active and 87 inactive. The live load stored 283 append-only status events, 283 state candidate identifiers and 187 ballot lines; a second load confirmed that every count remained idempotent.
+- Completed a state-scoped first campaign-evidence pass for every active Florida candidacy with an FEC link. The 19 sequential GitHub Actions batches attempted all 146 candidates without overlapping work.
+
+**Notable Changes:**
+- Built a fail-closed, exact-header TSV parser for the Candidate Tracking System. Structured records keep only the public candidate account ID, name, party, office, district and status; they exclude voter ID, address, phone, email, treasurer and contact fields. The complete source export remains private for auditability.
+- Mapped qualified major-party candidates to the August 18 primary, minor-party and no-party candidates to the November 3 general, unopposed candidates to the general, and write-ins to active candidacies without printed ballot lines. Withdrawn and did-not-qualify records remain visible as inactive history.
+- Modeled the statewide race as `2026-FL-S3-special`, with Florida Statute 100.161 as the official special-election authority. Coverage remains `verification_pending` because the state describes its Candidate Tracking System as an unofficial reference.
+- Added allowlisted URL-encoded POST support to the bounded source fetcher. Redirects are rejected on POST so request bodies cannot be replayed to another origin; the existing HTTPS, DNS, type, size and timeout controls remain in force.
+- Added `--state` / `CANDIDATE_EXTRACT_STATE` and a manual workflow state input so large-state research batches cannot be displaced by retries from another state.
+- The research pass verified 109 FEC committee-reported sites and crawled 79 successfully. It stored 234 private page snapshots and queued 438 campaign claims plus 36 prior-service records through OpenAI GPT-5.6 Terra. All 474 records remain `needs_review`; none are published or available to Ask.
+- Thirty-seven candidates had no current principal or authorized committee site. Current site failures total 67: those 37 no-site blocks, 12 robots exclusions, 3 redirect/host allowlist rejections, one HTTP 403 and 14 other bounded crawl errors. Another 50 active Florida candidates have no conservative FEC staging link and were not site-resolved by guesswork.
+- The 19 runs made 84 provider calls and recorded 295,209 combined input/output tokens. Future campaign runs now report calls, input, cached input, cache-write and output usage separately for each provider so official prices can be applied exactly instead of estimating from a combined total.
+- Verification before the evidence batches: 36/36 tests, TypeScript, ESLint, `git diff --check`, the Next.js 16.2.11 production build and both production dependency audits pass. The adapter and state-scoping commits are pushed as `f4f9619` and `cc58b82`.
+
+---
+
 ## 2026-07-22 — Delaware election adapter and challenger evidence
 
 **Session Summary:**
