@@ -25,7 +25,7 @@ import { memberSeatLabel } from "./elections/member-seat";
 
 export type AskProvider = "anthropic" | "openai";
 
-export const ASK_PROMPT_VERSION = "midterms-grounded-v4";
+export const ASK_PROMPT_VERSION = "midterms-grounded-v5";
 export const DEFAULT_ANTHROPIC_MODEL =
   process.env.ASK_ANTHROPIC_MODEL || "claude-sonnet-5";
 export const DEFAULT_OPENAI_MODEL =
