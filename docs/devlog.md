@@ -30,6 +30,7 @@ A chronological record of development sessions and significant changes.
 
 **Security and operations:**
 - Verified the public shell sends an enforced nonce CSP with `strict-dynamic`, `frame-ancestors 'none'`, and `object-src 'none'`, plus `X-Frame-Options: DENY`, `nosniff`, referrer and permissions policies, and no-store on rendered data pages. Ask validates and bounds runtime input, rejects cross-site/non-JSON requests, hashes IPs, enforces per-IP and provider budgets, and keeps member/state scope server-side.
+- The deployment audit found that Vercel had both provider keys but no dedicated `ASK_RATE_LIMIT_SECRET`, so HMAC identifiers were falling back to a provider key. Added one generated 256-bit secret to Development, Preview and Production configuration for key separation and stable rotation; no production code deployment was made.
 - Campaign crawling remains HTTPS-only, host-allowlisted, redirect-limited, robots-aware, DNS-checked against private/link-local/metadata ranges, content-type constrained, byte-capped, and timeout-bounded. No raw HTML, dynamic-code, broad CORS, Web Storage token, or `postMessage` sink was found in the targeted security scan.
 - Updated all four ingestion workflows to official `actions/checkout@v6`, `actions/setup-node@v6`, and Node 24 after the prior retry exposed Node 20 action-runtime deprecation. Documented both new output-token settings in `.env.example`.
 
