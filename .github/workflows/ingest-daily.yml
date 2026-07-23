@@ -22,6 +22,7 @@ on:
           - FL
           - RI
           - NE
+          - MI
           - all
         default: due
 

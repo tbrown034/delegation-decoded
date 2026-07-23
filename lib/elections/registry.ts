@@ -148,6 +148,23 @@ stateSeeds[nebraskaIndex] = {
     "Mid-cycle adapter: the current candidate workbook is reconciled against the June 8 certified primary canvass. Machine-readable state result pages supply totals; a separate official certification record proves the petition candidate's general-ballot qualification.",
 };
 
+const michiganIndex = stateSeeds.findIndex((source) => source.stateCode === "MI");
+stateSeeds[michiganIndex] = {
+  sourceId: "state-mi",
+  stateCode: "MI",
+  authorityName: "Michigan Department of State, Bureau of Elections",
+  sourceKind: "state_election_authority",
+  sourceUrl: "https://www.michigan.gov/sos/elections",
+  adapterKey: "michigan-2026",
+  coverageStatus: "verification_pending",
+  isAuthoritative: true,
+  certificationWindowDays: 14,
+  nextExpectedEvent: "2026-08-04",
+  nextCheckAt: new Date("2026-07-22T00:00:00Z"),
+  notes:
+    "Current-cycle adapter: the official August primary report establishes ballot-qualified, withdrawn and disqualified federal candidates. The November report is retained as provisional filing evidence only because the state labels it unofficial.",
+};
+
 export const ELECTION_SOURCE_REGISTRY: ElectionSourceSeed[] = [
   {
     sourceId: "fec-form2",
@@ -211,6 +228,14 @@ export const NEBRASKA_2026_SOURCES = {
     "https://electionresults.nebraska.gov/resultsSW.aspx?type=CG&map=DIST",
   petitionCertification:
     "https://sos.nebraska.gov/secretary-state-certifies-dan-osborns-us-senate-candidate-petition",
+} as const;
+
+export const MICHIGAN_2026_SOURCES = {
+  electionLanding: "https://www.michigan.gov/sos/elections",
+  primaryCandidateReport:
+    "https://mi-boe.entellitrak.com/etk-mi-boe-prod/page.request.do?electionType=PRI&electionYear=2026&page=page.miboePublicReport",
+  generalCandidateReport:
+    "https://mi-boe.entellitrak.com/etk-mi-boe-prod/page.request.do?electionType=GEN&electionYear=2026&page=page.miboePublicReport",
 } as const;
 
 export const ELECTION_CALENDAR_AS_OF = "2026-07-22";

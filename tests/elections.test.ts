@@ -24,6 +24,7 @@ import {
   parseNebraskaCurrentCandidateRows,
   parseNebraskaPrimaryResultPages,
 } from "../scripts/lib/nebraska-election-parser";
+import { parseMichiganCandidateReportHtml } from "../scripts/lib/michigan-election-parser";
 import { parseXlsxRows } from "../scripts/lib/xlsx-rows";
 import { isBlockedAddress } from "../scripts/lib/safe-fetch";
 import {
@@ -526,6 +527,110 @@ test("Nebraska federal records fail closed on an unknown current-list party", ()
         },
       ]),
     /failed validation/
+  );
+});
+
+function michiganCandidateRow({
+  status = "",
+  party,
+  name,
+  method,
+}: {
+  status?: string;
+  party: string;
+  name: string;
+  method: string;
+}) {
+  return `<tr>
+    <td></td><td><span>${status || "&nbsp;"}</span></td><td></td>
+    <td><span>${party}</span></td><td><span>${name}</span></td>
+    <td><span>04/21/2026</span></td><td><span>${method}</span></td><td></td>
+  </tr>`;
+}
+
+function michiganReportFixture(
+  stage: "primary" | "general",
+  firstStatus = ""
+) {
+  const isPrimary = stage === "primary";
+  const sections = isPrimary
+    ? [
+        { title: "U.S. Senate 6 Year Term (1) Position", name: "Public, Jane" },
+        ...Array.from({ length: 13 }, (_, index) => ({
+          title: `${index + 1}${["st", "nd", "rd"][index] ?? "th"} District Representative in Congress 2 Year Term (1) Position${index === 10 ? " Files In OAKLAND County" : ""}`,
+          name: `Candidate-${index + 1}, Alex`,
+        })),
+      ]
+    : [
+        { title: "U.S. Senate 6 Year Term (1) Position", name: "Public, Jane" },
+        ...Array.from({ length: 4 }, (_, index) => ({
+          title: `${index + 1}${["st", "nd", "rd"][index] ?? "th"} District Representative in Congress 2 Year Term (1) Position`,
+          name: `Candidate-${index + 1}, Alex`,
+        })),
+      ];
+  return `<html><body>
+    <p>Michigan Department of State</p>
+    <p>${isPrimary ? "Official" : "Unofficial"} Candidate Listing</p>
+    <p>All State and Judicial Offices</p>
+    <p>${isPrimary ? "Primary" : "General"} Election</p>
+    <p>Tuesday, ${isPrimary ? "August 4" : "November 3"}, 2026</p>
+    <p>Status Party / Incumbent Candidate Name Filed On Filing Method</p>
+    <table>${sections
+      .map(
+        (section, index) => `<tr><td><a id="section-${index}"></a><span>${section.title}</span></td></tr>
+          ${michiganCandidateRow({
+            status: index === 0 ? firstStatus : "",
+            party: isPrimary ? "Democratic Party" : index === 0 ? "Green Party" : "No Party Affiliation",
+            name: section.name,
+            method: isPrimary ? "Petitions" : index === 0 ? "Convention" : "Petitions",
+          })}`
+      )
+      .join("")}</table>
+  </body></html>`;
+}
+
+test("Michigan official primary report keeps federal ballot fields only", () => {
+  const parsed = parseMichiganCandidateReportHtml(
+    michiganReportFixture("primary"),
+    "primary"
+  );
+  assert.equal(parsed.length, 14);
+  assert.deepEqual(parsed[0], {
+    name: "Jane Public",
+    normalizedName: "jane public",
+    party: "Democratic",
+    office: "S",
+    district: null,
+    stage: "primary",
+    status: "qualified",
+    filedOn: "2026-04-21",
+    filingMethod: "Petitions",
+  });
+  assert.equal(parsed.at(-1)?.district, 13);
+  assert.equal("address" in parsed[0], false);
+  assert.equal("phone" in parsed[0], false);
+  assert.equal("email" in parsed[0], false);
+});
+
+test("Michigan general report preserves its unofficial qualification boundary", () => {
+  const parsed = parseMichiganCandidateReportHtml(
+    michiganReportFixture("general"),
+    "general"
+  );
+  assert.equal(parsed.length, 5);
+  assert.equal(parsed[0].party, "Green");
+  assert.equal(parsed[0].status, "filed_unofficial");
+  assert.equal(parsed[0].filingMethod, "Convention");
+});
+
+test("Michigan federal records fail closed on an unknown candidate status", () => {
+  assert.throws(
+    () =>
+      parseMichiganCandidateReportHtml(
+        michiganReportFixture("primary", "PENDING"),
+        "primary"
+      ),
+    /status changed/
   );
 });
 

@@ -22,6 +22,7 @@ import {
   ELECTION_SOURCE_REGISTRY,
   FLORIDA_2026_SOURCES,
   INDIANA_2026_SOURCES,
+  MICHIGAN_2026_SOURCES,
   NEBRASKA_2026_SOURCES,
   RHODE_ISLAND_2026_SOURCES,
 } from "../../lib/elections/registry";
@@ -62,6 +63,10 @@ import {
   type NebraskaPrimaryCandidate,
   type NebraskaParty,
 } from "../lib/nebraska-election-parser";
+import {
+  parseMichiganCandidateReportHtml,
+  type MichiganCandidate,
+} from "../lib/michigan-election-parser";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const BACKFILL = process.argv.includes("--backfill");
@@ -72,6 +77,7 @@ const DELAWARE_SOURCE_ID = "state-de";
 const FLORIDA_SOURCE_ID = "state-fl";
 const RHODE_ISLAND_SOURCE_ID = "state-ri";
 const NEBRASKA_SOURCE_ID = "state-ne";
+const MICHIGAN_SOURCE_ID = "state-mi";
 
 type Database = ReturnType<typeof drizzle>;
 
@@ -312,6 +318,34 @@ async function fetchNebraskaSources() {
   };
 }
 
+async function fetchMichiganSources() {
+  const allowedHosts = new Set(["mi-boe.entellitrak.com"]);
+  const [primary, general] = await Promise.all([
+    safeFetchBuffer(MICHIGAN_2026_SOURCES.primaryCandidateReport, {
+      allowedHosts,
+      allowedContentTypes: ["text/html"],
+      maxBytes: 2_000_000,
+    }),
+    safeFetchBuffer(MICHIGAN_2026_SOURCES.generalCandidateReport, {
+      allowedHosts,
+      allowedContentTypes: ["text/html"],
+      maxBytes: 2_000_000,
+    }),
+  ]);
+  return {
+    primary,
+    general,
+    primaryCandidates: parseMichiganCandidateReportHtml(
+      primary.body.toString("utf8"),
+      "primary"
+    ),
+    generalCandidates: parseMichiganCandidateReportHtml(
+      general.body.toString("utf8"),
+      "general"
+    ),
+  };
+}
+
 function candidateKey(candidate: { normalizedName: string; party: string }) {
   return `${candidate.normalizedName}|${partyCode(candidate.party)}`;
 }
@@ -449,6 +483,38 @@ async function fecMatchesForNebraska(db: Database) {
     .where(
       and(
         eq(electionCandidates.stateCode, "NE"),
+        eq(electionCandidates.electionYear, 2026)
+      )
+    );
+
+  return (office: "H" | "S", district: number | null, ballotName: string) => {
+    const raceRows = rows.filter(
+      (row) => row.office === office && (office === "S" || row.district === district)
+    );
+    const exact = raceRows.filter(
+      (row) => normalizeCandidateName(row.name) === normalizeCandidateName(ballotName)
+    );
+    if (exact.length === 1) return exact[0].candidateId;
+    if (exact.length > 1) return null;
+    const likely = raceRows.filter((row) =>
+      candidateNamesLikelySame(row.name, ballotName)
+    );
+    return likely.length === 1 ? likely[0].candidateId : null;
+  };
+}
+
+async function fecMatchesForMichigan(db: Database) {
+  const rows = await db
+    .select({
+      candidateId: electionCandidates.candidateId,
+      name: electionCandidates.name,
+      office: electionCandidates.office,
+      district: electionCandidates.district,
+    })
+    .from(electionCandidates)
+    .where(
+      and(
+        eq(electionCandidates.stateCode, "MI"),
         eq(electionCandidates.electionYear, 2026)
       )
     );
@@ -2058,9 +2124,328 @@ async function ingestNebraska(db: Database) {
   return fetched.currentCandidates.length + fetched.primaryCandidates.length;
 }
 
+function michiganCandidateStatus(candidate: MichiganCandidate) {
+  if (candidate.status === "qualified") return "state_primary_ballot";
+  if (candidate.status === "filed_unofficial") {
+    return "state_general_filing_unofficial";
+  }
+  return candidate.status;
+}
+
+async function ingestMichigan(db: Database) {
+  const fetched = await fetchMichiganSources();
+  const activePrimary = fetched.primaryCandidates.filter(
+    (candidate) => candidate.status === "qualified"
+  ).length;
+  const activeGeneralFilings = fetched.generalCandidates.filter(
+    (candidate) => candidate.status === "filed_unofficial"
+  ).length;
+  console.log(
+    `Michigan: ${fetched.primaryCandidates.length} official primary records (${activePrimary} active ballot candidates); ${fetched.generalCandidates.length} unofficial general filing records (${activeGeneralFilings} active provisional filings).`
+  );
+
+  if (DRY_RUN) {
+    return fetched.primaryCandidates.length + fetched.generalCandidates.length;
+  }
+
+  const [primarySnapshot, generalSnapshot, fecMatches] = await Promise.all([
+    storeElectionSnapshot(MICHIGAN_SOURCE_ID, fetched.primary),
+    storeElectionSnapshot(MICHIGAN_SOURCE_ID, fetched.general),
+    fecMatchesForMichigan(db),
+  ]);
+  const observedAt = new Date();
+  const tx = db;
+
+  for (const snapshot of [primarySnapshot, generalSnapshot]) {
+    await tx
+      .insert(electionSourceSnapshots)
+      .values({
+        snapshotSha256: snapshot.sha256,
+        sourceId: MICHIGAN_SOURCE_ID,
+        originalUrl: snapshot.originalUrl,
+        blobUrl: snapshot.blobUrl,
+        contentType: snapshot.contentType,
+        contentLength: snapshot.contentLength,
+        etag: snapshot.etag,
+        lastModified: snapshot.lastModified,
+      })
+      .onConflictDoNothing();
+  }
+
+  const contests = [
+    {
+      contestId: senateContestId("MI", 2),
+      office: "S" as const,
+      district: null,
+      senateClass: 2 as const,
+      title: "Michigan U.S. Senate Class 2",
+    },
+    ...Array.from({ length: 13 }, (_, index) => ({
+      contestId: houseContestId("MI", index + 1),
+      office: "H" as const,
+      district: index + 1,
+      senateClass: null,
+      title: `Michigan U.S. House District ${index + 1}`,
+    })),
+  ];
+
+  for (const contest of contests) {
+    await tx
+      .insert(electionContests)
+      .values({
+        contestId: contest.contestId,
+        electionCycle: 2026,
+        stateCode: "MI",
+        office: contest.office,
+        district: contest.district,
+        senateClass: contest.senateClass,
+        title: contest.title,
+        currentStage: "primary",
+        coverageStatus: "verification_pending",
+        certifiedThrough: null,
+        nextExpectedEvent: "2026-08-04",
+        primarySourceId: MICHIGAN_SOURCE_ID,
+        updatedAt: observedAt,
+      })
+      .onConflictDoUpdate({
+        target: electionContests.contestId,
+        set: {
+          title: contest.title,
+          currentStage: "primary",
+          coverageStatus: "verification_pending",
+          certifiedThrough: null,
+          nextExpectedEvent: "2026-08-04",
+          primarySourceId: MICHIGAN_SOURCE_ID,
+          updatedAt: observedAt,
+        },
+      });
+
+    for (const party of ["Democratic", "Republican"] as const) {
+      const stageId = `${contest.contestId}-primary-${party === "Democratic" ? "D" : "R"}`;
+      await tx
+        .insert(electionStages)
+        .values({
+          stageId,
+          contestId: contest.contestId,
+          stageKind: "primary",
+          party,
+          electionDate: "2026-08-04",
+          sequenceNumber: party === "Democratic" ? 1 : 2,
+          resultStatus: "not_started",
+          sourceId: MICHIGAN_SOURCE_ID,
+          updatedAt: observedAt,
+        })
+        .onConflictDoUpdate({
+          target: electionStages.stageId,
+          set: {
+            resultStatus: "not_started",
+            sourceId: MICHIGAN_SOURCE_ID,
+            updatedAt: observedAt,
+          },
+        });
+    }
+
+    const generalStageId = `${contest.contestId}-general`;
+    await tx
+      .insert(electionStages)
+      .values({
+        stageId: generalStageId,
+        contestId: contest.contestId,
+        stageKind: "general",
+        electionDate: "2026-11-03",
+        sequenceNumber: 3,
+        resultStatus: "not_started",
+        sourceId: MICHIGAN_SOURCE_ID,
+        updatedAt: observedAt,
+      })
+      .onConflictDoUpdate({
+        target: electionStages.stageId,
+        set: { sourceId: MICHIGAN_SOURCE_ID, updatedAt: observedAt },
+      });
+
+    const inContest = (candidate: MichiganCandidate) =>
+      candidate.office === contest.office &&
+      (candidate.office === "S" || candidate.district === contest.district);
+    const combined = new Map<
+      string,
+      { primary: MichiganCandidate | null; general: MichiganCandidate | null }
+    >();
+    for (const candidate of fetched.primaryCandidates.filter(inContest)) {
+      const key = `${candidate.normalizedName}|${candidate.party}`;
+      combined.set(key, { primary: candidate, general: null });
+    }
+    for (const candidate of fetched.generalCandidates.filter(inContest)) {
+      const key = `${candidate.normalizedName}|${candidate.party}`;
+      combined.set(key, {
+        primary: combined.get(key)?.primary ?? null,
+        general: candidate,
+      });
+    }
+
+    for (const pair of combined.values()) {
+      const candidate = pair.general ?? pair.primary;
+      if (!candidate) continue;
+      const fecCandidateId = fecMatches(
+        candidate.office,
+        candidate.district,
+        candidate.name
+      );
+      const { personId, candidacyId } = candidateIdentity(
+        contest.contestId,
+        candidate.normalizedName,
+        partyCode(candidate.party),
+        fecCandidateId
+      );
+      const currentRecord = pair.general ?? pair.primary;
+      if (!currentRecord) continue;
+      const currentStatus = michiganCandidateStatus(currentRecord);
+      const isActive =
+        currentRecord.status === "qualified" ||
+        currentRecord.status === "filed_unofficial";
+
+      await tx
+        .insert(candidatePeople)
+        .values({
+          personId,
+          displayName: candidate.name,
+          normalizedName: candidate.normalizedName,
+          updatedAt: observedAt,
+        })
+        .onConflictDoUpdate({
+          target: candidatePeople.personId,
+          set: {
+            displayName: candidate.name,
+            normalizedName: candidate.normalizedName,
+            updatedAt: observedAt,
+          },
+        });
+      await tx
+        .insert(candidacies)
+        .values({
+          candidacyId,
+          contestId: contest.contestId,
+          personId,
+          party: candidate.party,
+          currentStatus,
+          isActive,
+          fecCandidateId,
+          verifiedSourceId: MICHIGAN_SOURCE_ID,
+          verifiedAt: observedAt,
+          updatedAt: observedAt,
+        })
+        .onConflictDoUpdate({
+          target: candidacies.candidacyId,
+          set: {
+            party: candidate.party,
+            currentStatus,
+            isActive,
+            fecCandidateId,
+            verifiedSourceId: MICHIGAN_SOURCE_ID,
+            verifiedAt: observedAt,
+            updatedAt: observedAt,
+          },
+        });
+
+      if (pair.primary) {
+        const primaryStageId = `${contest.contestId}-primary-${pair.primary.party === "Democratic" ? "D" : "R"}`;
+        const status = michiganCandidateStatus(pair.primary);
+        if (pair.primary.status === "qualified") {
+          const ballotLineId = stableElectionId(
+            "ballot",
+            candidacyId,
+            primaryStageId,
+            pair.primary.party
+          );
+          await tx
+            .insert(candidacyBallotLines)
+            .values({
+              ballotLineId,
+              candidacyId,
+              stageId: primaryStageId,
+              partyLabel: pair.primary.party,
+              sourceId: MICHIGAN_SOURCE_ID,
+            })
+            .onConflictDoUpdate({
+              target: candidacyBallotLines.ballotLineId,
+              set: {
+                partyLabel: pair.primary.party,
+                sourceId: MICHIGAN_SOURCE_ID,
+              },
+            });
+        }
+        await tx
+          .insert(candidateStatusEvents)
+          .values({
+            eventId: stableElectionId(
+              "event",
+              candidacyId,
+              primaryStageId,
+              status
+            ),
+            candidacyId,
+            electionStageId: primaryStageId,
+            status,
+            effectiveDate: null,
+            observedAt,
+            sourceId: MICHIGAN_SOURCE_ID,
+            snapshotSha256: primarySnapshot.sha256,
+            details: {
+              filed_on: pair.primary.filedOn,
+              filing_method: pair.primary.filingMethod,
+              source_report: "Official Candidate Listing",
+            },
+          })
+          .onConflictDoNothing();
+      }
+
+      if (pair.general) {
+        const status = michiganCandidateStatus(pair.general);
+        await tx
+          .insert(candidateStatusEvents)
+          .values({
+            eventId: stableElectionId(
+              "event",
+              candidacyId,
+              generalStageId,
+              status
+            ),
+            candidacyId,
+            electionStageId: generalStageId,
+            status,
+            effectiveDate: null,
+            observedAt,
+            sourceId: MICHIGAN_SOURCE_ID,
+            snapshotSha256: generalSnapshot.sha256,
+            details: {
+              filed_on: pair.general.filedOn,
+              filing_method: pair.general.filingMethod,
+              source_report: "Unofficial Candidate Listing",
+              ballot_access_verified: false,
+            },
+          })
+          .onConflictDoNothing();
+      }
+    }
+  }
+
+  await tx
+    .update(electionSources)
+    .set({
+      coverageStatus: "verification_pending",
+      lastCheckedAt: observedAt,
+      lastSuccessAt: observedAt,
+      nextExpectedEvent: "2026-08-04",
+      nextCheckAt: new Date(observedAt.getTime() + 24 * 60 * 60 * 1000),
+      updatedAt: observedAt,
+    })
+    .where(eq(electionSources.sourceId, MICHIGAN_SOURCE_ID));
+
+  return fetched.primaryCandidates.length + fetched.generalCandidates.length;
+}
+
 async function selectedStates(db: Database) {
   if (REQUESTED_STATE) return [REQUESTED_STATE];
-  if (BACKFILL) return ["IN", "DE", "FL", "RI", "NE"];
+  if (BACKFILL) return ["IN", "DE", "FL", "RI", "NE", "MI"];
   const due = await db
     .select({ stateCode: electionSources.stateCode })
     .from(electionSources)
@@ -2073,6 +2458,7 @@ async function selectedStates(db: Database) {
           "florida-2026",
           "rhode-island-2026",
           "nebraska-2026",
+          "michigan-2026",
         ])
       )
     );
@@ -2080,7 +2466,10 @@ async function selectedStates(db: Database) {
 }
 
 async function main() {
-  if (REQUESTED_STATE && !["IN", "DE", "FL", "RI", "NE"].includes(REQUESTED_STATE)) {
+  if (
+    REQUESTED_STATE &&
+    !["IN", "DE", "FL", "RI", "NE", "MI"].includes(REQUESTED_STATE)
+  ) {
     throw new Error(`No verified adapter is available for ${REQUESTED_STATE}`);
   }
 
@@ -2088,8 +2477,8 @@ async function main() {
     const states = REQUESTED_STATE
       ? [REQUESTED_STATE]
       : BACKFILL
-        ? ["IN", "DE", "FL", "RI", "NE"]
-        : ["IN", "DE", "FL", "RI", "NE"];
+        ? ["IN", "DE", "FL", "RI", "NE", "MI"]
+        : ["IN", "DE", "FL", "RI", "NE", "MI"];
     let count = 0;
     for (const state of states) {
       if (state === "IN") count += await ingestIndiana({} as Database);
@@ -2097,6 +2486,7 @@ async function main() {
       if (state === "FL") count += await ingestFlorida({} as Database);
       if (state === "RI") count += await ingestRhodeIsland({} as Database);
       if (state === "NE") count += await ingestNebraska({} as Database);
+      if (state === "MI") count += await ingestMichigan({} as Database);
     }
     console.log(
       `Dry run complete. Parsed ${count} records across ${states.join(", ")}; no database or Blob writes.`
@@ -2128,6 +2518,7 @@ async function main() {
       if (state === "FL") records += await ingestFlorida(db);
       if (state === "RI") records += await ingestRhodeIsland(db);
       if (state === "NE") records += await ingestNebraska(db);
+      if (state === "MI") records += await ingestMichigan(db);
     }
     await db
       .update(syncLog)
