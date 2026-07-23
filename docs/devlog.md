@@ -4,6 +4,45 @@ A chronological record of development sessions and significant changes.
 
 ---
 
+## 2026-07-22/23 — Washington verified ballot, campaign evidence, and scoped Ask QA
+
+**Session summary:**
+- Added Washington as the seventh state election adapter. The deterministic VoteWA parser validates the page identity, 14-column schema, all 10 congressional districts, known status pairs, filing dates, ballot order, and current party-preference vocabulary. It rejects unknown source shapes or values instead of partially ingesting them.
+- Activated 10 House contests and 71 candidacies from the official 2026 primary list: 69 active `state_primary_ballot` records and two withdrawn records. The state source produced 20 stages, 69 ballot lines, 71 append-only status events, two private source snapshots, and no duplicate person/contest groups.
+- Massachusetts was investigated but not activated. Its official candidate pages return an Imperva self-redirect to unattended requests, so no parser was shipped without a durable, independently fetchable source.
+
+**Campaign-site evidence:**
+- Ran five state-scoped campaign-research batches from commit `8b19d8d`: [29972486947](https://github.com/tbrown034/delegation-decoded/actions/runs/29972486947), [29972572748](https://github.com/tbrown034/delegation-decoded/actions/runs/29972572748), [29972659508](https://github.com/tbrown034/delegation-decoded/actions/runs/29972659508), [29972728175](https://github.com/tbrown034/delegation-decoded/actions/runs/29972728175), and [29972831336](https://github.com/tbrown034/delegation-decoded/actions/runs/29972831336). All passed their health gates.
+- Of 69 active candidates, 33 have a conservative FEC link and were attempted. Thirty committee-reported sites verified. The pipeline currently has 89 private page snapshots, 167 campaign claims, and 14 prior-service records. Every extracted record remains `needs_review`; zero are published or supplied to Ask.
+- Thirty-six active candidates without a conservative FEC match were deliberately not guessed. Current campaign-site failures fell from seven to six after the targeted John Braun retry. Three have no committee-reported website; the other failures are an HTTP 403, a cross-domain redirect the allowlist correctly blocks, and an unverifiable robots policy.
+- The initial Kyle Usrey diagnosis was corrected after direct header inspection: `usrey-for-us.org` redirects to the different registrable domain `usreyforus.com`, not a bare/`www` alias. The host boundary remains fail-closed.
+
+**Structured extraction and measured cost:**
+- Commit `c368283` raised the bounded structured-output ceilings to 4,000 tokens for campaign extraction and 3,000 for member biographies, applied the same limit to both providers, and now reports OpenAI `incomplete_details` instead of a generic failure. Existing input, call-count, and run-token budgets remain enforced.
+- Targeted retry [29973085285](https://github.com/tbrown034/delegation-decoded/actions/runs/29973085285) completed John Braun through `openai/gpt-5.6-terra`: three pages, one provider call, 2,810 input tokens and 1,137 output tokens. It found zero quote-backed review records and cleared the crawl error without publishing filler.
+- Across the six Washington runs, logged extraction use was 28 OpenAI calls, 88,676 input tokens (88,595 cache-write and 81 fresh), and 26,934 output tokens. One Anthropic fallback attempt logged zero usage. At the standard rates recorded for this run, measured campaign extraction cost was about **$0.68**. This excludes the separate Ask QA calls.
+
+**Ask and UI correctness:**
+- State and member Ask both retrieve the exact Washington seat field with nine citations. The member-scoped test initially shortened preferences to party affiliations; commits `7391a10` and `a5edd5e` changed the retrieval payload to `party_preference`, added top-two interpretation metadata and grounding, and bumped the prompt/cache namespace so stale wording cannot survive.
+- The rebuilt member test now says “Democratic preference,” “Republican preference,” and so on, explains that these are not party nominations or verified affiliations, stays locked to WA-03, uses `gpt-5.6-terra`, and reports `fallbackUsed: false`.
+- `/race/2026-WA-H3` now carries the same top-two qualification beside the field and appends “preference” to each Washington label. `/state/WA`, `/race/2026-WA-H3`, `/races?state=WA`, `/member/G000600`, `/health`, and `/api/data/races.csv` all returned 200 from the production server. The CSV contains all 71 Washington records and nine WA-03 rows.
+- The in-app browser was unavailable, so this session does not claim visual browser QA. Verification used production builds, rendered HTTP assertions, visible-text extraction, endpoint payloads, and response headers.
+
+**Security and operations:**
+- Verified the public shell sends an enforced nonce CSP with `strict-dynamic`, `frame-ancestors 'none'`, and `object-src 'none'`, plus `X-Frame-Options: DENY`, `nosniff`, referrer and permissions policies, and no-store on rendered data pages. Ask validates and bounds runtime input, rejects cross-site/non-JSON requests, hashes IPs, enforces per-IP and provider budgets, and keeps member/state scope server-side.
+- Campaign crawling remains HTTPS-only, host-allowlisted, redirect-limited, robots-aware, DNS-checked against private/link-local/metadata ranges, content-type constrained, byte-capped, and timeout-bounded. No raw HTML, dynamic-code, broad CORS, Web Storage token, or `postMessage` sink was found in the targeted security scan.
+- Updated all four ingestion workflows to official `actions/checkout@v6`, `actions/setup-node@v6`, and Node 24 after the prior retry exposed Node 20 action-runtime deprecation. Documented both new output-token settings in `.env.example`.
+
+**Release gates:**
+- `pnpm test`: 49/49.
+- `pnpm exec tsc --noEmit`: clean.
+- `pnpm lint`: clean.
+- `pnpm build`: clean on Next.js 16.2.11 and Node 24.
+- `pnpm audit --prod`: no known vulnerabilities. `npm audit --omit=dev`: zero vulnerabilities.
+- `scripts/health-check.ts`: warning-only, no critical failures. Existing warnings remain visible for six Washington campaign sites, broader campaign/member biography gaps, Indiana certification expectation windows, the paused House PTR key, and two historical unrecovered sync failures.
+
+---
+
 ## 2026-07-22 — Michigan primary ballot and challenger evidence
 
 **Session Summary:**
