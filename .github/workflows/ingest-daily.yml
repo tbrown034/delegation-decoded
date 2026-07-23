@@ -23,6 +23,7 @@ on:
           - RI
           - NE
           - MI
+          - WA
           - all
         default: due
 

@@ -25,6 +25,7 @@ import {
   parseNebraskaPrimaryResultPages,
 } from "../scripts/lib/nebraska-election-parser";
 import { parseMichiganCandidateReportHtml } from "../scripts/lib/michigan-election-parser";
+import { parseWashingtonPrimaryCandidateHtml } from "../scripts/lib/washington-election-parser";
 import { parseXlsxRows } from "../scripts/lib/xlsx-rows";
 import { isBlockedAddress } from "../scripts/lib/safe-fetch";
 import { stateAuthorityCoverageNote } from "../lib/elections/types";
@@ -630,6 +631,78 @@ test("Michigan federal records fail closed on an unknown candidate status", () =
       parseMichiganCandidateReportHtml(
         michiganReportFixture("primary", "PENDING"),
         "primary"
+      ),
+    /status changed/
+  );
+});
+
+const WASHINGTON_HEADERS = [
+  "District Type",
+  "District",
+  "Race",
+  "Term Type",
+  "Term Length",
+  "Name",
+  "Mailing Address",
+  "Email",
+  "Phone",
+  "Filing Date",
+  "Party Preference",
+  "Status",
+  "Election Status",
+  "Ballot Order",
+];
+
+function washingtonCandidateFixture(status = "Active", electionStatus = "In Primary") {
+  const rows = Array.from({ length: 10 }, (_, index) => {
+    const district = index + 1;
+    return `<tr>
+      <td>Congressional</td><td>Congressional District${district === 6 ? " No." : ""} ${district}</td>
+      <td>U.S. Representative</td><td>Regular</td><td>2</td>
+      <td><a title="Candidate ${district}">Candidate ${district}</a></td>
+      <td>Private address</td><td>private@example.test</td><td>555-0100</td>
+      <td>5/${district}/2026 8:39:44 AM</td>
+      <td>${district === 3 ? "CASCADE" : "DEMOCRATIC"}</td>
+      <td>${district === 1 ? status : "Active"}</td>
+      <td>${district === 1 ? electionStatus : "In Primary"}</td><td>1</td>
+    </tr>`;
+  }).join("");
+  return `<html><head><title>PRIMARY 2026 Candidate List</title></head><body>
+    <p>PRIMARY 2026</p><p>PRIMARY 2026 (08/04/2026) (Primary)</p>
+    <p>The election status column displays whether a candidate appears on the Primary ballot.</p>
+    <table id="ctl00_ContentPlaceHolder1_grdCandidates_ctl00">
+      <tr>${WASHINGTON_HEADERS.map((header) => `<th>${header}</th>`).join("")}</tr>
+      ${rows}
+    </table>
+  </body></html>`;
+}
+
+test("Washington official list keeps ballot fields and all federal districts", () => {
+  const parsed = parseWashingtonPrimaryCandidateHtml(
+    washingtonCandidateFixture()
+  );
+  assert.equal(parsed.length, 10);
+  assert.deepEqual(parsed[0], {
+    name: "Candidate 1",
+    normalizedName: "candidate 1",
+    district: 1,
+    partyPreference: "Democratic",
+    status: "qualified",
+    filedOn: "2026-05-01",
+    ballotOrder: 1,
+  });
+  assert.equal(parsed[2].partyPreference, "Cascade");
+  assert.equal(parsed.at(-1)?.district, 10);
+  assert.equal("address" in parsed[0], false);
+  assert.equal("email" in parsed[0], false);
+  assert.equal("phone" in parsed[0], false);
+});
+
+test("Washington federal records fail closed on an unknown election status", () => {
+  assert.throws(
+    () =>
+      parseWashingtonPrimaryCandidateHtml(
+        washingtonCandidateFixture("Active", "Pending")
       ),
     /status changed/
   );

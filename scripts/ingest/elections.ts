@@ -25,6 +25,7 @@ import {
   MICHIGAN_2026_SOURCES,
   NEBRASKA_2026_SOURCES,
   RHODE_ISLAND_2026_SOURCES,
+  WASHINGTON_2026_SOURCES,
 } from "../../lib/elections/registry";
 import {
   candidateNamesLikelySame,
@@ -67,6 +68,7 @@ import {
   parseMichiganCandidateReportHtml,
   type MichiganCandidate,
 } from "../lib/michigan-election-parser";
+import { parseWashingtonPrimaryCandidateHtml } from "../lib/washington-election-parser";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const BACKFILL = process.argv.includes("--backfill");
@@ -78,6 +80,7 @@ const FLORIDA_SOURCE_ID = "state-fl";
 const RHODE_ISLAND_SOURCE_ID = "state-ri";
 const NEBRASKA_SOURCE_ID = "state-ne";
 const MICHIGAN_SOURCE_ID = "state-mi";
+const WASHINGTON_SOURCE_ID = "state-wa";
 
 type Database = ReturnType<typeof drizzle>;
 
@@ -346,6 +349,23 @@ async function fetchMichiganSources() {
   };
 }
 
+async function fetchWashingtonSource() {
+  const primary = await safeFetchBuffer(
+    WASHINGTON_2026_SOURCES.primaryCandidateList,
+    {
+      allowedHosts: new Set(["voter.votewa.gov"]),
+      allowedContentTypes: ["text/html"],
+      maxBytes: 5_000_000,
+    }
+  );
+  return {
+    primary,
+    candidates: parseWashingtonPrimaryCandidateHtml(
+      primary.body.toString("utf8")
+    ),
+  };
+}
+
 function candidateKey(candidate: { normalizedName: string; party: string }) {
   return `${candidate.normalizedName}|${partyCode(candidate.party)}`;
 }
@@ -523,6 +543,36 @@ async function fecMatchesForMichigan(db: Database) {
     const raceRows = rows.filter(
       (row) => row.office === office && (office === "S" || row.district === district)
     );
+    const exact = raceRows.filter(
+      (row) => normalizeCandidateName(row.name) === normalizeCandidateName(ballotName)
+    );
+    if (exact.length === 1) return exact[0].candidateId;
+    if (exact.length > 1) return null;
+    const likely = raceRows.filter((row) =>
+      candidateNamesLikelySame(row.name, ballotName)
+    );
+    return likely.length === 1 ? likely[0].candidateId : null;
+  };
+}
+
+async function fecMatchesForWashington(db: Database) {
+  const rows = await db
+    .select({
+      candidateId: electionCandidates.candidateId,
+      name: electionCandidates.name,
+      district: electionCandidates.district,
+    })
+    .from(electionCandidates)
+    .where(
+      and(
+        eq(electionCandidates.stateCode, "WA"),
+        eq(electionCandidates.office, "H"),
+        eq(electionCandidates.electionYear, 2026)
+      )
+    );
+
+  return (district: number, ballotName: string) => {
+    const raceRows = rows.filter((row) => row.district === district);
     const exact = raceRows.filter(
       (row) => normalizeCandidateName(row.name) === normalizeCandidateName(ballotName)
     );
@@ -2443,9 +2493,240 @@ async function ingestMichigan(db: Database) {
   return fetched.primaryCandidates.length + fetched.generalCandidates.length;
 }
 
+async function ingestWashington(db: Database) {
+  const fetched = await fetchWashingtonSource();
+  const activeCandidates = fetched.candidates.filter(
+    (candidate) => candidate.status === "qualified"
+  ).length;
+  console.log(
+    `Washington: ${fetched.candidates.length} official federal primary records (${activeCandidates} active ballot candidates).`
+  );
+
+  if (DRY_RUN) return fetched.candidates.length;
+
+  const [primarySnapshot, fecMatches] = await Promise.all([
+    storeElectionSnapshot(WASHINGTON_SOURCE_ID, fetched.primary),
+    fecMatchesForWashington(db),
+  ]);
+  const observedAt = new Date();
+  const tx = db;
+
+  await tx
+    .insert(electionSourceSnapshots)
+    .values({
+      snapshotSha256: primarySnapshot.sha256,
+      sourceId: WASHINGTON_SOURCE_ID,
+      originalUrl: primarySnapshot.originalUrl,
+      blobUrl: primarySnapshot.blobUrl,
+      contentType: primarySnapshot.contentType,
+      contentLength: primarySnapshot.contentLength,
+      etag: primarySnapshot.etag,
+      lastModified: primarySnapshot.lastModified,
+    })
+    .onConflictDoNothing();
+
+  for (let district = 1; district <= 10; district += 1) {
+    const contestId = houseContestId("WA", district);
+    const title = `Washington U.S. House District ${district}`;
+    await tx
+      .insert(electionContests)
+      .values({
+        contestId,
+        electionCycle: 2026,
+        stateCode: "WA",
+        office: "H",
+        district,
+        senateClass: null,
+        title,
+        currentStage: "primary",
+        coverageStatus: "verified_ballot",
+        certifiedThrough: null,
+        nextExpectedEvent: "2026-08-04",
+        primarySourceId: WASHINGTON_SOURCE_ID,
+        updatedAt: observedAt,
+      })
+      .onConflictDoUpdate({
+        target: electionContests.contestId,
+        set: {
+          title,
+          currentStage: "primary",
+          coverageStatus: "verified_ballot",
+          certifiedThrough: null,
+          nextExpectedEvent: "2026-08-04",
+          primarySourceId: WASHINGTON_SOURCE_ID,
+          updatedAt: observedAt,
+        },
+      });
+
+    const primaryStageId = `${contestId}-primary-top-two`;
+    await tx
+      .insert(electionStages)
+      .values({
+        stageId: primaryStageId,
+        contestId,
+        stageKind: "primary",
+        party: null,
+        electionDate: "2026-08-04",
+        sequenceNumber: 1,
+        resultStatus: "not_started",
+        sourceId: WASHINGTON_SOURCE_ID,
+        updatedAt: observedAt,
+      })
+      .onConflictDoUpdate({
+        target: electionStages.stageId,
+        set: {
+          resultStatus: "not_started",
+          sourceId: WASHINGTON_SOURCE_ID,
+          updatedAt: observedAt,
+        },
+      });
+
+    const generalStageId = `${contestId}-general`;
+    await tx
+      .insert(electionStages)
+      .values({
+        stageId: generalStageId,
+        contestId,
+        stageKind: "general",
+        party: null,
+        electionDate: "2026-11-03",
+        sequenceNumber: 2,
+        resultStatus: "not_started",
+        sourceId: WASHINGTON_SOURCE_ID,
+        updatedAt: observedAt,
+      })
+      .onConflictDoUpdate({
+        target: electionStages.stageId,
+        set: { sourceId: WASHINGTON_SOURCE_ID, updatedAt: observedAt },
+      });
+
+    for (const candidate of fetched.candidates.filter(
+      (record) => record.district === district
+    )) {
+      const fecCandidateId = fecMatches(district, candidate.name);
+      const { personId, candidacyId } = candidateIdentity(
+        contestId,
+        candidate.normalizedName,
+        partyCode(candidate.partyPreference),
+        fecCandidateId
+      );
+      const currentStatus =
+        candidate.status === "qualified" ? "state_primary_ballot" : "withdrawn";
+      const isActive = candidate.status === "qualified";
+
+      await tx
+        .insert(candidatePeople)
+        .values({
+          personId,
+          displayName: candidate.name,
+          normalizedName: candidate.normalizedName,
+          updatedAt: observedAt,
+        })
+        .onConflictDoUpdate({
+          target: candidatePeople.personId,
+          set: {
+            displayName: candidate.name,
+            normalizedName: candidate.normalizedName,
+            updatedAt: observedAt,
+          },
+        });
+      await tx
+        .insert(candidacies)
+        .values({
+          candidacyId,
+          contestId,
+          personId,
+          party: candidate.partyPreference,
+          currentStatus,
+          isActive,
+          fecCandidateId,
+          verifiedSourceId: WASHINGTON_SOURCE_ID,
+          verifiedAt: observedAt,
+          updatedAt: observedAt,
+        })
+        .onConflictDoUpdate({
+          target: candidacies.candidacyId,
+          set: {
+            party: candidate.partyPreference,
+            currentStatus,
+            isActive,
+            fecCandidateId,
+            verifiedSourceId: WASHINGTON_SOURCE_ID,
+            verifiedAt: observedAt,
+            updatedAt: observedAt,
+          },
+        });
+
+      if (candidate.status === "qualified") {
+        const ballotLineId = stableElectionId(
+          "ballot",
+          candidacyId,
+          primaryStageId,
+          candidate.partyPreference
+        );
+        await tx
+          .insert(candidacyBallotLines)
+          .values({
+            ballotLineId,
+            candidacyId,
+            stageId: primaryStageId,
+            partyLabel: candidate.partyPreference,
+            sourceId: WASHINGTON_SOURCE_ID,
+          })
+          .onConflictDoUpdate({
+            target: candidacyBallotLines.ballotLineId,
+            set: {
+              partyLabel: candidate.partyPreference,
+              sourceId: WASHINGTON_SOURCE_ID,
+            },
+          });
+      }
+
+      await tx
+        .insert(candidateStatusEvents)
+        .values({
+          eventId: stableElectionId(
+            "event",
+            candidacyId,
+            primaryStageId,
+            currentStatus
+          ),
+          candidacyId,
+          electionStageId: primaryStageId,
+          status: currentStatus,
+          effectiveDate: candidate.filedOn,
+          observedAt,
+          sourceId: WASHINGTON_SOURCE_ID,
+          snapshotSha256: primarySnapshot.sha256,
+          details: {
+            filed_on: candidate.filedOn,
+            ballot_order: candidate.ballotOrder,
+            party_preference: candidate.partyPreference,
+            primary_type: "top_two",
+          },
+        })
+        .onConflictDoNothing();
+    }
+  }
+
+  await tx
+    .update(electionSources)
+    .set({
+      coverageStatus: "verified_ballot",
+      lastCheckedAt: observedAt,
+      lastSuccessAt: observedAt,
+      nextExpectedEvent: "2026-08-04",
+      nextCheckAt: new Date(observedAt.getTime() + 24 * 60 * 60 * 1000),
+      updatedAt: observedAt,
+    })
+    .where(eq(electionSources.sourceId, WASHINGTON_SOURCE_ID));
+
+  return fetched.candidates.length;
+}
+
 async function selectedStates(db: Database) {
   if (REQUESTED_STATE) return [REQUESTED_STATE];
-  if (BACKFILL) return ["IN", "DE", "FL", "RI", "NE", "MI"];
+  if (BACKFILL) return ["IN", "DE", "FL", "RI", "NE", "MI", "WA"];
   const due = await db
     .select({ stateCode: electionSources.stateCode })
     .from(electionSources)
@@ -2459,6 +2740,7 @@ async function selectedStates(db: Database) {
           "rhode-island-2026",
           "nebraska-2026",
           "michigan-2026",
+          "washington-2026",
         ])
       )
     );
@@ -2468,7 +2750,7 @@ async function selectedStates(db: Database) {
 async function main() {
   if (
     REQUESTED_STATE &&
-    !["IN", "DE", "FL", "RI", "NE", "MI"].includes(REQUESTED_STATE)
+    !["IN", "DE", "FL", "RI", "NE", "MI", "WA"].includes(REQUESTED_STATE)
   ) {
     throw new Error(`No verified adapter is available for ${REQUESTED_STATE}`);
   }
@@ -2477,8 +2759,8 @@ async function main() {
     const states = REQUESTED_STATE
       ? [REQUESTED_STATE]
       : BACKFILL
-        ? ["IN", "DE", "FL", "RI", "NE", "MI"]
-        : ["IN", "DE", "FL", "RI", "NE", "MI"];
+        ? ["IN", "DE", "FL", "RI", "NE", "MI", "WA"]
+        : ["IN", "DE", "FL", "RI", "NE", "MI", "WA"];
     let count = 0;
     for (const state of states) {
       if (state === "IN") count += await ingestIndiana({} as Database);
@@ -2487,6 +2769,7 @@ async function main() {
       if (state === "RI") count += await ingestRhodeIsland({} as Database);
       if (state === "NE") count += await ingestNebraska({} as Database);
       if (state === "MI") count += await ingestMichigan({} as Database);
+      if (state === "WA") count += await ingestWashington({} as Database);
     }
     console.log(
       `Dry run complete. Parsed ${count} records across ${states.join(", ")}; no database or Blob writes.`
@@ -2519,6 +2802,7 @@ async function main() {
       if (state === "RI") records += await ingestRhodeIsland(db);
       if (state === "NE") records += await ingestNebraska(db);
       if (state === "MI") records += await ingestMichigan(db);
+      if (state === "WA") records += await ingestWashington(db);
     }
     await db
       .update(syncLog)

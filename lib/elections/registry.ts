@@ -165,6 +165,23 @@ stateSeeds[michiganIndex] = {
     "Current-cycle adapter: the official August primary report establishes ballot-qualified, withdrawn and disqualified federal candidates. The November report is retained as provisional filing evidence only because the state labels it unofficial.",
 };
 
+const washingtonIndex = stateSeeds.findIndex((source) => source.stateCode === "WA");
+stateSeeds[washingtonIndex] = {
+  sourceId: "state-wa",
+  stateCode: "WA",
+  authorityName: "Washington Secretary of State, Elections Division",
+  sourceKind: "state_election_authority",
+  sourceUrl: "https://voter.votewa.gov/CandidateList.aspx?e=898",
+  adapterKey: "washington-2026",
+  coverageStatus: "verified_ballot",
+  isAuthoritative: true,
+  certificationWindowDays: 17,
+  nextExpectedEvent: "2026-08-04",
+  nextCheckAt: new Date("2026-07-22T00:00:00Z"),
+  notes:
+    "Current-cycle adapter: the official VoteWA list identifies active candidates whose election status is In Primary and retains withdrawn federal filings. Washington uses a top-two primary; listed party values are candidate preferences, not party nominations.",
+};
+
 export const ELECTION_SOURCE_REGISTRY: ElectionSourceSeed[] = [
   {
     sourceId: "fec-form2",
@@ -236,6 +253,12 @@ export const MICHIGAN_2026_SOURCES = {
     "https://mi-boe.entellitrak.com/etk-mi-boe-prod/page.request.do?electionType=PRI&electionYear=2026&page=page.miboePublicReport",
   generalCandidateReport:
     "https://mi-boe.entellitrak.com/etk-mi-boe-prod/page.request.do?electionType=GEN&electionYear=2026&page=page.miboePublicReport",
+} as const;
+
+export const WASHINGTON_2026_SOURCES = {
+  electionLanding: "https://www.sos.wa.gov/elections",
+  primaryCandidateList: "https://voter.votewa.gov/CandidateList.aspx?e=898",
+  electionCalendar: "https://www.sos.wa.gov/elections/calendar?y=2026",
 } as const;
 
 export const ELECTION_CALENDAR_AS_OF = "2026-07-22";
