@@ -60,6 +60,15 @@ const REQUESTED_CANDIDACY =
   CANDIDATE_ARG?.split("=", 2)[1]?.trim() ||
   process.env.CANDIDATE_EXTRACT_CANDIDACY_ID?.trim() ||
   null;
+const STATE_ARG = process.argv.find((argument) => argument.startsWith("--state="));
+const REQUESTED_STATE = (
+  STATE_ARG?.split("=", 2)[1]?.trim() ||
+  process.env.CANDIDATE_EXTRACT_STATE?.trim() ||
+  ""
+).toUpperCase() || null;
+if (REQUESTED_STATE && !/^[A-Z]{2}$/.test(REQUESTED_STATE)) {
+  throw new Error("CANDIDATE_EXTRACT_STATE must be a two-letter state code");
+}
 
 function boundedInt(name: string, fallback: number, min: number, max: number) {
   const raw = process.env[name];
@@ -295,6 +304,9 @@ async function getCandidates(db: Database) {
   const requested = REQUESTED_CANDIDACY
     ? sql`AND ca.candidacy_id = ${REQUESTED_CANDIDACY}`
     : sql``;
+  const requestedState = REQUESTED_STATE
+    ? sql`AND contest.state_code = ${REQUESTED_STATE}`
+    : sql``;
   const result = await db.execute(sql`
     SELECT ca.candidacy_id, ca.person_id, p.display_name, ca.fec_candidate_id,
            site.site_url, site.verification_status, site.verified_source_url,
@@ -307,6 +319,7 @@ async function getCandidates(db: Database) {
       AND ca.fec_candidate_id IS NOT NULL
       AND contest.coverage_status IN ('verified_ballot', 'verification_pending')
       ${requested}
+      ${requestedState}
     ORDER BY
       CASE
         WHEN site.candidacy_id IS NULL THEN 0

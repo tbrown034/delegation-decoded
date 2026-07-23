@@ -24,6 +24,10 @@ on:
         description: "Optional exact candidacy ID for a targeted candidate recovery"
         required: false
         default: ""
+      candidate_state:
+        description: "Optional two-letter state filter for candidate research"
+        required: false
+        default: ""
       force_reextract:
         description: "Re-extract a targeted candidate even when source bytes are unchanged"
         type: boolean
@@ -79,6 +83,7 @@ jobs:
           CANDIDATE_EXTRACT_MAX_PROVIDER_CALLS: 16
           CANDIDATE_EXTRACT_MAX_RUN_TOKENS: 250000
           CANDIDATE_EXTRACT_CANDIDACY_ID: ${{ inputs.candidacy_id }}
+          CANDIDATE_EXTRACT_STATE: ${{ inputs.candidate_state }}
           CANDIDATE_EXTRACT_FORCE: ${{ inputs.force_reextract }}
 
       - name: Crawl official member biographies and queue facts for review
