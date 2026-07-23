@@ -114,6 +114,23 @@ stateSeeds[floridaIndex] = {
     "Current-cycle adapter: the state candidate export supplies federal qualifying status, including unopposed, withdrawn and did-not-qualify records. The tracking system is an unofficial reference, so coverage remains verification pending until official ballots or results are loaded.",
 };
 
+const rhodeIslandIndex = stateSeeds.findIndex((source) => source.stateCode === "RI");
+stateSeeds[rhodeIslandIndex] = {
+  sourceId: "state-ri",
+  stateCode: "RI",
+  authorityName: "Rhode Island Department of State, Elections Division",
+  sourceKind: "state_election_authority",
+  sourceUrl: "https://vote.sos.ri.gov/Candidates/CandidateSearch",
+  adapterKey: "rhode-island-2026",
+  coverageStatus: "verified_ballot",
+  isAuthoritative: true,
+  certificationWindowDays: 21,
+  nextExpectedEvent: "2026-09-09",
+  nextCheckAt: new Date("2026-07-22T00:00:00Z"),
+  notes:
+    "Current-cycle adapter: the official candidate workbook identifies candidates qualified for ballot placement, primary and general ballot inclusion, and later winner status. Structured records exclude the workbook's voter and contact fields.",
+};
+
 export const ELECTION_SOURCE_REGISTRY: ElectionSourceSeed[] = [
   {
     sourceId: "fec-form2",
@@ -155,6 +172,12 @@ export const FLORIDA_2026_SOURCES = {
   candidateExtract: "https://dos.elections.myflorida.com/candidates/extractCanList.asp",
   senateVacancyLaw: "https://www.flsenate.gov/Laws/Statutes/2025/0100.161",
   primaryCalendar: "https://dos.fl.gov/elections/for-voters/election-dates/",
+} as const;
+
+export const RHODE_ISLAND_2026_SOURCES = {
+  candidateLanding: "https://vote.sos.ri.gov/Candidates/CandidateSearch",
+  candidateWorkbook: "https://vote.sos.ri.gov/Forms/elections/Reports/Candidates.xlsx",
+  candidateGuide: "https://vote.sos.ri.gov/Forms/Elections/Guides/2026RunforOffice.pdf",
 } as const;
 
 export const ELECTION_CALENDAR_AS_OF = "2026-07-22";

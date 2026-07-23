@@ -19,6 +19,7 @@ import {
 } from "../scripts/lib/indiana-election-parser";
 import { parseDelawareCandidateRows } from "../scripts/lib/delaware-election-parser";
 import { parseFloridaCandidateTsv } from "../scripts/lib/florida-election-parser";
+import { parseRhodeIslandCandidateRows } from "../scripts/lib/rhode-island-election-parser";
 import { parseXlsxRows } from "../scripts/lib/xlsx-rows";
 import { isBlockedAddress } from "../scripts/lib/safe-fetch";
 import {
@@ -317,6 +318,81 @@ test("Florida export keeps federal status fields and drops voter and contact dat
 
 test("Florida federal records fail closed on a new status code", () => {
   assert.throws(() => parseFloridaCandidateTsv(floridaFixture("NEW")), /failed validation/);
+});
+
+const RHODE_ISLAND_HEADERS = {
+  A: "LAST NAME", B: "FIRST NAME", C: "MIDDLE NAME", D: "SUFFIX", E: "VOTER ID",
+  F: "ELECTION DATE - NAME", G: "STREET NUMBER", H: "SUF-A", I: "SUF-B",
+  J: "STREET NAME", K: "STREET NAME 2", L: "UNIT", M: "POSTAL CITY", N: "ZIP CODE",
+  O: "ZIP4", P: "ESS", Q: "PHONE#", R: "EMAIL", S: "PARTY", T: "OFFICE",
+  U: "DIST#", V: "DECLARATION", W: "END", X: "P.C.", Y: "NEED N.P.", Z: "QBP",
+  AA: "ON P.B", AB: "B.P.N", AC: "W.P", AD: "ON E.B", AE: "B.P.E", AF: "W.E",
+  AG: "C/T FOR L.O", AH: "TOWN CODE", AI: "REQ",
+};
+
+function rhodeIslandFixture() {
+  const primary = "09/09/2026 - STATEWIDE PRIMARY";
+  const general = "11/03/2026 - STATEWIDE GENERAL ELECTION";
+  const candidate = (values: Record<string, string>) => ({
+    V: "Valid",
+    Y: "Yes",
+    Z: "Yes",
+    AA: "Yes",
+    AD: "No",
+    G: "123",
+    J: "Private Street",
+    Q: "401-555-0100",
+    R: "private@example.com",
+    ...values,
+  });
+  return [
+    RHODE_ISLAND_HEADERS,
+    candidate({
+      A: "Public", B: "Jane", C: "Q", E: "private-voter-id", F: primary,
+      S: "Democrat", T: "SENATOR IN CONGRESS", U: "1,2",
+    }),
+    candidate({
+      A: "Representative", B: "John", E: "private-voter-id-2", F: primary,
+      S: "Republican", T: "REPRESENTATIVE IN CONGRESS DISTRICT 1", U: "1",
+    }),
+    candidate({
+      A: "Unqualified", B: "Alex", E: "private-voter-id-3", F: primary,
+      S: "Democrat", T: "REPRESENTATIVE IN CONGRESS DISTRICT 2", U: "2",
+      Z: "No", AA: "No",
+    }),
+    candidate({
+      A: "Independent", B: "Morgan", E: "private-voter-id-4", F: general,
+      S: "Independent", T: "REPRESENTATIVE IN CONGRESS DISTRICT 2", U: "2",
+      AA: "No", AD: "Yes",
+    }),
+  ];
+}
+
+test("Rhode Island export keeps ballot status and drops voter and contact data", () => {
+  const parsed = parseRhodeIslandCandidateRows(rhodeIslandFixture());
+  assert.deepEqual(parsed[0], {
+    name: "Jane Q Public",
+    normalizedName: "jane q public",
+    party: "Democratic",
+    office: "S",
+    district: null,
+    stage: "primary",
+    status: "qualified",
+    onPrimaryBallot: true,
+    onElectionBallot: false,
+  });
+  assert.equal(parsed[2].status, "did_not_qualify");
+  assert.equal(parsed[3].stage, "general");
+  assert.equal("voterId" in parsed[0], false);
+  assert.equal("address" in parsed[0], false);
+  assert.equal("phone" in parsed[0], false);
+  assert.equal("email" in parsed[0], false);
+});
+
+test("Rhode Island federal records fail closed on an unknown ballot status", () => {
+  const rows = rhodeIslandFixture();
+  rows[1] = { ...rows[1], Z: "Pending" };
+  assert.throws(() => parseRhodeIslandCandidateRows(rows), /unknown ballot qualification/);
 });
 
 test("crawler address guard blocks loopback, private, link-local, and metadata ranges", () => {

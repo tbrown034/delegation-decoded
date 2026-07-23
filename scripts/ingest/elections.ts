@@ -22,6 +22,7 @@ import {
   ELECTION_SOURCE_REGISTRY,
   FLORIDA_2026_SOURCES,
   INDIANA_2026_SOURCES,
+  RHODE_ISLAND_2026_SOURCES,
 } from "../../lib/elections/registry";
 import {
   candidateNamesLikelySame,
@@ -47,6 +48,10 @@ import {
   parseFloridaCandidateTsv,
   type FloridaCandidate,
 } from "../lib/florida-election-parser";
+import {
+  parseRhodeIslandCandidateWorkbook,
+  type RhodeIslandCandidate,
+} from "../lib/rhode-island-election-parser";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const BACKFILL = process.argv.includes("--backfill");
@@ -55,6 +60,7 @@ const REQUESTED_STATE = STATE_ARG?.split("=", 2)[1]?.trim().toUpperCase() ?? nul
 const INDIANA_SOURCE_ID = "state-in";
 const DELAWARE_SOURCE_ID = "state-de";
 const FLORIDA_SOURCE_ID = "state-fl";
+const RHODE_ISLAND_SOURCE_ID = "state-ri";
 
 type Database = ReturnType<typeof drizzle>;
 
@@ -164,6 +170,20 @@ async function fetchFloridaSource() {
   };
 }
 
+async function fetchRhodeIslandSource() {
+  const workbook = await safeFetchBuffer(RHODE_ISLAND_2026_SOURCES.candidateWorkbook, {
+    allowedHosts: new Set(["vote.sos.ri.gov"]),
+    allowedContentTypes: [
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ],
+    maxBytes: 1_000_000,
+  });
+  return {
+    workbook,
+    candidates: await parseRhodeIslandCandidateWorkbook(workbook.body),
+  };
+}
+
 function candidateKey(candidate: { normalizedName: string; party: string }) {
   return `${candidate.normalizedName}|${partyCode(candidate.party)}`;
 }
@@ -241,6 +261,36 @@ async function fecMatchesForFlorida(db: Database) {
     .where(
       and(
         eq(electionCandidates.stateCode, "FL"),
+        eq(electionCandidates.electionYear, 2026)
+      )
+    );
+
+  return (office: "H" | "S", district: number | null, ballotName: string) => {
+    const raceRows = rows.filter(
+      (row) => row.office === office && (office === "S" || row.district === district)
+    );
+    const exact = raceRows.filter(
+      (row) => normalizeCandidateName(row.name) === normalizeCandidateName(ballotName)
+    );
+    if (exact.length === 1) return exact[0].candidateId;
+    if (exact.length > 1) return null;
+    const likely = raceRows.filter((row) => candidateNamesLikelySame(row.name, ballotName));
+    return likely.length === 1 ? likely[0].candidateId : null;
+  };
+}
+
+async function fecMatchesForRhodeIsland(db: Database) {
+  const rows = await db
+    .select({
+      candidateId: electionCandidates.candidateId,
+      name: electionCandidates.name,
+      office: electionCandidates.office,
+      district: electionCandidates.district,
+    })
+    .from(electionCandidates)
+    .where(
+      and(
+        eq(electionCandidates.stateCode, "RI"),
         eq(electionCandidates.electionYear, 2026)
       )
     );
@@ -1134,23 +1184,331 @@ async function ingestFlorida(db: Database) {
   return fetched.candidates.length;
 }
 
+function rhodeIslandStatus(candidate: RhodeIslandCandidate) {
+  if (candidate.status === "did_not_qualify") return "did_not_qualify";
+  if (candidate.status === "primary_winner") return "primary_winner";
+  if (candidate.status === "lost_primary") return "lost_primary";
+  if (candidate.status === "elected") return "elected";
+  if (candidate.status === "lost_general") return "lost_general";
+  return candidate.stage === "primary"
+    ? "state_primary_qualified"
+    : "state_general_qualified";
+}
+
+function rhodeIslandPartyCode(candidate: RhodeIslandCandidate) {
+  if (candidate.party === "Democratic") return "D";
+  if (candidate.party === "Republican") return "R";
+  return "IND";
+}
+
+async function ingestRhodeIsland(db: Database) {
+  const fetched = await fetchRhodeIslandSource();
+  const activeCount = fetched.candidates.filter(
+    (candidate) =>
+      candidate.status === "qualified" ||
+      candidate.status === "primary_winner" ||
+      candidate.status === "elected"
+  ).length;
+  console.log(
+    `Rhode Island: ${fetched.candidates.length} federal candidate records across 3 contests; ${activeCount} active ballot-qualified records.`
+  );
+
+  if (DRY_RUN) return fetched.candidates.length;
+
+  const [snapshot, fecMatches] = await Promise.all([
+    storeElectionSnapshot(RHODE_ISLAND_SOURCE_ID, fetched.workbook),
+    fecMatchesForRhodeIsland(db),
+  ]);
+  const observedAt = new Date();
+  const tx = db;
+
+  await tx
+    .insert(electionSourceSnapshots)
+    .values({
+      snapshotSha256: snapshot.sha256,
+      sourceId: RHODE_ISLAND_SOURCE_ID,
+      originalUrl: snapshot.originalUrl,
+      blobUrl: snapshot.blobUrl,
+      contentType: snapshot.contentType,
+      contentLength: snapshot.contentLength,
+      etag: snapshot.etag,
+      lastModified: snapshot.lastModified,
+    })
+    .onConflictDoNothing();
+
+  const hasPrimaryOutcome = fetched.candidates.some(
+    (candidate) =>
+      candidate.status === "primary_winner" || candidate.status === "lost_primary"
+  );
+  const hasGeneralOutcome = fetched.candidates.some(
+    (candidate) => candidate.status === "elected" || candidate.status === "lost_general"
+  );
+  const currentStage = hasPrimaryOutcome || hasGeneralOutcome ? "general" : "primary";
+  const nextExpectedEvent = hasGeneralOutcome
+    ? null
+    : hasPrimaryOutcome
+      ? "2026-11-03"
+      : "2026-09-09";
+
+  const contests = [
+    {
+      contestId: houseContestId("RI", 1),
+      office: "H" as const,
+      district: 1,
+      senateClass: null,
+      title: "Rhode Island U.S. House District 1",
+    },
+    {
+      contestId: houseContestId("RI", 2),
+      office: "H" as const,
+      district: 2,
+      senateClass: null,
+      title: "Rhode Island U.S. House District 2",
+    },
+    {
+      contestId: senateContestId("RI", 2),
+      office: "S" as const,
+      district: null,
+      senateClass: 2,
+      title: "Rhode Island U.S. Senate Class 2",
+    },
+  ];
+
+  for (const contest of contests) {
+    await tx
+      .insert(electionContests)
+      .values({
+        contestId: contest.contestId,
+        electionCycle: 2026,
+        stateCode: "RI",
+        office: contest.office,
+        district: contest.district,
+        senateClass: contest.senateClass,
+        title: contest.title,
+        currentStage,
+        coverageStatus: "verified_ballot",
+        certifiedThrough: null,
+        nextExpectedEvent,
+        primarySourceId: RHODE_ISLAND_SOURCE_ID,
+        updatedAt: observedAt,
+      })
+      .onConflictDoUpdate({
+        target: electionContests.contestId,
+        set: {
+          title: contest.title,
+          currentStage,
+          coverageStatus: "verified_ballot",
+          nextExpectedEvent,
+          primarySourceId: RHODE_ISLAND_SOURCE_ID,
+          updatedAt: observedAt,
+        },
+      });
+
+    for (const party of ["Democratic", "Republican"] as const) {
+      const code = party === "Democratic" ? "D" : "R";
+      const stageId = `${contest.contestId}-primary-${code}`;
+      await tx
+        .insert(electionStages)
+        .values({
+          stageId,
+          contestId: contest.contestId,
+          stageKind: "primary",
+          party,
+          electionDate: "2026-09-09",
+          sequenceNumber: party === "Democratic" ? 1 : 2,
+          resultStatus: hasPrimaryOutcome ? "unofficial" : "not_started",
+          sourceId: RHODE_ISLAND_SOURCE_ID,
+          updatedAt: observedAt,
+        })
+        .onConflictDoUpdate({
+          target: electionStages.stageId,
+          set: {
+            resultStatus: hasPrimaryOutcome ? "unofficial" : "not_started",
+            sourceId: RHODE_ISLAND_SOURCE_ID,
+            updatedAt: observedAt,
+          },
+        });
+    }
+
+    const generalStageId = `${contest.contestId}-general`;
+    await tx
+      .insert(electionStages)
+      .values({
+        stageId: generalStageId,
+        contestId: contest.contestId,
+        stageKind: "general",
+        electionDate: "2026-11-03",
+        sequenceNumber: 3,
+        resultStatus: hasGeneralOutcome ? "unofficial" : "not_started",
+        sourceId: RHODE_ISLAND_SOURCE_ID,
+        updatedAt: observedAt,
+      })
+      .onConflictDoUpdate({
+        target: electionStages.stageId,
+        set: {
+          resultStatus: hasGeneralOutcome ? "unofficial" : "not_started",
+          sourceId: RHODE_ISLAND_SOURCE_ID,
+          updatedAt: observedAt,
+        },
+      });
+
+    const contestCandidates = fetched.candidates.filter(
+      (candidate) =>
+        candidate.office === contest.office &&
+        (candidate.office === "S" || candidate.district === contest.district)
+    );
+    for (const candidate of contestCandidates) {
+      const fecCandidateId = fecMatches(candidate.office, candidate.district, candidate.name);
+      const { personId, candidacyId } = candidateIdentity(
+        contest.contestId,
+        candidate.normalizedName,
+        rhodeIslandPartyCode(candidate),
+        fecCandidateId
+      );
+      const currentStatus = rhodeIslandStatus(candidate);
+      const isActive =
+        candidate.status === "qualified" ||
+        candidate.status === "primary_winner" ||
+        candidate.status === "elected";
+
+      await tx
+        .insert(candidatePeople)
+        .values({
+          personId,
+          displayName: candidate.name,
+          normalizedName: candidate.normalizedName,
+          updatedAt: observedAt,
+        })
+        .onConflictDoUpdate({
+          target: candidatePeople.personId,
+          set: {
+            displayName: candidate.name,
+            normalizedName: candidate.normalizedName,
+            updatedAt: observedAt,
+          },
+        });
+      await tx
+        .insert(candidacies)
+        .values({
+          candidacyId,
+          contestId: contest.contestId,
+          personId,
+          party: candidate.party,
+          currentStatus,
+          isActive,
+          fecCandidateId,
+          verifiedSourceId: RHODE_ISLAND_SOURCE_ID,
+          verifiedAt: observedAt,
+          updatedAt: observedAt,
+        })
+        .onConflictDoUpdate({
+          target: candidacies.candidacyId,
+          set: {
+            party: candidate.party,
+            currentStatus,
+            isActive,
+            fecCandidateId,
+            verifiedSourceId: RHODE_ISLAND_SOURCE_ID,
+            verifiedAt: observedAt,
+            updatedAt: observedAt,
+          },
+        });
+
+      const primaryStageId =
+        candidate.party === "Democratic"
+          ? `${contest.contestId}-primary-D`
+          : candidate.party === "Republican"
+            ? `${contest.contestId}-primary-R`
+            : null;
+      const eventStageId = candidate.stage === "primary" ? primaryStageId : generalStageId;
+      if (!eventStageId) {
+        throw new Error("Rhode Island candidate could not be assigned to an election stage");
+      }
+
+      for (const ballotStageId of [
+        candidate.onPrimaryBallot ? primaryStageId : null,
+        candidate.onElectionBallot ? generalStageId : null,
+      ].filter((value): value is string => value != null)) {
+        const ballotLineId = stableElectionId(
+          "ballot",
+          candidacyId,
+          ballotStageId,
+          candidate.party
+        );
+        await tx
+          .insert(candidacyBallotLines)
+          .values({
+            ballotLineId,
+            candidacyId,
+            stageId: ballotStageId,
+            partyLabel: candidate.party,
+            sourceId: RHODE_ISLAND_SOURCE_ID,
+          })
+          .onConflictDoUpdate({
+            target: candidacyBallotLines.ballotLineId,
+            set: { partyLabel: candidate.party, sourceId: RHODE_ISLAND_SOURCE_ID },
+          });
+      }
+
+      const eventId = stableElectionId("event", candidacyId, eventStageId, currentStatus);
+      await tx
+        .insert(candidateStatusEvents)
+        .values({
+          eventId,
+          candidacyId,
+          electionStageId: eventStageId,
+          status: currentStatus,
+          effectiveDate: null,
+          observedAt,
+          sourceId: RHODE_ISLAND_SOURCE_ID,
+          snapshotSha256: snapshot.sha256,
+          details: {
+            state_status: candidate.status,
+            on_primary_ballot: candidate.onPrimaryBallot,
+            on_election_ballot: candidate.onElectionBallot,
+          },
+        })
+        .onConflictDoNothing();
+    }
+  }
+
+  await tx
+    .update(electionSources)
+    .set({
+      coverageStatus: "verified_ballot",
+      lastCheckedAt: observedAt,
+      lastSuccessAt: observedAt,
+      nextExpectedEvent,
+      nextCheckAt: new Date(observedAt.getTime() + 24 * 60 * 60 * 1000),
+      updatedAt: observedAt,
+    })
+    .where(eq(electionSources.sourceId, RHODE_ISLAND_SOURCE_ID));
+
+  return fetched.candidates.length;
+}
+
 async function selectedStates(db: Database) {
   if (REQUESTED_STATE) return [REQUESTED_STATE];
-  if (BACKFILL) return ["IN", "DE", "FL"];
+  if (BACKFILL) return ["IN", "DE", "FL", "RI"];
   const due = await db
     .select({ stateCode: electionSources.stateCode })
     .from(electionSources)
     .where(
       and(
         lte(electionSources.nextCheckAt, new Date()),
-        inArray(electionSources.adapterKey, ["indiana-2026", "delaware-2026", "florida-2026"])
+        inArray(electionSources.adapterKey, [
+          "indiana-2026",
+          "delaware-2026",
+          "florida-2026",
+          "rhode-island-2026",
+        ])
       )
     );
   return due.map((row) => row.stateCode).filter((code): code is string => Boolean(code));
 }
 
 async function main() {
-  if (REQUESTED_STATE && !["IN", "DE", "FL"].includes(REQUESTED_STATE)) {
+  if (REQUESTED_STATE && !["IN", "DE", "FL", "RI"].includes(REQUESTED_STATE)) {
     throw new Error(`No verified adapter is available for ${REQUESTED_STATE}`);
   }
 
@@ -1158,13 +1516,14 @@ async function main() {
     const states = REQUESTED_STATE
       ? [REQUESTED_STATE]
       : BACKFILL
-        ? ["IN", "DE", "FL"]
-        : ["IN", "DE", "FL"];
+        ? ["IN", "DE", "FL", "RI"]
+        : ["IN", "DE", "FL", "RI"];
     let count = 0;
     for (const state of states) {
       if (state === "IN") count += await ingestIndiana({} as Database);
       if (state === "DE") count += await ingestDelaware({} as Database);
       if (state === "FL") count += await ingestFlorida({} as Database);
+      if (state === "RI") count += await ingestRhodeIsland({} as Database);
     }
     console.log(
       `Dry run complete. Parsed ${count} records across ${states.join(", ")}; no database or Blob writes.`
@@ -1194,6 +1553,7 @@ async function main() {
       if (state === "IN") records += await ingestIndiana(db);
       if (state === "DE") records += await ingestDelaware(db);
       if (state === "FL") records += await ingestFlorida(db);
+      if (state === "RI") records += await ingestRhodeIsland(db);
     }
     await db
       .update(syncLog)

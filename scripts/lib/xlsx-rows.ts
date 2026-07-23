@@ -61,10 +61,18 @@ export function parseXlsxRows(sheetXml: string, shared: string[] = []) {
 
 export async function parseFirstXlsxWorksheet(
   buffer: Buffer,
-  options: { label: string; maxBytes: number }
+  options: { label: string; maxBytes: number; maxInflatedBytes?: number }
 ) {
   if (buffer.length > options.maxBytes) {
     throw new Error(`${options.label} exceeds the size limit`);
+  }
+  const maxInflatedBytes = options.maxInflatedBytes ?? options.maxBytes * 4;
+  if (
+    !Number.isInteger(maxInflatedBytes) ||
+    maxInflatedBytes < options.maxBytes ||
+    maxInflatedBytes > 25_000_000
+  ) {
+    throw new Error(`${options.label} has an invalid inflated-size limit`);
   }
 
   const tempDirectory = await mkdtemp(path.join(tmpdir(), "dd-election-"));
@@ -74,7 +82,7 @@ export async function parseFirstXlsxWorksheet(
     const [listing, sheet] = await Promise.all([
       execFileAsync("unzip", ["-Z1", workbookPath], { maxBuffer: 1_000_000 }),
       execFileAsync("unzip", ["-p", workbookPath, "xl/worksheets/sheet1.xml"], {
-        maxBuffer: options.maxBytes * 2,
+        maxBuffer: maxInflatedBytes,
       }),
     ]);
     const hasSharedStrings = listing.stdout
@@ -84,7 +92,7 @@ export async function parseFirstXlsxWorksheet(
       ? parseSharedStrings(
           (
             await execFileAsync("unzip", ["-p", workbookPath, "xl/sharedStrings.xml"], {
-              maxBuffer: options.maxBytes * 2,
+              maxBuffer: maxInflatedBytes,
             })
           ).stdout
         )
