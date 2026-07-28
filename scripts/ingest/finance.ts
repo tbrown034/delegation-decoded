@@ -9,11 +9,17 @@ import {
 } from "../../lib/schema";
 import { sql, eq, and, isNotNull } from "drizzle-orm";
 import { fetchCandidateFinancials } from "../lib/fec-api";
+import { mapCandidateFinance } from "../lib/fec-mapping";
 
 // FEC allows 1,000 req/hr. We make 1-2 requests per member.
 // With 537 members, we need to be careful. 600ms delay = ~6000 req/hr theoretical
 // but we only do 1 request at a time, so effective rate is ~100/min = safe.
 const DELAY_MS = 600;
+
+// Forces every member down the full-cycle-history path instead of the
+// current-cycle refresh. Needed after a mapping or candidate-ID correction,
+// when stored rows are present but wrong and so look "already ingested".
+const FULL_HISTORY = process.argv.includes("--full");
 
 async function main() {
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
@@ -44,10 +50,14 @@ async function main() {
         and(eq(members.inOffice, true), isNotNull(members.fecCandidateId))
       );
 
-    // Check which members already have finance data
+    // Only rows with receipts count as "already have finance data". Presence
+    // alone let a member with nothing but zeroed rows take the cheap
+    // current-cycle path forever, which is how a field-name bug kept 2,097
+    // zeros alive across 464 members even after the mapping was corrected.
     const existingFinance = await db
       .select({ bioguideId: campaignFinance.bioguideId })
-      .from(campaignFinance);
+      .from(campaignFinance)
+      .where(sql`${campaignFinance.totalReceipts} > 0`);
     const hasFinance = new Set(existingFinance.map((r) => r.bioguideId));
 
     // Members with no rows get their full cycle history; members that already
@@ -56,7 +66,7 @@ async function main() {
     const CURRENT_CYCLE = 2026;
     const toProcess = membersWithFec.map((m) => ({
       ...m,
-      fullHistory: !hasFinance.has(m.bioguideId),
+      fullHistory: FULL_HISTORY || !hasFinance.has(m.bioguideId),
     }));
     const newMembers = toProcess.filter((m) => m.fullHistory).length;
 
@@ -88,18 +98,7 @@ async function main() {
               bioguideId: member.bioguideId,
               fecCandidateId: fecId,
               electionCycle: f.cycle,
-              totalReceipts: Math.round(f.total_receipts || 0),
-              totalDisbursements: Math.round(f.total_disbursements || 0),
-              cashOnHand: Math.round(f.cash_on_hand_end_period || 0),
-              totalIndividual: Math.round(
-                f.total_individual_contributions || 0
-              ),
-              totalPac: Math.round(
-                f.other_political_committee_contributions || 0
-              ),
-              smallIndividual: Math.round(
-                f.individual_unitemized_contributions || 0
-              ),
+              ...mapCandidateFinance(f),
               lastFilingDate: f.coverage_end_date || null,
               updatedAt: new Date(),
             })

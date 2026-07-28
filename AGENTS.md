@@ -58,15 +58,16 @@ Each of /, /state/[code], /member/[bioguideId], /trades/companies/[ticker] also 
 ```
 scripts/ingest/
   seed-states.ts          50 states + DC + 5 territories (FIPS codes)
-  members.ts              @unitedstates → members + terms + photos (daily; retires members missing from the current file — deaths/resignations)
+  members.ts              @unitedstates → members + terms + photos (daily; retires members missing from the current file — deaths/resignations). `id.fec` is ordered oldest-first, so the stored FEC ID is the newest one whose office letter matches the member's current chamber — taking `[0]` hands chamber-switchers a campaign that stopped filing years ago.
   committees.ts           @unitedstates → committees + assignments
   bills.ts                Congress.gov API → bills + sponsorships
   votes.ts                Clerk House XML + Senate XML → roll calls + positions
-  finance.ts              FEC API → campaign_finance + top_contributors
+  finance.ts              FEC API → campaign_finance (candidate totals per cycle). Field names in FECCandidateFinance must match /candidate/{id}/totals verbatim; a `total_` prefix that the endpoint does not use reads as undefined and the `|| 0` writes a silent zero.
+  finance-committees.ts   FEC API → finance_committees + committee_finance + top_contributors. Contributors are individual donations aggregated by reported employer for the principal committee only, with FEC reporting categories (RETIRED, HOMEMAKER, SELF-EMPLOYED) filtered out. Sequential with 600ms spacing, so a canceled run strands every member after the cutoff rather than failing loudly.
   candidates.ts           FEC Form 2 filings → election_candidates (2026 races, statutory candidates only; daily). /ask's get_race_candidates cross-checks FEC "incumbent" filers against sitting members so a departed filer is never presented as the officeholder.
   elections.ts            State-authority race adapter runner. Indiana backfills a completed primary; Delaware, Florida, Rhode Island, Michigan and Washington track current qualifying status, including inactive history. Nebraska reconciles its current federal list against certified primary results and a separately certified petition candidate. Michigan verifies its August primary ballot but treats the state's unofficial November report as provisional filing evidence only. Washington records its official top-two primary ballot and keeps party values labeled as candidate preferences. Rhode Island, Nebraska and Washington reach verified-ballot coverage. Private Blob snapshots precede append-only status/result writes. FEC remains the labeled fallback where no adapter is covered.
-  candidate-sites.ts      Bounded crawler for FEC committee-reported campaign sites. Supports exact-candidacy and two-letter state recovery filters. Private page snapshots precede strict OpenAI extraction with Anthropic fallback; input, output, call and run-token limits are separately bounded, and every claim remains needs_review until human verification.
-  member-biographies.ts   Bounded crawler for roster-verified house.gov/senate.gov sites. CMS recon + private snapshots precede evidence-linked extraction; every fact remains needs_review until attributed human verification.
+  candidate-sites.ts      Bounded crawler for FEC committee-reported campaign sites. Supports exact-candidacy (--candidate=), two-letter state (--state=) and --force re-extraction. Private page snapshots precede strict OpenAI extraction with Anthropic fallback; input, output, call and run-token limits are separately bounded. A run skips a site only when its content hash is unchanged AND research already exists, so a failed extraction is retried rather than starved. Pages publish the verbatim source quote with its link; the model's paraphrase is never displayed. /ask reads the same quotes.
+  member-biographies.ts   Bounded crawler for roster-verified house.gov/senate.gov sites. CMS recon + private snapshots precede evidence-linked extraction. Flags: --member=, --retry-errors, --missing-facts, --force. Skips a member only when the content hash is unchanged AND facts already exist. Facts publish to member pages as verbatim quotes grouped by fact_type, each linked to its source. /ask reads the same quotes with their fact_type.
   disclosures-house.ts    House Clerk PTR PDFs → Sonnet vision parse
   disclosures-senate.ts   Senate eFD HTML tables → deterministic parse
   press-releases.ts       Member office RSS feeds → press_releases
@@ -96,6 +97,7 @@ scripts/
   low-confidence.ts       Rows below 80% confidence.
   missing-pdfs.ts         PDFs on disk vs DB.
   random-sample.ts        Random 20-row spot check.
+  classify-biography-facts.ts   Assigns fact_type (education, military, public_service, career, family, origin, community, honors) to stored biography facts using deterministic rules over text already in the database. No crawling, no model calls, safe to re-run. Read-only by default; --apply writes, --reclassify re-evaluates rows that already have a type.
   review-candidate-research.ts  Read-only review queue by default; explicit --apply verifies or rejects campaign claims and prior-service records.
   review-member-biographies.ts  Read-only official-biography queue; an applied decision requires --reviewer and stores review attribution.
   eval-candidate-extraction.ts  Paid synthetic smoke test for both campaign extraction providers; no database, crawler or Blob writes.
@@ -111,6 +113,7 @@ Run locally with `npx tsx scripts/<name>.ts`. Health is also exposed live at `/h
 - Server Components by default. Client Components only when interactivity demands it.
 - Read queries live in `lib/queries.ts` and `lib/disclosure-queries.ts`. Avoid inline DB calls in pages.
 - Schema is the source of truth in `scripts/schema.sql`; `lib/schema.ts` mirrors it for Drizzle. Apply changes via `apply-schema.ts`, not migrations.
+- Every ingested table needs a unique key on its natural identity, not just a SERIAL id. `terms` shipped without one and silently accumulated a full duplicate set on all 26 runs before anyone noticed. Where a key column is nullable (`terms.district` is null for senators), the index needs `NULLS NOT DISTINCT` or the ON CONFLICT never matches.
 - No dark mode. The shell rhymes with capitol-releases and open-cabinet (DM Sans + Source Serif + DM Mono via next/font, 3px neutral-800 accent bar, max-w-5xl shell, stone-50 footer with attribution block).
 - `parse_status` of `'review'` means a row was inserted but the parser flagged it for human follow-up — surfaced in the UI with a warning badge.
 - House PTR confidence < 80 → flagged. Don't filter these out; show them with a badge.

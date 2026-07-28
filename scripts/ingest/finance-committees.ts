@@ -15,28 +15,13 @@ import {
   fetchCommitteeTotals,
   fetchTopContributorsByEmployer,
 } from "../lib/fec-api";
+import { isReportableEmployer } from "../lib/fec-mapping";
 
 // FEC allows 1,000 req/hr. Per member: 1 committee-list request, 1 totals
 // request per committee (~2), and 1-2 by-employer requests for the principal
 // committee. 600ms spacing keeps the effective rate near 100/min.
 const DELAY_MS = 600;
 const CURRENT_CYCLE = 2026;
-
-// Employer strings that are FEC reporting categories, not organizations.
-// Keeping them would make "Retired" the top contributor for most members.
-const NON_EMPLOYERS = new Set([
-  "RETIRED",
-  "NOT EMPLOYED",
-  "UNEMPLOYED",
-  "SELF-EMPLOYED",
-  "SELF EMPLOYED",
-  "SELF",
-  "NONE",
-  "N/A",
-  "INFORMATION REQUESTED",
-  "INFORMATION REQUESTED PER BEST EFFORTS",
-  "HOMEMAKER",
-]);
 
 const delay = () => new Promise((r) => setTimeout(r, DELAY_MS));
 
@@ -162,11 +147,7 @@ async function main() {
             await delay();
             const top = rows
               .filter(
-                (r) =>
-                  r.employer &&
-                  r.total &&
-                  r.total > 0 &&
-                  !NON_EMPLOYERS.has(r.employer.trim().toUpperCase())
+                (r) => r.total && r.total > 0 && isReportableEmployer(r.employer)
               )
               .slice(0, 10);
             for (const row of top) {

@@ -44,13 +44,18 @@ async function fetchWithRetry(url: string, retries = 3): Promise<Response> {
   return attempt(0);
 }
 
+// Field names here must match /candidate/{id}/totals exactly. Four of them
+// previously carried a `total_` prefix the endpoint does not use, so every read
+// was undefined and the `|| 0` in finance.ts wrote a zero — the whole
+// campaign_finance table came out zeroed. Verify against a live response before
+// renaming any of these.
 export interface FECCandidateFinance {
   candidate_id: string;
   candidate_name: string;
-  total_receipts: number;
-  total_disbursements: number;
-  cash_on_hand_end_period: number;
-  total_individual_contributions: number;
+  receipts: number;
+  disbursements: number;
+  last_cash_on_hand_end_period: number;
+  individual_contributions: number;
   other_political_committee_contributions: number; // PAC money
   individual_unitemized_contributions: number; // small dollar (under $200)
   coverage_end_date: string;
@@ -153,12 +158,14 @@ export async function fetchCandidateFinancials(
   candidateId: string,
   cycle?: number
 ): Promise<FECCandidateFinance[]> {
-  let url = `${BASE_URL}/candidate/${candidateId}/totals?per_page=20&sort_null_only=false&api_key=${getApiKey()}`;
+  // Must paginate. The response mixes null-cycle aggregate rows in with the
+  // per-cycle ones, so a long-serving member overflows one page — David Scott
+  // returns 26 rows across 2 pages, and reading only page 1 silently dropped
+  // every cycle at or before 2012.
+  let url = `${BASE_URL}/candidate/${candidateId}/totals?per_page=100&sort_null_only=false&api_key=${getApiKey()}`;
   if (cycle) url += `&cycle=${cycle}`;
 
-  const res = await fetchWithRetry(url);
-  const data = await res.json();
-  return data.results || [];
+  return fetchAllPages<FECCandidateFinance>(url);
 }
 
 /**

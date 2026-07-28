@@ -1,9 +1,10 @@
 /**
  * Compute effective total raised from available finance components.
  *
- * The FEC API sometimes returns total_receipts as 0 while component fields
- * (small_individual, total_pac, total_individual) have real data.
- * This function returns the best available total.
+ * The component fallback below was originally added because receipts read as 0
+ * for everyone. That was our bug, not the FEC's — the ingest was reading a
+ * `total_receipts` field the API does not return. Receipts are populated now,
+ * so the fallback only covers filers who genuinely report none yet.
  */
 export function effectiveTotal(finance: {
   totalReceipts: number | null;

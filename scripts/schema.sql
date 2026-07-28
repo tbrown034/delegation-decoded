@@ -64,6 +64,25 @@ CREATE TABLE IF NOT EXISTS terms (
 CREATE INDEX IF NOT EXISTS idx_terms_member ON terms(bioguide_id);
 CREATE INDEX IF NOT EXISTS idx_terms_current ON terms(is_current) WHERE is_current = true;
 
+-- terms shipped without a natural key, so every members.ts run appended another
+-- full copy of every term (26 copies by the time it was caught). Collapse the
+-- duplicates before claiming the key; rows sharing a key are identical on
+-- party/end_date/is_current, so keeping the lowest id loses nothing.
+DELETE FROM terms t
+  USING terms keep
+ WHERE t.bioguide_id = keep.bioguide_id
+   AND t.chamber     = keep.chamber
+   AND t.state_code  = keep.state_code
+   AND t.start_date  = keep.start_date
+   AND t.district IS NOT DISTINCT FROM keep.district
+   AND t.id > keep.id;
+
+-- Senate terms carry a NULL district, so the key needs NULLS NOT DISTINCT for
+-- the ON CONFLICT in members.ts to match them (Postgres 15+).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_term
+  ON terms(bioguide_id, chamber, state_code, district, start_date)
+  NULLS NOT DISTINCT;
+
 -- =============================================================================
 -- Committees
 -- =============================================================================
@@ -716,6 +735,20 @@ ALTER TABLE member_biography_claims
   ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
 ALTER TABLE member_biography_claims
   ADD COLUMN IF NOT EXISTS reviewed_by TEXT;
+
+-- Biography facts arrive as one undifferentiated list, which reads as a wall
+-- of quotes on a profile and gives the assistant no way to answer "where did
+-- they go to school" without scanning everything. fact_type groups them.
+-- Nullable because it is assigned by a separate classification pass, and a
+-- fact whose category is genuinely unclear stays uncategorized rather than
+-- being forced into a bucket.
+ALTER TABLE member_biography_claims
+  ADD COLUMN IF NOT EXISTS fact_type TEXT;
+ALTER TABLE member_biography_claims
+  ADD COLUMN IF NOT EXISTS fact_type_source TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_member_biography_claims_type
+  ON member_biography_claims(bioguide_id, fact_type);
 
 -- =============================================================================
 -- /ask assistant: rate-limit counters + answer cache

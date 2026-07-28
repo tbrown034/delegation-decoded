@@ -11,6 +11,7 @@ import {
   timestamp,
   unique,
   index,
+  uniqueIndex,
   primaryKey,
   smallint,
   numeric,
@@ -107,7 +108,18 @@ export const terms = pgTable(
     endDate: date("end_date"),
     isCurrent: boolean("is_current").notNull().default(false),
   },
-  (table) => [index("idx_terms_member").on(table.bioguideId)]
+  (table) => [
+    index("idx_terms_member").on(table.bioguideId),
+    // Mirrors uq_term in schema.sql, which is NULLS NOT DISTINCT so Senate
+    // terms (district IS NULL) still collide instead of inserting a new copy.
+    uniqueIndex("uq_term").on(
+      table.bioguideId,
+      table.chamber,
+      table.stateCode,
+      table.district,
+      table.startDate
+    ),
+  ]
 );
 
 export const termsRelations = relations(terms, ({ one }) => ({
@@ -1052,6 +1064,10 @@ export const memberBiographyClaims = pgTable(
     reviewStatus: text("review_status").notNull().default("needs_review"),
     reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
     reviewedBy: text("reviewed_by"),
+    // Grouping category for display and for scoped assistant lookups. Null
+    // when the classifier could not justify a bucket.
+    factType: text("fact_type"),
+    factTypeSource: text("fact_type_source"),
     extractedAt: timestamp("extracted_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

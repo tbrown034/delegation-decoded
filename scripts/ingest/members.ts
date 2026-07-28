@@ -11,6 +11,7 @@ import {
   photoUrl,
   type USSocialMedia,
 } from "../lib/unitedstates";
+import { currentFecId } from "../lib/fec-mapping";
 
 async function main() {
   if (!process.env.DATABASE_URL) {
@@ -77,7 +78,7 @@ async function main() {
           twitter: social?.twitter || null,
           facebook: social?.facebook || null,
           youtube: social?.youtube || null,
-          fecCandidateId: leg.id.fec?.[0] || null,
+          fecCandidateId: currentFecId(leg.id.fec, chamber),
           updatedAt: new Date(),
         })
         .onConflictDoUpdate({
@@ -123,7 +124,22 @@ async function main() {
             endDate: t.end || null,
             isCurrent,
           })
-          .onConflictDoNothing();
+          // Do-nothing would strand is_current on the previous term once a
+          // member is re-seated, and would never pick up a corrected end date.
+          .onConflictDoUpdate({
+            target: [
+              terms.bioguideId,
+              terms.chamber,
+              terms.stateCode,
+              terms.district,
+              terms.startDate,
+            ],
+            set: {
+              party: sql`excluded.party`,
+              endDate: sql`excluded.end_date`,
+              isCurrent: sql`excluded.is_current`,
+            },
+          });
       }
 
       count++;
