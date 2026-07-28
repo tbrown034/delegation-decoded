@@ -16,6 +16,12 @@ export type RaceCandidate = {
   resultStatus: "unofficial" | "certified" | "complete_no_certification" | null;
   primaryVotes: number | null;
   primaryWinner: boolean | null;
+  // Set when the candidate resolves to a member record, so pages hand off to
+  // the far richer member page. isIncumbent is true only when that member
+  // currently holds the exact seat this contest elects — a sitting member
+  // running for a different office links but is not the incumbent here.
+  bioguideId: string | null;
+  isIncumbent: boolean;
   // Compatibility fields consumed by the established member card and ask
   // tool while those surfaces migrate to the normalized names above.
   candidate_id: string;

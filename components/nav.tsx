@@ -9,8 +9,6 @@ const links = [
   { href: "/", label: "States" },
   { href: "/ask", label: "Ask" },
   { href: "/races", label: "Races" },
-  { href: "/compare", label: "Compare" },
-  { href: "/for-journalists", label: "Journalists" },
   { href: "/about", label: "About" },
 ];
 

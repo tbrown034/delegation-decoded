@@ -165,6 +165,35 @@ export default async function StatePage({ params }: Props) {
       {/* Two-column layout: delegation + sidebar */}
       <div className="grid grid-cols-1 gap-10 lg:grid-cols-3">
         <div className="min-w-0 lg:col-span-2">
+          {/* Scoped records assistant leads the page so it stays above the fold. */}
+          <section className="mb-10 rounded-lg border border-neutral-200 bg-stone-50 p-5">
+            <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <h2 className="font-serif text-lg font-semibold">
+                Ask about {state.name}
+              </h2>
+              <p className="text-sm text-neutral-500">
+                Answers stay inside this delegation and cite the records checked.
+              </p>
+            </div>
+            <AskClient
+              scope={{ type: "state", stateCode: state.code }}
+              initialLocated={{
+                stateCode: state.code,
+                stateName: state.name,
+                district: null,
+                matchedAddress: null,
+                members: membersList.map((m) => ({
+                  bioguideId: m.bioguideId,
+                  fullName: m.fullName,
+                  party: m.party,
+                  chamber: m.chamber,
+                  district: m.district,
+                  photoUrl: m.photoUrl,
+                })),
+              }}
+            />
+          </section>
+
           {/* Senators */}
           {senators.length > 0 && (
             <section className="mb-8">
@@ -239,35 +268,6 @@ export default async function StatePage({ params }: Props) {
                 </Link>
               ))}
             </div>
-          </section>
-
-          {/* Scoped records assistant follows the delegation roster. */}
-          <section className="mb-10 rounded-lg border border-neutral-200 bg-stone-50 p-5">
-            <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <h2 className="font-serif text-lg font-semibold">
-                Ask about {state.name}
-              </h2>
-              <p className="text-sm text-neutral-500">
-                Answers stay inside this delegation and cite the records checked.
-              </p>
-            </div>
-            <AskClient
-              scope={{ type: "state", stateCode: state.code }}
-              initialLocated={{
-                stateCode: state.code,
-                stateName: state.name,
-                district: null,
-                matchedAddress: null,
-                members: membersList.map((m) => ({
-                  bioguideId: m.bioguideId,
-                  fullName: m.fullName,
-                  party: m.party,
-                  chamber: m.chamber,
-                  district: m.district,
-                  photoUrl: m.photoUrl,
-                })),
-              }}
-            />
           </section>
 
           {/* Activity Feed */}
@@ -494,6 +494,24 @@ function StateSidebar({
               membersWithFinance={coverageStats.membersWithFinance}
             />
           )}
+
+          {/* Bulk data for reporters */}
+          <section>
+            <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-neutral-400">
+              For journalists
+            </h2>
+            <p className="text-xs leading-relaxed text-neutral-500">
+              Every dataset behind this page is available as a bulk CSV
+              download, with freshness timestamps and reporting tips, on the{" "}
+              <Link
+                href="/for-journalists"
+                className="font-medium text-neutral-700 underline decoration-neutral-300 underline-offset-2 hover:decoration-neutral-600"
+              >
+                For Journalists
+              </Link>{" "}
+              page.
+            </p>
+          </section>
         </div>
     </>
   );

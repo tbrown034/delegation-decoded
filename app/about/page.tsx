@@ -106,7 +106,14 @@ export default async function AboutPage() {
             2026 midterms.
             Each state dashboard connects its current lawmakers, votes,
             legislation, committees, campaign finance and 2026 candidate fields
-            to the official records behind them.
+            to the official records behind them, and the{" "}
+            <Link
+              href="/compare"
+              className="text-neutral-900 underline decoration-neutral-300 underline-offset-2 hover:decoration-neutral-500"
+            >
+              Compare
+            </Link>{" "}
+            tool places any two delegations side by side.
           </p>
           <p className="mt-2">
             It is built for voters who need a factual starting point and

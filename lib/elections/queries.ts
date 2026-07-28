@@ -36,7 +36,35 @@ type RawRaceCandidate = {
   total_votes: number | null;
   is_winner: boolean | null;
   result_status: "unofficial" | "certified" | "complete_no_certification" | null;
+  bioguide_id: string | null;
+  member_in_office: boolean | null;
+  member_chamber: string | null;
+  member_district: number | null;
+  member_state_code: string | null;
 };
+
+type RaceSeat = { stateCode: string; office: "H" | "S"; district: number | null };
+
+// Incumbency requires holding the exact seat this contest elects. A sitting
+// member running for a different office (House member seeking a Senate seat)
+// still gets the member-page link, never the incumbent label.
+function memberSeatMatchesContest(
+  row: Pick<
+    RawRaceCandidate,
+    "member_in_office" | "member_chamber" | "member_district" | "member_state_code"
+  >,
+  seat: RaceSeat
+) {
+  if (row.member_in_office !== true) return false;
+  if (row.member_state_code !== seat.stateCode) return false;
+  if (seat.office === "H") {
+    return (
+      row.member_chamber === "house" &&
+      (row.member_district ?? 0) === (seat.district ?? 0)
+    );
+  }
+  return row.member_chamber === "senate";
+}
 
 const CLASS_TWO_STATES = new Set([
   "AL", "AK", "AR", "CO", "DE", "GA", "ID", "IL", "IA", "KS", "KY",
@@ -64,7 +92,7 @@ function fecCandidateUrl(stateCode: string, office: "H" | "S", district: number 
   return `https://www.fec.gov/data/candidates/?${params.toString()}`;
 }
 
-function mapVerifiedCandidate(row: RawRaceCandidate) {
+function mapVerifiedCandidate(row: RawRaceCandidate, seat: RaceSeat) {
   return {
     candidacyId: row.candidacy_id,
     personId: row.person_id,
@@ -78,6 +106,8 @@ function mapVerifiedCandidate(row: RawRaceCandidate) {
     resultStatus: row.result_status,
     primaryVotes: row.total_votes == null ? null : Number(row.total_votes),
     primaryWinner: row.is_winner,
+    bioguideId: row.bioguide_id ?? null,
+    isIncumbent: memberSeatMatchesContest(row, seat),
     // Compatibility fields for the existing member race card.
     candidate_id: row.fec_candidate_id ?? row.candidacy_id,
     incumbent_challenge: null,
@@ -145,10 +175,22 @@ async function getStateAuthorityRace(
              ORDER BY bl.ballot_order NULLS LAST, bl.party_label
            ) AS ballot_lines,
            primary_result.total_votes, primary_result.is_winner,
-           primary_result.result_status
+           primary_result.result_status,
+           COALESCE(p.bioguide_id, m_fec.bioguide_id) AS bioguide_id,
+           COALESCE(m_bio.in_office, m_fec.in_office, false) AS member_in_office,
+           COALESCE(m_bio.chamber, m_fec.chamber) AS member_chamber,
+           COALESCE(m_bio.district, m_fec.district) AS member_district,
+           COALESCE(m_bio.state_code, m_fec.state_code) AS member_state_code
     FROM candidacies ca
     JOIN candidate_people p ON p.person_id = ca.person_id
     LEFT JOIN election_candidates fec ON fec.candidate_id = ca.fec_candidate_id
+    -- candidate_people.bioguide_id is not populated for every sitting
+    -- member, so the FEC candidate id carries the link where it is absent.
+    LEFT JOIN members m_bio ON m_bio.bioguide_id = p.bioguide_id
+    LEFT JOIN members m_fec
+      ON ca.fec_candidate_id IS NOT NULL
+     AND m_fec.fec_candidate_id = ca.fec_candidate_id
+     AND m_fec.in_office
     LEFT JOIN LATERAL (
       SELECT r.total_votes, r.is_winner, r.result_status
       FROM election_results r
@@ -162,7 +204,13 @@ async function getStateAuthorityRace(
     ORDER BY ca.is_active DESC, primary_result.is_winner DESC NULLS LAST,
              fec.total_receipts DESC NULLS LAST, p.display_name
   `);
-  const candidates = (candidateResult.rows as RawRaceCandidate[]).map(mapVerifiedCandidate);
+  const candidates = (candidateResult.rows as RawRaceCandidate[]).map((row) =>
+    mapVerifiedCandidate(row, {
+      stateCode: contest.state_code,
+      office: contest.office,
+      district: contest.district,
+    })
+  );
   return {
     contestId: contest.contest_id,
     title: contest.title,
@@ -197,14 +245,19 @@ async function getFecRace(
     office === "H" ||
     (electionType === "regular" && senateClass === regularClass);
   const rows = await db.execute(sql`
-    SELECT candidate_id, name, party, office, state_code, district,
-           incumbent_challenge, total_receipts, first_file_date, last_file_date
-    FROM election_candidates
-    WHERE state_code = ${stateCode}
-      AND office = ${office}
-      AND election_year = ${electionYear}
-      AND (${office} = 'S' OR district IS NOT DISTINCT FROM ${district})
-    ORDER BY total_receipts DESC NULLS LAST, name ASC
+    SELECT ec.candidate_id, ec.name, ec.party, ec.office, ec.state_code, ec.district,
+           ec.incumbent_challenge, ec.total_receipts, ec.first_file_date, ec.last_file_date,
+           m.bioguide_id, m.in_office AS member_in_office, m.chamber AS member_chamber,
+           m.district AS member_district, m.state_code AS member_state_code
+    FROM election_candidates ec
+    LEFT JOIN members m
+      ON m.fec_candidate_id = ec.candidate_id
+     AND m.in_office
+    WHERE ec.state_code = ${stateCode}
+      AND ec.office = ${office}
+      AND ec.election_year = ${electionYear}
+      AND (${office} = 'S' OR ec.district IS NOT DISTINCT FROM ${district})
+    ORDER BY ec.total_receipts DESC NULLS LAST, ec.name ASC
   `);
   const total = await db.execute(sql`
     SELECT COUNT(*)::int AS n FROM election_candidates
@@ -238,6 +291,16 @@ async function getFecRace(
     resultStatus: null,
     primaryVotes: null,
     primaryWinner: null,
+    bioguideId: (row.bioguide_id as string | null) ?? null,
+    isIncumbent: memberSeatMatchesContest(
+      {
+        member_in_office: row.member_in_office === true,
+        member_chamber: (row.member_chamber as string | null) ?? null,
+        member_district: (row.member_district as number | null) ?? null,
+        member_state_code: (row.member_state_code as string | null) ?? null,
+      },
+      { stateCode, office, district }
+    ),
     candidate_id: row.candidate_id as string,
     incumbent_challenge: row.incumbent_challenge,
     total_receipts: row.total_receipts == null ? null : Number(row.total_receipts),

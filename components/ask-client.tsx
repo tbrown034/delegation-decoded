@@ -359,11 +359,14 @@ function needsLocationForSelf(q: string): boolean {
 export default function AskClient({
   initialLocated,
   scope,
+  exampleQuestions,
 }: {
   // When set (state pages), the surface is pre-scoped: no location bar, no
   // delegation card — the page around it already shows the roster.
   initialLocated?: Located;
   scope?: FixedAskScope;
+  // Race pages swap in contest-specific chips; the ask flow is unchanged.
+  exampleQuestions?: string[];
 } = {}) {
   const fixedLocation = Boolean(initialLocated);
   const [locationInput, setLocationInput] = useState("");
@@ -606,7 +609,7 @@ export default function AskClient({
 
   // Chips with real names outperform generic ones, and they teach the
   // "name the member" question shape this stateless backend needs.
-  const suggestions = scopedMember
+  const suggestions = exampleQuestions ?? (scopedMember
     ? [
         `What does ${scopedMember.fullName}'s official biography say about their background?`,
         `How did ${scopedMember.fullName} vote recently?`,
@@ -622,7 +625,7 @@ export default function AskClient({
             ? `Who are ${senators[0].fullName}'s top campaign contributors?`
             : SUGGESTIONS[2],
         ]
-      : NATIONAL_SUGGESTIONS;
+      : NATIONAL_SUGGESTIONS);
 
   const exampleGroups = scopedMember
     ? [

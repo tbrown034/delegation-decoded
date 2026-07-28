@@ -27,6 +27,7 @@ export type MatchupStatus =
 export type MatchupLane = {
   candidacyId: string;
   personId: string | null;
+  bioguideId: string | null;
   fecCandidateId: string | null;
   name: string;
   party: string | null;
@@ -46,6 +47,7 @@ export type Matchup = {
 type MatchupCandidate = {
   candidacyId: string;
   personId?: string | null;
+  bioguideId?: string | null;
   fecCandidateId?: string | null;
   name: string;
   party: string | null;
@@ -155,6 +157,7 @@ export function deriveMatchup(
       lanes.push({
         candidacyId: candidate.candidacyId,
         personId: candidate.personId ?? null,
+        bioguideId: candidate.bioguideId ?? null,
         fecCandidateId: candidate.fecCandidateId ?? null,
         name: candidate.name,
         party: candidate.party,

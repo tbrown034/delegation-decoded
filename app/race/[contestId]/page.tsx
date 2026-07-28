@@ -13,6 +13,8 @@ import { deriveMatchup, type Matchup } from "@/lib/elections/matchup";
 import { CAMPAIGN_CLAIM_LABEL, CAMPAIGN_CLAIM_ORDER } from "@/lib/elections/campaign-research";
 import { CandidateName } from "@/components/candidate-name";
 import { PartyMark } from "@/components/party-mark";
+import AskClient from "@/components/ask-client";
+import { getMembersByState, getStateByCode } from "@/lib/queries";
 
 type Props = { params: Promise<{ contestId: string }> };
 
@@ -33,10 +35,16 @@ export default async function RacePage({ params }: Props) {
     getCampaignSiteStatus(contestId),
   ]);
   if (!race) notFound();
+  const [stateInfo, stateMembers] = await Promise.all([
+    getStateByCode(race.stateCode),
+    getMembersByState(race.stateCode),
+  ]);
+  const stateName = stateInfo?.name ?? race.stateCode;
   const active = race.candidates.filter((candidate) => candidate.isActive);
   const inactive = race.candidates.filter((candidate) => !candidate.isActive);
   const partyIsPreference = race.stateCode === "WA";
   const matchup = deriveMatchup(race.stateCode, race.coverage, race.candidates);
+  const raceIncumbent = active.find((candidate) => candidate.isIncumbent) ?? null;
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
@@ -70,6 +78,41 @@ export default async function RacePage({ params }: Props) {
         </a>
       </div>
 
+      {/* Scoped records assistant — kept above the fold, same surface the
+          state page embeds. */}
+      <section className="mt-4 rounded-lg border border-neutral-200 bg-stone-50 p-5">
+        <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h2 className="font-serif text-lg font-semibold">Ask about this race</h2>
+          <p className="text-sm text-neutral-500">
+            Answers come from official {stateName} records and cite what was checked.
+          </p>
+        </div>
+        <AskClient
+          scope={{ type: "state", stateCode: race.stateCode }}
+          initialLocated={{
+            stateCode: race.stateCode,
+            stateName,
+            district: null,
+            matchedAddress: null,
+            members: stateMembers.map((m) => ({
+              bioguideId: m.bioguideId,
+              fullName: m.fullName,
+              party: m.party,
+              chamber: m.chamber,
+              district: m.district,
+              photoUrl: m.photoUrl,
+            })),
+          }}
+          exampleQuestions={[
+            `Who is running in the ${race.title} race?`,
+            raceIncumbent
+              ? `How did ${raceIncumbent.name} vote recently?`
+              : `Which ${stateName} seats are up in 2026?`,
+            `How much have candidates in the ${race.title} race raised?`,
+          ]}
+        />
+      </section>
+
       {!(matchup.status === "no_basis" && race.coverage === "fec_only") && (
         <MatchupBlock matchup={matchup} sourceName={race.sourceName} sourceUrl={race.sourceUrl} />
       )}
@@ -85,6 +128,7 @@ export default async function RacePage({ params }: Props) {
             research={research}
             siteStatus={siteStatus}
             partyIsPreference={partyIsPreference}
+            raceHasIncumbent={raceIncumbent != null}
           />
         ) : (
           <p className="mt-3 text-sm text-neutral-500">No current candidate records are loaded. This is not evidence that nobody is running.</p>
@@ -100,6 +144,7 @@ export default async function RacePage({ params }: Props) {
             research={research}
             siteStatus={siteStatus}
             partyIsPreference={partyIsPreference}
+            raceHasIncumbent={false}
           />
         </section>
       )}
@@ -150,6 +195,7 @@ function MatchupBlock({
               {index > 0 && <span className="mx-1.5 font-normal text-neutral-400">vs</span>}
               <CandidateName
                 name={lane.name}
+                bioguideId={lane.bioguideId}
                 personId={lane.personId}
                 fecCandidateId={lane.fecCandidateId}
               />
@@ -166,6 +212,7 @@ function MatchupBlock({
               {index > 0 && ", "}
               <CandidateName
                 name={lane.name}
+                bioguideId={lane.bioguideId}
                 personId={lane.personId}
                 fecCandidateId={lane.fecCandidateId}
               />
@@ -218,11 +265,15 @@ function CandidateList({
   research,
   siteStatus,
   partyIsPreference,
+  raceHasIncumbent,
 }: {
   candidates: NonNullable<Awaited<ReturnType<typeof getRaceByContestId>>>["candidates"];
   research: Map<string, PublishedCandidateResearch>;
   siteStatus: Awaited<ReturnType<typeof getCampaignSiteStatus>>;
   partyIsPreference: boolean;
+  // Challenger is a relative label: it renders only when the field actually
+  // contains the seat's sitting member, never on open seats.
+  raceHasIncumbent: boolean;
 }) {
   return (
     <ul className="mt-3 divide-y divide-neutral-100 rounded border border-neutral-200 bg-white">
@@ -241,9 +292,20 @@ function CandidateList({
               <p className="font-medium text-neutral-900">
                 <CandidateName
                   name={candidate.name}
+                  bioguideId={candidate.bioguideId}
                   personId={candidate.personId}
                   fecCandidateId={candidate.fecCandidateId}
                 />
+                {candidate.isActive && candidate.isIncumbent && (
+                  <span className="ml-2 inline-block rounded-sm bg-neutral-900 px-1.5 py-0.5 align-middle text-[10px] font-medium uppercase tracking-wide text-white">
+                    Incumbent
+                  </span>
+                )}
+                {candidate.isActive && !candidate.isIncumbent && raceHasIncumbent && (
+                  <span className="ml-2 inline-block rounded-sm border border-neutral-300 px-1.5 py-0.5 align-middle text-[10px] font-medium uppercase tracking-wide text-neutral-500">
+                    Challenger
+                  </span>
+                )}
               </p>
               <p className="mt-0.5 text-xs text-neutral-500">
                 {candidate.party
