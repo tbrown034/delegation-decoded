@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { resolveLocation } from "@/lib/geocode";
 import { getMembersByState } from "@/lib/queries";
+import { getStateRaceIndex } from "@/lib/elections/queries";
 import { checkIpLimit } from "@/lib/ask-limits";
 import {
   clientIp,
@@ -68,7 +69,20 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const members = await getMembersByState(location.stateCode);
+  const [members, stateRaces] = await Promise.all([
+    getMembersByState(location.stateCode),
+    getStateRaceIndex(location.stateCode),
+  ]);
+  // The located ballot: any Senate race plus, once an address pins the
+  // district, that district's House race. Statewide House lists stay behind
+  // the /races link.
+  const ballotRaces = stateRaces
+    .filter(
+      (race) =>
+        race.office === "S" ||
+        (location.district != null && race.district === location.district)
+    )
+    .sort((a, b) => a.office.localeCompare(b.office));
   return Response.json(
     {
       ...location,
@@ -79,6 +93,14 @@ export async function POST(request: NextRequest) {
         chamber: m.chamber,
         district: m.district,
         photoUrl: m.photoUrl,
+      })),
+      races: ballotRaces.map((race) => ({
+        contestId: race.contestId,
+        title: race.title,
+        coverage: race.coverage,
+        activeCandidates: race.activeCandidates,
+        candidates: race.candidates.slice(0, 6),
+        matchup: race.matchup,
       })),
     },
     { headers: NO_STORE }

@@ -36,6 +36,8 @@ export default async function RacesPage({ searchParams }: Props) {
     stateRaces.push(race);
     byState.set(race.stateCode, stateRaces);
   }
+  const matchupsSet = races.filter((race) => race.matchup === "set").length;
+  const matchupsForming = races.filter((race) => race.matchup === "partial").length;
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10">
@@ -45,6 +47,10 @@ export default async function RacesPage({ searchParams }: Props) {
       </h1>
       <p className="mt-3 max-w-3xl text-sm leading-relaxed text-neutral-600">
         State election authorities control ballot status. Covered states use those records. Every other state remains in a plainly labeled FEC-filings mode until its adapter passes verification.
+      </p>
+      <p className="mt-2 font-mono text-xs text-neutral-500">
+        {matchupsSet} of {races.length} November matchups set from state sources
+        {matchupsForming > 0 && ` · ${matchupsForming} forming`}
       </p>
 
       {stateCode ? (
@@ -93,15 +99,35 @@ export default async function RacesPage({ searchParams }: Props) {
   );
 }
 
+const MATCHUP_BADGE = {
+  set: { copy: "Matchup set", tone: "border-emerald-200 bg-emerald-50 text-emerald-800" },
+  partial: { copy: "Matchup forming", tone: "border-amber-200 bg-amber-50 text-amber-800" },
+  pending: { copy: "Awaiting primary", tone: "border-neutral-200 bg-neutral-50 text-neutral-600" },
+} as const;
+
 function RaceCard({ race }: { race: Awaited<ReturnType<typeof getRaceIndex>>[number] }) {
+  const matchupBadge = race.matchup === "none" ? null : MATCHUP_BADGE[race.matchup];
   return (
-    <Link href={`/race/${race.contestId}`} className="block rounded border border-neutral-200 bg-white p-4 no-underline hover:border-neutral-400">
+    <Link href={`/race/${race.contestId}`} className="block min-w-0 rounded border border-neutral-200 bg-white p-4 no-underline hover:border-neutral-400">
       <div className="flex items-start justify-between gap-3">
         <h3 className="font-medium text-neutral-900">{race.title}</h3>
         <span className="shrink-0 font-mono text-xs text-neutral-500">{race.activeCandidates}</span>
       </div>
-      <span className={`mt-3 inline-block rounded border px-2 py-0.5 text-[10px] font-medium ${COVERAGE_TONE[race.coverage]}`}>
-        {COVERAGE_COPY[race.coverage]}
+      {race.candidates.length > 0 && (
+        <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-neutral-600">
+          {race.candidates.slice(0, 5).join(" · ")}
+          {race.activeCandidates > 5 && ` +${race.activeCandidates - 5} more`}
+        </p>
+      )}
+      <span className="mt-3 flex flex-wrap gap-1.5">
+        {matchupBadge && (
+          <span className={`inline-block rounded border px-2 py-0.5 text-[10px] font-medium ${matchupBadge.tone}`}>
+            {matchupBadge.copy}
+          </span>
+        )}
+        <span className={`inline-block rounded border px-2 py-0.5 text-[10px] font-medium ${COVERAGE_TONE[race.coverage]}`}>
+          {COVERAGE_COPY[race.coverage]}
+        </span>
       </span>
     </Link>
   );

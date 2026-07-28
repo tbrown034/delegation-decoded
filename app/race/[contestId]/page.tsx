@@ -5,8 +5,14 @@ import { fmt } from "@/lib/finance";
 import {
   getPublishedCampaignResearch,
   getRaceByContestId,
+  getCampaignSiteStatus,
+  CAMPAIGN_SITE_STATUS_NOTE,
   type PublishedCandidateResearch,
 } from "@/lib/elections/queries";
+import { deriveMatchup, type Matchup } from "@/lib/elections/matchup";
+import { CAMPAIGN_CLAIM_LABEL, CAMPAIGN_CLAIM_ORDER } from "@/lib/elections/campaign-research";
+import { CandidateName } from "@/components/candidate-name";
+import { PartyMark } from "@/components/party-mark";
 
 type Props = { params: Promise<{ contestId: string }> };
 
@@ -21,14 +27,16 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function RacePage({ params }: Props) {
   const contestId = (await params).contestId;
-  const [race, research] = await Promise.all([
+  const [race, research, siteStatus] = await Promise.all([
     getRaceByContestId(contestId),
     getPublishedCampaignResearch(contestId),
+    getCampaignSiteStatus(contestId),
   ]);
   if (!race) notFound();
   const active = race.candidates.filter((candidate) => candidate.isActive);
   const inactive = race.candidates.filter((candidate) => !candidate.isActive);
   const partyIsPreference = race.stateCode === "WA";
+  const matchup = deriveMatchup(race.stateCode, race.coverage, race.candidates);
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
@@ -62,6 +70,10 @@ export default async function RacePage({ params }: Props) {
         </a>
       </div>
 
+      {!(matchup.status === "no_basis" && race.coverage === "fec_only") && (
+        <MatchupBlock matchup={matchup} sourceName={race.sourceName} sourceUrl={race.sourceUrl} />
+      )}
+
       <section className="mt-8">
         <div className="flex items-baseline justify-between gap-4">
           <h2 className="font-serif text-xl font-semibold">Current field</h2>
@@ -71,6 +83,7 @@ export default async function RacePage({ params }: Props) {
           <CandidateList
             candidates={active}
             research={research}
+            siteStatus={siteStatus}
             partyIsPreference={partyIsPreference}
           />
         ) : (
@@ -85,6 +98,7 @@ export default async function RacePage({ params }: Props) {
           <CandidateList
             candidates={inactive}
             research={research}
+            siteStatus={siteStatus}
             partyIsPreference={partyIsPreference}
           />
         </section>
@@ -93,13 +107,121 @@ export default async function RacePage({ params }: Props) {
   );
 }
 
+const MATCHUP_TONE: Record<Matchup["status"], string> = {
+  set_certified: "border-emerald-200 bg-emerald-50",
+  set_unofficial: "border-emerald-200 bg-emerald-50",
+  set_state_list: "border-neutral-200 bg-stone-50",
+  partial: "border-amber-200 bg-amber-50",
+  pending_primary: "border-neutral-200 bg-stone-50",
+  pending_runoff: "border-amber-200 bg-amber-50",
+  no_basis: "border-neutral-200 bg-stone-50",
+};
+
+const MATCHUP_HEADING: Record<Matchup["status"], string> = {
+  set_certified: "November matchup set",
+  set_unofficial: "November matchup set (unofficial)",
+  set_state_list: "November matchup (state list)",
+  partial: "November matchup forming",
+  pending_primary: "November matchup not yet formed",
+  pending_runoff: "November matchup waiting on a runoff",
+  no_basis: "November matchup unknown",
+};
+
+function MatchupBlock({
+  matchup,
+  sourceName,
+  sourceUrl,
+}: {
+  matchup: Matchup;
+  sourceName: string;
+  sourceUrl: string;
+}) {
+  const ballotLanes = matchup.lanes.filter((lane) => !lane.isWriteIn);
+  const writeIns = matchup.lanes.filter((lane) => lane.isWriteIn);
+  return (
+    <section className={`mt-4 rounded border p-4 ${MATCHUP_TONE[matchup.status]}`}>
+      <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+        {MATCHUP_HEADING[matchup.status]}
+      </p>
+      {ballotLanes.length > 0 && (
+        <p className="mt-2 text-sm font-medium leading-relaxed text-neutral-900">
+          {ballotLanes.map((lane, index) => (
+            <span key={lane.candidacyId}>
+              {index > 0 && <span className="mx-1.5 font-normal text-neutral-400">vs</span>}
+              <CandidateName
+                name={lane.name}
+                personId={lane.personId}
+                fecCandidateId={lane.fecCandidateId}
+              />
+              <span className="ml-1 font-normal text-neutral-500">({lane.partyLabel})</span>
+            </span>
+          ))}
+        </p>
+      )}
+      {writeIns.length > 0 && (
+        <p className="mt-1 text-xs text-neutral-500">
+          Qualified write-ins:{" "}
+          {writeIns.map((lane, index) => (
+            <span key={lane.candidacyId}>
+              {index > 0 && ", "}
+              <CandidateName
+                name={lane.name}
+                personId={lane.personId}
+                fecCandidateId={lane.fecCandidateId}
+              />
+            </span>
+          ))}
+        </p>
+      )}
+      <p className="mt-2 text-xs leading-relaxed text-neutral-600">{matchup.statusLabel}</p>
+      <p className="mt-1 text-xs text-neutral-500">
+        Basis:{" "}
+        <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="underline decoration-neutral-300 underline-offset-2">
+          {sourceName}
+        </a>
+        {matchup.nextEvent && ` · next event ${matchup.nextEvent}`}
+      </p>
+    </section>
+  );
+}
+
+// Published text is always the source's own words. The extractor's paraphrase
+// is never rendered, which is what keeps a page honest without a reviewer.
+function QuoteGroup({
+  heading,
+  quotes,
+}: {
+  heading: string;
+  quotes: PublishedCandidateResearch["claims"];
+}) {
+  return (
+    <div>
+      <p className="font-medium text-neutral-800">{heading}</p>
+      <ul className="mt-1.5 space-y-1.5">
+        {quotes.map((claim) => (
+          <li key={claim.claimId} className="border-l-2 border-neutral-200 pl-2.5">
+            <span className="italic leading-relaxed text-neutral-700">
+              &ldquo;{claim.sourceQuote}&rdquo;
+            </span>{" "}
+            <a href={claim.sourceUrl} target="_blank" rel="noopener noreferrer" className="not-italic text-neutral-500 underline decoration-neutral-300 underline-offset-2">
+              source
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function CandidateList({
   candidates,
   research,
+  siteStatus,
   partyIsPreference,
 }: {
   candidates: NonNullable<Awaited<ReturnType<typeof getRaceByContestId>>>["candidates"];
   research: Map<string, PublishedCandidateResearch>;
+  siteStatus: Awaited<ReturnType<typeof getCampaignSiteStatus>>;
   partyIsPreference: boolean;
 }) {
   return (
@@ -113,8 +235,16 @@ function CandidateList({
         return (
         <li key={candidate.candidacyId} className="p-4">
           <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <p className="font-medium text-neutral-900">{candidate.name}</p>
+            <div className="flex min-w-0 items-start gap-3">
+              <PartyMark party={candidate.party} size="md" />
+              <div className="min-w-0">
+              <p className="font-medium text-neutral-900">
+                <CandidateName
+                  name={candidate.name}
+                  personId={candidate.personId}
+                  fecCandidateId={candidate.fecCandidateId}
+                />
+              </p>
               <p className="mt-0.5 text-xs text-neutral-500">
                 {candidate.party
                   ? `${candidate.party}${partyIsPreference ? " preference" : ""}`
@@ -131,6 +261,7 @@ function CandidateList({
                   <span className="text-neutral-400"> · linked through an FEC committee filing</span>
                 </p>
               )}
+              </div>
             </div>
             <div className="shrink-0 text-right font-mono text-xs text-neutral-500">
               {candidate.primaryVotes != null && <p>{candidate.primaryVotes.toLocaleString()} primary votes</p>}
@@ -143,52 +274,55 @@ function CandidateList({
           {candidateResearch && (candidateResearch.claims.length > 0 || candidateResearch.priorService.length > 0) && (
             <div className="mt-4 border-t border-neutral-100 pt-3 text-xs text-neutral-600">
               {biographyClaims.length > 0 && (
-                <div>
-                  <p className="font-medium text-neutral-800">Biography from the campaign site</p>
-                  <ul className="mt-1 space-y-1.5">
-                    {biographyClaims.map((claim) => (
-                      <li key={claim.claimId}>
-                        {claim.claimText}{" "}
-                        <a href={claim.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-neutral-500 underline decoration-neutral-300 underline-offset-2">
-                          Source
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="mt-1 text-[11px] text-neutral-400">Campaign description, not an independent characterization.</p>
-                </div>
+                <QuoteGroup
+                  heading="Biography, in the campaign's words"
+                  quotes={biographyClaims}
+                />
               )}
               {candidateResearch.priorService.length > 0 && (
                 <div className={biographyClaims.length > 0 ? "mt-3" : ""}>
                   <p className="font-medium text-neutral-800">Prior service stated by the campaign</p>
-                  <ul className="mt-1 space-y-1">
+                  <ul className="mt-1.5 space-y-1.5">
                     {candidateResearch.priorService.map((service) => (
                       <li key={service.serviceId}>
-                        <a href={service.sourceUrl} target="_blank" rel="noopener noreferrer" className="underline decoration-neutral-300 underline-offset-2">
+                        <span className="text-neutral-800">
                           {service.officeTitle}{service.jurisdiction ? `, ${service.jurisdiction}` : ""}
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="mt-1 text-[11px] text-neutral-400">The source and quote were reviewed; the underlying claim is not independently characterized.</p>
-                </div>
-              )}
-              {campaignClaims.length > 0 && (
-                <div className={candidateResearch.priorService.length > 0 || biographyClaims.length > 0 ? "mt-3" : ""}>
-                  <p className="font-medium text-neutral-800">Reviewed campaign-site statements</p>
-                  <ul className="mt-1 space-y-1.5">
-                    {campaignClaims.map((claim) => (
-                      <li key={claim.claimId}>
-                        {claim.claimText}{" "}
-                        <a href={claim.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-neutral-500 underline decoration-neutral-300 underline-offset-2">
-                          Source
+                        </span>
+                        <span className="ml-1.5 text-neutral-400">
+                          &ldquo;{service.sourceQuote}&rdquo;
+                        </span>{" "}
+                        <a href={service.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-neutral-500 underline decoration-neutral-300 underline-offset-2">
+                          source
                         </a>
                       </li>
                     ))}
                   </ul>
                 </div>
               )}
+              {CAMPAIGN_CLAIM_ORDER.map((claimType) => {
+                const group = campaignClaims.filter((claim) => claim.claimType === claimType);
+                if (group.length === 0) return null;
+                return (
+                  <div key={claimType} className="mt-3">
+                    <QuoteGroup
+                      heading={`${CAMPAIGN_CLAIM_LABEL[claimType]}, in the campaign's words`}
+                      quotes={group}
+                    />
+                  </div>
+                );
+              })}
+              <p className="mt-3 text-[11px] leading-relaxed text-neutral-400">
+                Quoted verbatim from the candidate&apos;s own campaign site, which
+                is linked to them through an FEC committee filing. Passages are
+                selected automatically; the wording is the campaign&apos;s, and it
+                is a self-description rather than an independent account.
+              </p>
             </div>
+          )}
+          {!candidateResearch && siteStatus.get(candidate.candidacyId) && (
+            <p className="mt-3 border-t border-neutral-100 pt-3 text-[11px] text-neutral-400">
+              {CAMPAIGN_SITE_STATUS_NOTE[siteStatus.get(candidate.candidacyId)!]}
+            </p>
           )}
         </li>
         );

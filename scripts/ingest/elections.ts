@@ -113,9 +113,29 @@ async function seedSourceRegistry(db: Database) {
   }
 }
 
+async function discoverIndianaGeneralListUrl() {
+  try {
+    const landing = await safeFetchBuffer(INDIANA_2026_SOURCES.candidateLanding, {
+      allowedHosts: new Set(["www.in.gov"]),
+      allowedContentTypes: ["text/html"],
+      maxBytes: 2_000_000,
+    });
+    const match = landing.body
+      .toString("utf8")
+      .match(/["']([^"']*files\/2026-General-Candidate-List[^"']*\.xlsx)["']/i);
+    if (match) {
+      return new URL(match[1], INDIANA_2026_SOURCES.candidateLanding).toString();
+    }
+  } catch {
+    // Landing page unavailable; the pinned revision below still works.
+  }
+  return INDIANA_2026_SOURCES.generalCandidateList;
+}
+
 async function fetchIndianaSources() {
+  const generalListUrl = await discoverIndianaGeneralListUrl();
   const [general, settings, primaryResults] = await Promise.all([
-    safeFetchBuffer(INDIANA_2026_SOURCES.generalCandidateList, {
+    safeFetchBuffer(generalListUrl, {
       allowedHosts: new Set(["www.in.gov"]),
       allowedContentTypes: [
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

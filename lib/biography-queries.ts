@@ -1,5 +1,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "./db";
+import { dedupeByQuote } from "./quote-dedupe";
+import type { BiographyFactType } from "./biography-classify";
 
 function isMissingBiographySchema(error: unknown) {
   let current: unknown = error;
@@ -19,9 +21,12 @@ export type PublishedMemberBiography = {
   cmsFamily: string | null;
   facts: Array<{
     claimId: string;
+    // The model's paraphrase. Retained for search and debugging; never
+    // displayed and never sent to Ask. Published text is sourceQuote.
     claimText: string;
     sourceUrl: string;
     sourceQuote: string;
+    factType: BiographyFactType | null;
   }>;
 };
 
@@ -37,6 +42,9 @@ export async function getPublishedMemberBiography(
   bioguideId: string
 ): Promise<PublishedMemberBiography | null> {
   if (!/^[A-Z][0-9]{6}$/.test(bioguideId)) return null;
+  // Human review was retired: provenance is the verbatim quote plus its
+  // source link, so everything not explicitly rejected is publishable.
+  const reviewFilter = sql`review_status <> 'rejected'`;
   try {
     const [siteResult, claimResult] = await Promise.all([
       db.execute(sql`
@@ -46,13 +54,19 @@ export async function getPublishedMemberBiography(
           AND verification_status = 'verified'
         LIMIT 1
       `),
+      // Identity is the verbatim source span, not the model's sentence. Two
+      // crawls of an unchanged page quote the same words and collapse here;
+      // paraphrases differ every run and never deduplicated.
       db.execute(sql`
-        SELECT DISTINCT ON (LOWER(claim_text))
-               claim_id, claim_text, source_url, source_quote, extracted_at
+        SELECT DISTINCT ON (LOWER(BTRIM(REGEXP_REPLACE(source_quote, '[[:space:]]+', ' ', 'g'), ' .,;:')))
+               claim_id, claim_text, source_url, source_quote, fact_type, extracted_at
         FROM member_biography_claims
         WHERE bioguide_id = ${bioguideId}
-          AND review_status = 'verified'
-        ORDER BY LOWER(claim_text), extracted_at DESC
+          AND ${reviewFilter}
+          AND source_quote IS NOT NULL
+          AND BTRIM(source_quote) <> ''
+        ORDER BY LOWER(BTRIM(REGEXP_REPLACE(source_quote, '[[:space:]]+', ' ', 'g'), ' .,;:')),
+                 extracted_at DESC
       `),
     ]);
     const site = siteResult.rows[0] as Record<string, unknown> | undefined;
@@ -63,12 +77,18 @@ export async function getPublishedMemberBiography(
       biographyUrl: (site.biography_url as string | null) ?? null,
       verifiedSourceUrl: site.verified_source_url as string,
       cmsFamily: (site.cms_family as string | null) ?? null,
-      facts: (claimResult.rows as Array<Record<string, unknown>>).map((row) => ({
-        claimId: row.claim_id as string,
-        claimText: row.claim_text as string,
-        sourceUrl: row.source_url as string,
-        sourceQuote: row.source_quote as string,
-      })),
+      // SQL collapsed identical quotes; this collapses overlapping ones, where
+      // a later crawl quoted a longer span of the same sentence.
+      facts: dedupeByQuote(
+        (claimResult.rows as Array<Record<string, unknown>>).map((row) => ({
+          claimId: row.claim_id as string,
+          claimText: row.claim_text as string,
+          sourceUrl: row.source_url as string,
+          sourceQuote: row.source_quote as string,
+          factType: (row.fact_type as BiographyFactType | null) ?? null,
+        })),
+        (fact) => fact.sourceQuote
+      ),
     };
   } catch (error) {
     if (!isMissingBiographySchema(error)) throw error;

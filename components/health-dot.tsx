@@ -1,24 +1,17 @@
 import { unstable_cache } from "next/cache";
 import Link from "next/link";
-import { db } from "@/lib/db";
-import { sql } from "drizzle-orm";
+import { buildHealthReport } from "@/lib/health";
 
 type Level = "ok" | "warn" | "crit" | "unknown";
 
+// Reads the same report /health renders. The footer used to run its own
+// sync_log query with different thresholds, so the two could disagree on the
+// same page load — the footer saying "Critical issues" while /health said
+// "Minor issues". One source, one answer.
 const fetchLevel = unstable_cache(
   async (): Promise<Level> => {
     try {
-      const result = await db.execute(sql`
-        SELECT
-          (SELECT COUNT(*)::int FROM sync_log
-            WHERE status = 'failed' AND started_at > now() - interval '14 days') AS failures,
-          (SELECT COUNT(*)::int FROM sync_log
-            WHERE status = 'running' AND started_at < now() - interval '6 hours') AS stuck
-      `);
-      const r = result.rows[0] as { failures: number; stuck: number };
-      if (r.stuck > 0 || r.failures >= 3) return "crit";
-      if (r.failures > 0) return "warn";
-      return "ok";
+      return (await buildHealthReport()).level;
     } catch {
       return "unknown";
     }

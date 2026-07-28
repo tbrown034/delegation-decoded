@@ -29,6 +29,7 @@ import {
   normalizeCampaignSiteUrl,
 } from "../lib/candidate-site-crawler";
 import { storeMemberSiteSnapshot } from "../lib/member-site-snapshots";
+import { classifyBiographyFact } from "../../lib/biography-classify";
 
 type Database = ReturnType<typeof drizzle>;
 type Provider = "openai" | "anthropic";
@@ -39,6 +40,7 @@ type MemberRow = {
   chamber: "house" | "senate";
   website_url: string;
   content_sha256: string | null;
+  has_facts: boolean;
 };
 
 type ExtractionResult = {
@@ -51,6 +53,12 @@ type ExtractionResult = {
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const RETRY_ERRORS = process.argv.includes("--retry-errors");
+const FORCE_REEXTRACT =
+  process.argv.includes("--force") ||
+  ["1", "true"].includes((process.env.MEMBER_BIO_FORCE ?? "").toLowerCase());
+// Members holding a verified site but no stored facts, which the unchanged-hash
+// skip would otherwise pass over forever.
+const MISSING_ONLY = process.argv.includes("--missing-facts");
 const MEMBER_ARG = process.argv.find((argument) => argument.startsWith("--member="));
 const REQUESTED_MEMBER = (
   MEMBER_ARG?.split("=", 2)[1] ?? process.env.MEMBER_BIO_MEMBER ?? ""
@@ -77,6 +85,10 @@ const MAX_OUTPUT_TOKENS = boundedInt(
   1_000,
   6_000
 );
+// "low" effort intermittently returns an empty result for pages that plainly
+// contain extractable facts, so the default sits a tier higher.
+const BIO_EFFORT =
+  (process.env.MEMBER_BIO_EFFORT as "low" | "medium" | "high") || "medium";
 const MAX_PROVIDER_CALLS = boundedInt("MEMBER_BIO_MAX_PROVIDER_CALLS", 24, 1, 100);
 const MAX_RUN_TOKENS = boundedInt("MEMBER_BIO_MAX_RUN_TOKENS", 250_000, 10_000, 1_000_000);
 const OPENAI_MODEL = process.env.MEMBER_BIO_OPENAI_MODEL || "gpt-5.6-terra";
@@ -115,7 +127,7 @@ async function runOpenAI(
     model: OPENAI_MODEL,
     instructions: SYSTEM_PROMPT,
     input,
-    reasoning: { effort: "low" },
+    reasoning: { effort: BIO_EFFORT },
     text: {
       verbosity: "low",
       format: {
@@ -156,7 +168,7 @@ async function runAnthropic(
   const response = await client.messages.create({
     model: ANTHROPIC_MODEL,
     max_tokens: MAX_OUTPUT_TOKENS,
-    output_config: { effort: "low" },
+    output_config: { effort: BIO_EFFORT },
     system: SYSTEM_PROMPT,
     messages: [{ role: "user", content: input }],
     tools: [
@@ -217,17 +229,27 @@ async function getMembers(db: Database) {
   const retryErrors = RETRY_ERRORS
     ? sql`AND site.crawl_error IS NOT NULL`
     : sql``;
+  const missingOnly = MISSING_ONLY
+    ? sql`AND NOT EXISTS (SELECT 1 FROM member_biography_claims c
+                           WHERE c.bioguide_id = m.bioguide_id)`
+    : sql``;
   try {
     const result = await db.execute(sql`
       SELECT m.bioguide_id, m.full_name, m.chamber, m.website_url,
-             site.content_sha256
+             site.content_sha256,
+             EXISTS (SELECT 1 FROM member_biography_claims c
+                      WHERE c.bioguide_id = m.bioguide_id) AS has_facts
       FROM members m
       LEFT JOIN member_official_sites site ON site.bioguide_id = m.bioguide_id
       WHERE m.in_office = true
         AND m.website_url IS NOT NULL
         ${requested}
         ${retryErrors}
+        ${missingOnly}
       ORDER BY
+        -- Members with no stored facts first, so repeated runs converge on
+        -- full coverage instead of recycling members already done.
+        has_facts ASC,
         CASE
           WHEN site.bioguide_id IS NULL THEN 0
           WHEN site.last_crawled_at IS NOT NULL THEN 1
@@ -244,7 +266,7 @@ async function getMembers(db: Database) {
     if (code !== "42P01" || !DRY_RUN) throw error;
     const result = await db.execute(sql`
       SELECT m.bioguide_id, m.full_name, m.chamber, m.website_url,
-             NULL::text AS content_sha256
+             NULL::text AS content_sha256, false AS has_facts
       FROM members m
       WHERE m.in_office = true
         AND m.website_url IS NOT NULL
@@ -292,6 +314,11 @@ async function saveFacts(
         extractorModel: extraction.model,
         confidence: fact.confidence,
         reviewStatus: "needs_review",
+        // Categorized at write time by the same deterministic rules the
+        // reclassification script uses, so a fact is never published into an
+        // ungrouped pile waiting on a separate pass.
+        factType: classifyBiographyFact(fact.sourceQuote, fact.claimText).type,
+        factTypeSource: "rules",
       })
       .onConflictDoNothing();
   }
@@ -348,7 +375,10 @@ async function processMember(
       updatedAt: new Date(),
     })
     .where(eq(memberOfficialSites.bioguideId, member.bioguide_id));
-  if (member.content_sha256 === aggregateHash) {
+  // An unchanged hash means the pages are the same, not that extraction ever
+  // succeeded. Without the has_facts condition a member whose first extraction
+  // failed is skipped on every later run, permanently and silently.
+  if (!FORCE_REEXTRACT && member.has_facts && member.content_sha256 === aggregateHash) {
     await db
       .update(memberOfficialSites)
       .set({ lastCrawledAt: new Date(), crawlError: null, updatedAt: new Date() })

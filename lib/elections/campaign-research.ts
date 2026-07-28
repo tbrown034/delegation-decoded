@@ -29,6 +29,21 @@ export type CampaignResearchOutput = {
   priorService: ExtractedPriorService[];
 };
 
+// Display grouping for extracted claims. Biography is rendered separately, so
+// it is absent here; the rest are ordered from what a campaign promises to who
+// backs it.
+export const CAMPAIGN_CLAIM_LABEL: Record<string, string> = {
+  campaign_priority: "Stated priorities",
+  issue_position: "Stated positions",
+  endorsement: "Claimed endorsements",
+};
+
+export const CAMPAIGN_CLAIM_ORDER = [
+  "campaign_priority",
+  "issue_position",
+  "endorsement",
+] as const;
+
 export const CAMPAIGN_RESEARCH_SCHEMA = {
   type: "object",
   additionalProperties: false,

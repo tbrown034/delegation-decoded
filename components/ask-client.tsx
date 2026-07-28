@@ -14,12 +14,22 @@ interface LocatedMember {
   photoUrl: string | null;
 }
 
+interface LocatedRace {
+  contestId: string;
+  title: string;
+  coverage: "verified_ballot" | "verification_pending" | "fec_only";
+  activeCandidates: number;
+  candidates: string[];
+  matchup?: "set" | "partial" | "pending" | "none";
+}
+
 interface Located {
   stateCode: string;
   stateName: string;
   district: number | null;
   matchedAddress: string | null;
   members: LocatedMember[];
+  races?: LocatedRace[];
 }
 
 interface TraceEntry {
@@ -127,14 +137,17 @@ const NATIONAL_EXAMPLES: { group: string; items: string[] }[] = [
 
 const TOOL_LABELS: Record<string, string> = {
   find_members: "member search",
-  get_race_candidates: "FEC candidate filings",
+  // This tool reads state election-authority records where an adapter covers
+  // the state and campaign-site statements linked through FEC filings, so
+  // crediting the FEC alone understated where the answer came from.
+  get_race_candidates: "state ballot records and campaign sites",
   get_delegation: "delegation roster",
   get_member_votes: "roll-call votes",
   get_member_finance: "FEC campaign finance",
   get_member_bills: "Congress.gov bills",
   get_member_committees: "committee assignments",
   get_member_terms: "term dates",
-  get_member_biography: "reviewed official biography",
+  get_member_biography: "official congressional biography",
 };
 
 const ALLOWED_HOSTS = [
@@ -710,9 +723,52 @@ export default function AskClient({
               </li>
             ))}
           </ul>
+          {located.races && located.races.length > 0 && (
+            <div className="mt-3 border-t border-neutral-200 pt-3">
+              <p className="text-xs uppercase tracking-wide text-neutral-400">
+                On the 2026 ballot
+              </p>
+              <ul className="mt-2 space-y-2">
+                {located.races.map((race) => (
+                  <li key={race.contestId} className="text-xs">
+                    <Link
+                      href={`/race/${race.contestId}`}
+                      className="font-medium text-neutral-900 hover:underline"
+                    >
+                      {race.title.replace(`${located.stateName} `, "")}
+                    </Link>
+                    {race.matchup === "set" && (
+                      <span className="ml-2 text-[10px] font-medium uppercase tracking-wide text-emerald-700">
+                        matchup set
+                      </span>
+                    )}
+                    {race.matchup === "partial" && (
+                      <span className="ml-2 text-[10px] font-medium uppercase tracking-wide text-amber-700">
+                        matchup forming
+                      </span>
+                    )}
+                    <span className="ml-2 text-neutral-400">
+                      {race.coverage === "verified_ballot"
+                        ? "state-verified ballot"
+                        : race.coverage === "verification_pending"
+                          ? "state records, verification pending"
+                          : "FEC filers"}
+                    </span>
+                    {race.candidates.length > 0 && (
+                      <p className="mt-0.5 leading-relaxed text-neutral-600">
+                        {race.candidates.join(" · ")}
+                        {race.activeCandidates > race.candidates.length &&
+                          ` +${race.activeCandidates - race.candidates.length} more`}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {located.district == null && located.members.some((m) => m.chamber === "house") && (
             <p className="mt-2 text-xs text-neutral-400">
-              Add a street address to pin down your House district.
+              Add a street address to pin down your House district and see that race.
             </p>
           )}
         </div>

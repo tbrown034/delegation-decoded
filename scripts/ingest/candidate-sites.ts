@@ -42,6 +42,7 @@ type CandidateRow = {
   verification_status: string | null;
   verified_source_url: string | null;
   content_sha256: string | null;
+  has_research: boolean;
 };
 
 type ExtractionResult = {
@@ -126,6 +127,12 @@ const MAX_OUTPUT_TOKENS = boundedInt(
   1_000,
   8_000
 );
+// At "low" effort both providers intermittently returned an empty result for
+// pages that plainly contain extractable claims — the same input yielded 0
+// records on one call and 20 on the next. Extraction quality is the whole
+// product here, so the default sits a tier higher.
+const EXTRACT_EFFORT =
+  (process.env.CANDIDATE_EXTRACT_EFFORT as "low" | "medium" | "high") || "medium";
 const MAX_PROVIDER_CALLS = boundedInt("CANDIDATE_EXTRACT_MAX_PROVIDER_CALLS", 16, 1, 50);
 const MAX_RUN_TOKENS = boundedInt("CANDIDATE_EXTRACT_MAX_RUN_TOKENS", 250_000, 10_000, 1_000_000);
 const OPENAI_MODEL = process.env.CANDIDATE_EXTRACT_OPENAI_MODEL || "gpt-5.6-terra";
@@ -154,7 +161,7 @@ async function runOpenAI(input: string, pages: CampaignResearchPage[], safetyId:
     model: OPENAI_MODEL,
     instructions: SYSTEM_PROMPT,
     input,
-    reasoning: { effort: "low" },
+    reasoning: { effort: EXTRACT_EFFORT },
     text: {
       verbosity: "low",
       format: {
@@ -195,7 +202,7 @@ async function runAnthropic(input: string, pages: CampaignResearchPage[]) {
   const response = await client.messages.create({
     model: ANTHROPIC_MODEL,
     max_tokens: MAX_OUTPUT_TOKENS,
-    output_config: { effort: "low" },
+    output_config: { effort: EXTRACT_EFFORT },
     system: SYSTEM_PROMPT,
     messages: [{ role: "user", content: input }],
     tools: [
@@ -363,7 +370,11 @@ async function getCandidates(db: Database) {
   const result = await db.execute(sql`
     SELECT ca.candidacy_id, ca.person_id, p.display_name, ca.fec_candidate_id,
            site.site_url, site.verification_status, site.verified_source_url,
-           site.content_sha256
+           site.content_sha256,
+           (EXISTS (SELECT 1 FROM candidate_site_claims cl
+                     WHERE cl.candidacy_id = ca.candidacy_id)
+            OR EXISTS (SELECT 1 FROM candidate_prior_service ps
+                        WHERE ps.person_id = ca.person_id)) AS has_research
     FROM candidacies ca
     JOIN candidate_people p ON p.person_id = ca.person_id
     JOIN election_contests contest ON contest.contest_id = ca.contest_id
@@ -374,6 +385,9 @@ async function getCandidates(db: Database) {
       ${requested}
       ${requestedState}
     ORDER BY
+      -- Candidates holding no research at all come first, so repeated runs
+      -- converge on full coverage instead of recycling finished sites.
+      has_research ASC,
       CASE
         WHEN site.candidacy_id IS NULL THEN 0
         WHEN site.last_crawled_at IS NOT NULL THEN 1
@@ -465,7 +479,12 @@ async function processCandidate(
     return 0;
   }
   const aggregateHash = evidenceContentHash(crawled);
-  if (!FORCE_REEXTRACT && candidate.content_sha256 === aggregateHash) {
+  // An unchanged hash only means the pages are the same, not that extraction
+  // ever succeeded. Skipping on the hash alone permanently starved every site
+  // whose first extraction failed: the retry cleared crawl_error, so the row
+  // looked healthy while holding no research at all. Require stored research
+  // before treating a site as done.
+  if (!FORCE_REEXTRACT && candidate.has_research && candidate.content_sha256 === aggregateHash) {
     await db
       .update(candidateCampaignSites)
       .set({ lastCrawledAt: new Date(), crawlError: null, updatedAt: new Date() })

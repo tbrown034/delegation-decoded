@@ -76,6 +76,7 @@ export async function parseIndianaGeneralWorkbook(buffer: Buffer) {
     await parseFirstXlsxWorksheet(buffer, {
       label: "Indiana workbook",
       maxBytes: 10_000_000,
+      maxInflatedBytes: 25_000_000,
     })
   );
 }
