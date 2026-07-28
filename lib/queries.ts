@@ -21,6 +21,7 @@ import {
   syncLog,
 } from "./schema";
 import { eq, and, desc, sql, count } from "drizzle-orm";
+import { firstNameForms, initialismSurname } from "./member-names";
 export {
   getMemberSeatRaces,
   getPublishedCampaignResearch,
@@ -134,18 +135,51 @@ export async function findMembersByName(query: string, limit = 8) {
   if (q.length < 2) return [];
   const like = `%${q}%`;
   const prefix = `${q}%`;
+
+  // 193 of 537 sitting members store a middle initial or middle name, so a
+  // contiguous "%adam schiff%" never matches "Adam B. Schiff" — and readers
+  // type "Adam Schiff", "Bernie Sanders", "Chuck Schumer". Match the first and
+  // last tokens against their own columns as well. First name is a prefix test
+  // so Bernie/Bernard and Chuck/Charles still miss, but every middle-initial
+  // member is reachable; nickname mapping is a separate problem.
+  const tokens = q.split(/\s+/).filter(Boolean);
+  const lastToken = tokens.length > 1 ? `${tokens[tokens.length - 1]}%` : null;
+  // "Chuck" must reach "Charles E. Schumer"; the roster stores legal names.
+  // Built as an explicit OR list rather than a bound text[] — Drizzle renders a
+  // JS array into the template as a string and Postgres rejects it.
+  const firstForms =
+    tokens.length > 1 ? firstNameForms(tokens[0]).map((f) => `${f}%`) : [];
+  const firstNameMatch =
+    firstForms.length > 0 && lastToken
+      ? sql`(${sql.join(
+          firstForms.map((f) => sql`LOWER(first_name) LIKE ${f}`),
+          sql` OR `
+        )}) AND LOWER(last_name) LIKE ${lastToken}`
+      : sql`false`;
+  // A bare "AOC" carries no surname token of its own.
+  const initialism = tokens.length === 1 ? initialismSurname(q) : null;
+  const initialismMatch = initialism
+    ? sql`LOWER(last_name) LIKE ${`${initialism}%`}`
+    : sql`false`;
+
   const rows = (await db.execute(sql`
     SELECT bioguide_id, full_name, party, state_code, district, chamber,
       CASE
         WHEN LOWER(full_name) = ${q} THEN 100
         WHEN LOWER(last_name) = ${q} THEN 95
+        WHEN ${firstNameMatch} THEN 90
         WHEN LOWER(full_name) LIKE ${prefix} THEN 80
         WHEN LOWER(last_name) LIKE ${prefix} THEN 75
         ELSE 50
       END AS rank
     FROM members
     WHERE in_office = true
-      AND (LOWER(full_name) LIKE ${like} OR LOWER(last_name) LIKE ${like})
+      AND (
+        LOWER(full_name) LIKE ${like}
+        OR LOWER(last_name) LIKE ${like}
+        OR ${firstNameMatch}
+        OR ${initialismMatch}
+      )
     ORDER BY rank DESC, last_name ASC
     LIMIT ${Math.min(Math.max(limit, 1), 12)}
   `)) as unknown as {

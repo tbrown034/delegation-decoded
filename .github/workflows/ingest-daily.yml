@@ -105,16 +105,20 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-      # PAUSED July 20, 2026: disclosures-clerk.house.gov rejects the current
-      # API key (failing since ~Apr 25). Re-enable after rotating the secret.
-      # lib/health.ts surfaces this pause as a visible warn on /health.
-      # - name: Ingest House PTR disclosures
-      #   if: always()
-      #   continue-on-error: true
-      #   run: npx tsx scripts/ingest/disclosures-house.ts
-      #   env:
-      #     DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      #     ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      # Re-enabled July 27, 2026. Paused July 20 with a note blaming a House
+      # Clerk API key, but the Clerk serves public PDFs and takes no key — every
+      # logged 401 was Anthropic's ("authentication_error"), raised by the
+      # Sonnet vision parse in scripts/lib/parse-ptr.ts. ANTHROPIC_API_KEY was
+      # rotated July 22 and now authenticates. This step bills vision tokens per
+      # PDF, so watch the first run; continue-on-error keeps a parse failure
+      # from taking the whole daily ingest down with it.
+      - name: Ingest House PTR disclosures
+        if: always()
+        continue-on-error: true
+        run: npx tsx scripts/ingest/disclosures-house.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: Generate events feed
         if: always()

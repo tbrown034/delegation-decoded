@@ -69,10 +69,10 @@ export default async function Home() {
       {/* Headline */}
       <div className="mb-10">
         <p className="mb-2 font-mono text-[11px] uppercase tracking-widest text-neutral-400">
-          A public-records guide to the 2026 midterms
+          A public-records guide to Congress and the 2026 midterms
         </p>
-        <h1 className="font-serif text-4xl font-semibold tracking-tight sm:text-5xl">
-          Your congressional delegation, decoded for the midterms.
+        <h1 className="text-balance font-serif text-4xl font-semibold tracking-tight sm:text-5xl">
+          Your congressional delegation, decoded for the midterms and beyond.
         </h1>
         <p className="mt-3 max-w-lg text-neutral-500">
           Find your lawmakers, examine their votes, bills and campaign money,

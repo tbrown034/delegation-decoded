@@ -452,19 +452,29 @@ function raceToolPayload(
         primary_votes: candidate.primaryVotes,
         primary_result_status: candidate.resultStatus,
         campaign_site: profile?.siteUrl ?? null,
+        // Verbatim campaign wording only. Quoting the site is attributable and
+        // linkable; the extractor's paraphrase is neither, so it is not sent.
         campaign_biography:
           profile?.claims
             .filter((claim) => claim.claimType === "biography")
             .map((claim) => ({
-              fact: claim.claimText,
+              quote: claim.sourceQuote,
               source_url: claim.sourceUrl,
             })) ?? [],
-        verified_prior_service:
+        campaign_stated_positions:
+          profile?.claims
+            .filter((claim) => claim.claimType !== "biography")
+            .map((claim) => ({
+              quote: claim.sourceQuote,
+              source_url: claim.sourceUrl,
+            })) ?? [],
+        prior_service_stated_by_campaign:
           profile?.priorService.map((service) => ({
             office: service.officeTitle,
             jurisdiction: service.jurisdiction,
             started_on: service.startedOn,
             ended_on: service.endedOn,
+            quote: service.sourceQuote,
             source_url: service.sourceUrl,
           })) ?? [],
       };
@@ -705,12 +715,14 @@ export async function executeAskTool(
             COMMITTEE_KINDS[committee.designation ?? ""] ?? "other committee",
           total_receipts_2026_cycle: committee.totalReceipts,
         })),
-        ...(contributors.length > 0
-          ? {
-              top_contributors_note:
-                "Individual donations aggregated by the donor's reported employer, per FEC Schedule A.",
-            }
-          : {}),
+        // An empty list here means this member has not been through the
+        // contributor crawl yet, not that the FEC reports no donors. Saying so
+        // explicitly keeps the model from reporting our coverage gap as a
+        // finding about the filings.
+        top_contributors_note:
+          contributors.length > 0
+            ? "Individual donations aggregated by the donor's reported employer, per FEC Schedule A."
+            : "No contributor rows have been ingested for this member yet. This is a gap in our coverage, not a statement about their FEC filings — say so plainly and point to the FEC rather than implying they have no reported donors.",
         top_contributors: contributors.map((row) => ({
           organization: row.contributorName,
           total: row.totalAmount,
@@ -775,16 +787,22 @@ export async function executeAskTool(
           source: "official House or Senate website",
           coverage: "not_loaded",
           records: [],
-          note: "No human-reviewed official biography facts are published for this lawmaker yet. Do not fill the gap from model memory.",
+          note: "No official biography passages are stored for this lawmaker yet. Do not fill the gap from model memory.",
         };
       }
       return {
         source: "official House or Senate website",
         source_url: biography.biographyUrl ?? biography.siteUrl,
         characterization:
-          "These are statements from the lawmaker's official biography, not independent verification.",
+          "Passages quoted verbatim from the lawmaker's own official site. They are the office's self-description, not independent verification. Quote or paraphrase them as the office's words and cite source_url.",
+        // fact_type lets a question about schooling or military service pull
+        // the right passages instead of scanning the whole biography.
+        fact_types_present: [
+          ...new Set(biography.facts.map((fact) => fact.factType ?? "other")),
+        ],
         records: biography.facts.map((fact) => ({
-          fact: fact.claimText,
+          fact_type: fact.factType ?? "other",
+          quote: fact.sourceQuote,
           source_url: fact.sourceUrl,
         })),
       };

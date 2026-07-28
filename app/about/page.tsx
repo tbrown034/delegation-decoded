@@ -102,7 +102,8 @@ export default async function AboutPage() {
         <section>
           <p>
             Delegation Decoded is a congressional accountability platform
-            organized by state delegation and built for the 2026 midterms.
+            organized by state delegation, covering Congress year-round and the
+            2026 midterms.
             Each state dashboard connects its current lawmakers, votes,
             legislation, committees, campaign finance and 2026 candidate fields
             to the official records behind them.
@@ -436,18 +437,28 @@ function AboutProcessDetails({
               principal or authorized campaign committee. It respects robots
               rules, stays on that domain, blocks private and metadata network
               addresses, caps pages, bytes, time and model tokens, and stores
-              every page as a private immutable snapshot. Extracted statements
-              and prior-service records remain unpublished until a human checks
-              the live source and exact supporting quote.
+              every page as a private immutable snapshot. What publishes is the
+              candidate&apos;s own words: race pages show the exact quoted
+              passage next to a link to the page it came from, never a model&apos;s
+              paraphrase of it. A model selects which passages to surface and
+              labels them, and every quote is checked against the stored
+              snapshot before it appears, so nothing can be published that is
+              not present in the source. These are statements a campaign makes
+              about itself, not claims this site has independently confirmed.
             </li>
             <li>
               <strong className="text-neutral-900">Build official member biographies.</strong>{" "}
               Current House and Senate website URLs come from the member roster
               and must remain on a house.gov or senate.gov host. A bounded,
               robots-aware crawler uses the same CMS reconnaissance patterns as
-              Capitol Releases, stores private content-addressed snapshots, and
-              queues evidence-linked biography facts for human review. Nothing
-              appears on a member page or in Ask before that review.
+              Capitol Releases, and stores private content-addressed snapshots.
+              Member pages publish the exact passage the office wrote, linked to
+              the page it came from, grouped by what kind of fact it is —
+              education, military service, public service, career, family,
+              roots. A model selects and groups; it does not rewrite. Every
+              quote is verified against the stored snapshot before it appears.
+              An official biography is a lawmaker&apos;s account of themselves,
+              which is why it is quoted rather than restated as fact.
             </li>
             <li>
               <strong className="text-neutral-900">Validate disclosure infrastructure.</strong>{" "}

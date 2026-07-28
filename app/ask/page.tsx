@@ -3,7 +3,9 @@ import Link from "next/link";
 import AskClient from "@/components/ask-client";
 
 export const metadata: Metadata = {
-  title: "Ask about your delegation, Delegation Decoded",
+  // The root layout appends " | Delegation Decoded" via its title template, so
+  // naming the site here too renders it twice in the tab and in search results.
+  title: "Ask about your delegation",
   description:
     "Ask plain-language questions about any member of Congress, or set your state or address to focus on your delegation: votes, bills, committees, and campaign money, answered only from official records.",
 };

@@ -28,6 +28,7 @@ export async function GET() {
   const result = await db.execute(sql`
     SELECT
       st.id,
+      st.bioguide_id,
       m.full_name,
       m.state_code,
       m.district,
@@ -51,15 +52,24 @@ export async function GET() {
 
   const items = (result.rows as Array<Record<string, unknown>>).map((r) => {
     const district = r.district ? `-${r.district}` : "";
-    const tickerOrAsset = (r.ticker as string) || (r.asset_description as string);
+    const ticker = ((r.ticker as string) ?? "").trim();
+    // 1,198 of the parsed transactions are notes, funds and bonds with no
+    // ticker. Falling back to the raw asset_description put a multi-line
+    // prospectus name in the RSS title, so cap it at a headline length.
+    const asset = (r.asset_description as string) ?? "asset";
+    const label = ticker || (asset.length > 60 ? `${asset.slice(0, 57)}...` : asset);
     const action = (r.tx_type as string).startsWith("P") ? "bought" : "sold";
-    const title = `${r.full_name} ${action} ${tickerOrAsset} (${r.amount_range})`;
+    const title = `${r.full_name} ${action} ${label} (${r.amount_range})`;
     const description = [
       `${r.party} ${r.chamber === "senate" ? "Senator" : "Representative"} from ${r.state_code}${district}.`,
       `Transaction date: ${r.tx_date}. Filed: ${r.filed_date}.`,
       `Asset: ${r.asset_description}. Amount: ${r.amount_range}.`,
     ].join(" ");
-    const link = `${BASE_URL}/trades/companies/${(r.ticker as string) ?? "unknown"}`;
+    // A tickerless asset has no company page, and "unknown" resolved to an
+    // empty one. Send those readers to the filer's own trade list instead.
+    const link = ticker
+      ? `${BASE_URL}/trades/companies/${encodeURIComponent(ticker)}`
+      : `${BASE_URL}/trades/${r.bioguide_id}`;
     const guid = `${BASE_URL}/trades#${r.id}`;
     const pubDate = rfc822(new Date(r.filed_at as string));
     return [
