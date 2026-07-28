@@ -16,23 +16,23 @@ export function Footer() {
           </div>
 
           <nav className="flex flex-wrap gap-x-6 gap-y-2 text-xs text-neutral-500">
-            <Link href="/" className="transition-colors hover:text-neutral-900">
+            <Link href="/" className="inline-flex min-h-6 items-center transition-colors hover:text-neutral-900">
               States
             </Link>
-            <Link href="/ask" className="transition-colors hover:text-neutral-900">
+            <Link href="/ask" className="inline-flex min-h-6 items-center transition-colors hover:text-neutral-900">
               Ask
             </Link>
-            <Link href="/find" className="transition-colors hover:text-neutral-900">
+            <Link href="/find" className="inline-flex min-h-6 items-center transition-colors hover:text-neutral-900">
               Find mine
             </Link>
-            <Link href="/compare" className="transition-colors hover:text-neutral-900">
+            <Link href="/compare" className="inline-flex min-h-6 items-center transition-colors hover:text-neutral-900">
               Compare
             </Link>
-            <Link href="/for-journalists" className="transition-colors hover:text-neutral-900">
+            <Link href="/for-journalists" className="inline-flex min-h-6 items-center transition-colors hover:text-neutral-900">
               For journalists
             </Link>
             <HealthDot />
-            <Link href="/about" className="transition-colors hover:text-neutral-900">
+            <Link href="/about" className="inline-flex min-h-6 items-center transition-colors hover:text-neutral-900">
               About & Methodology
             </Link>
           </nav>

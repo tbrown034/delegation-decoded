@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
+import { houseSeatTitle, isNonVotingJurisdiction } from "@/lib/states";
 
 interface MemberCardProps {
   bioguideId: string;
@@ -30,16 +31,22 @@ export function MemberCard({
   chamber,
   district,
   photoUrl,
+  stateCode,
 }: MemberCardProps) {
   const ringClass = partyRing[party] || "ring-neutral-300";
   const dotClass = partyDot[party] || "bg-neutral-400";
 
+  // A district number is the clearest seat label where one exists. Where it
+  // does not, "At-Large" was applied to DC and the territories too, implying a
+  // voting House seat they do not hold — name the actual office instead.
   const seat =
     chamber === "senate"
       ? "Senator"
       : district
         ? `District ${district}`
-        : "At-Large";
+        : isNonVotingJurisdiction(stateCode)
+          ? houseSeatTitle(stateCode)
+          : "At-Large";
 
   return (
     <Link

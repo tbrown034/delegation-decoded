@@ -15,6 +15,7 @@ import { MemberCard } from "@/components/member-card";
 import { PartyBar } from "@/components/party-bar";
 import { StateCoverageNote } from "@/components/data-coverage";
 import { effectiveTotal, fmt } from "@/lib/finance";
+import { houseSeatTitlePlural, isNonVotingJurisdiction } from "@/lib/states";
 import AskClient from "@/components/ask-client";
 import { getStateRaceIndex } from "@/lib/elections/queries";
 
@@ -116,12 +117,20 @@ export default async function StatePage({ params }: Props) {
           {state.name}
         </h1>
         <div className="mt-2 flex items-center gap-4 text-sm text-neutral-500">
+          {/* DC and the territories have no senators, so the "0 senators" half
+              is noise there; their one seat is a Delegate or Resident
+              Commissioner, never a Representative. */}
+          {!isNonVotingJurisdiction(state.code) && (
+            <>
+              <span>
+                {senators.length} senator{senators.length !== 1 ? "s" : ""}
+              </span>
+              <span className="text-neutral-200">/</span>
+            </>
+          )}
           <span>
-            {senators.length} senator{senators.length !== 1 ? "s" : ""}
-          </span>
-          <span className="text-neutral-200">/</span>
-          <span>
-            {reps.length} representative{reps.length !== 1 ? "s" : ""}
+            {reps.length}{" "}
+            {houseSeatTitlePlural(state.code, reps.length).toLowerCase()}
           </span>
         </div>
         <div className="mt-3 max-w-[200px]">
@@ -183,7 +192,7 @@ export default async function StatePage({ params }: Props) {
           {reps.length > 0 && (
             <section className="mb-8">
               <h2 className="mb-1 text-xs font-medium uppercase tracking-wide text-neutral-400">
-                Representatives
+                {houseSeatTitlePlural(state.code, reps.length)}
               </h2>
               <div>
                 {reps.map((m) => (
@@ -211,14 +220,22 @@ export default async function StatePage({ params }: Props) {
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
               {stateRaces.slice(0, 12).map((race) => (
-                <Link key={race.contestId} href={`/race/${race.contestId}`} className="rounded border border-neutral-200 bg-white p-3 no-underline hover:border-neutral-400">
+                <Link key={race.contestId} href={`/race/${race.contestId}`} className="min-w-0 rounded border border-neutral-200 bg-white p-3 no-underline hover:border-neutral-400">
                   <div className="flex items-baseline justify-between gap-3">
                     <span className="truncate text-sm font-medium text-neutral-900">{race.title.replace(`${state.name} `, "")}</span>
-                    <span className="shrink-0 font-mono text-xs text-neutral-400">{race.activeCandidates}</span>
+                    <span className="shrink-0 font-mono text-xs text-neutral-400">
+                      {race.matchup === "set" ? "matchup set" : race.matchup === "partial" ? "forming" : race.activeCandidates}
+                    </span>
                   </div>
                   <p className={`mt-1 text-[11px] ${race.coverage === "verification_pending" ? "text-amber-700" : race.coverage === "verified_ballot" ? "text-emerald-700" : "text-neutral-500"}`}>
                     {race.coverage === "verified_ballot" ? "State-verified ballot" : race.coverage === "verification_pending" ? "State records; verification pending" : "FEC filers only"}
                   </p>
+                  {race.candidates.length > 0 && (
+                    <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-neutral-600">
+                      {race.candidates.slice(0, 5).join(" · ")}
+                      {race.activeCandidates > 5 && ` +${race.activeCandidates - 5} more`}
+                    </p>
+                  )}
                 </Link>
               ))}
             </div>
@@ -437,12 +454,15 @@ function StateSidebar({
                       <p className="text-xs font-medium text-neutral-700">
                         {name}
                       </p>
-                      <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0">
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2">
                         {cms.map((cm) => (
+                          // inline-flex + min-h-6 lifts these from 16px to the
+                          // 24px WCAG 2.2 target minimum without changing the
+                          // type size or wrapping behaviour.
                           <Link
                             key={cm.bioguideId}
                             href={`/member/${cm.bioguideId}`}
-                            className="text-[11px] text-neutral-400 no-underline hover:text-neutral-700"
+                            className="inline-flex min-h-6 items-center text-[11px] text-neutral-400 no-underline hover:text-neutral-700"
                           >
                             <span
                               className={`mr-0.5 inline-block h-1 w-1 rounded-full ${PARTY_DOT[cm.memberParty] || "bg-neutral-400"}`}

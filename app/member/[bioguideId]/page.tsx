@@ -20,11 +20,14 @@ import {
 import { getMemberSeatRaces } from "@/lib/elections/queries";
 import { resolveMemberSeat } from "@/lib/elections/member-seat";
 import { MemberCoverageCard } from "@/components/member-coverage-card";
-import { STATE_BY_CODE } from "@/lib/states";
+import { CollapsibleList } from "@/components/collapsible-list";
+import { STATE_BY_CODE, houseSeatTitle } from "@/lib/states";
+import { breadcrumbName } from "@/lib/member-names";
 import { effectiveTotal, fmt } from "@/lib/finance";
 import { MemberCoverageBar } from "@/components/data-coverage";
 import { buildActivityTimeline } from "@/lib/press-analytics";
 import AskClient from "@/components/ask-client";
+import { FACT_TYPE_LABEL, FACT_TYPE_ORDER } from "@/lib/biography-classify";
 
 type Props = {
   params: Promise<{ bioguideId: string }>;
@@ -37,7 +40,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const stateName = STATE_BY_CODE[member.stateCode]?.name || member.stateCode;
   return {
     title: `${member.fullName}, ${stateName}`,
-    description: `${member.fullName}, ${member.party} ${member.chamber === "senate" ? "Senator" : "Representative"} from ${stateName}. Committees, legislation, and campaign finance.`,
+    description: `${member.fullName}, ${member.party} ${member.chamber === "senate" ? "Senator" : houseSeatTitle(member.stateCode)} from ${stateName}. Committees, legislation, and campaign finance.`,
   };
 }
 
@@ -71,7 +74,10 @@ export default async function MemberPage({ params }: Props) {
     ]);
 
   const stateName = STATE_BY_CODE[member.stateCode]?.name || member.stateCode;
-  const chamber = member.chamber === "senate" ? "Senator" : "Representative";
+  const chamber =
+    member.chamber === "senate"
+      ? "Senator"
+      : houseSeatTitle(member.stateCode);
   const district =
     member.chamber === "house"
       ? member.district
@@ -107,7 +113,7 @@ export default async function MemberPage({ params }: Props) {
         </Link>
         <span className="mx-1.5">/</span>
         <span className="text-neutral-900">
-          {member.lastName}
+          {breadcrumbName(member.fullName, member.lastName)}
         </span>
       </nav>
 
@@ -216,23 +222,11 @@ export default async function MemberPage({ params }: Props) {
               Congressional source
             </a>
           </div>
-          <ul className="mt-2 space-y-1.5 text-sm leading-relaxed text-neutral-700">
-            {biography.facts.map((fact) => (
-              <li key={fact.claimId}>
-                {fact.claimText}{" "}
-                <a
-                  href={fact.sourceUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-neutral-400 underline decoration-neutral-300 underline-offset-2"
-                >
-                  Source
-                </a>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-2 text-[11px] text-neutral-400">
-            Extracted from this lawmaker&apos;s official House or Senate site and published only after source review.
+          <BiographyGroups facts={biography.facts} />
+          <p className="mt-2 text-[11px] leading-relaxed text-neutral-400">
+            Quoted verbatim from this lawmaker&apos;s official House or Senate
+            site. Passages are selected automatically; the wording is the
+            office&apos;s own, unedited.
           </p>
         </section>
       )}
@@ -271,7 +265,7 @@ export default async function MemberPage({ params }: Props) {
       {memberBills.length > 0 && (
         <section className="mb-10">
           <h2 className="mb-3 font-serif text-lg font-semibold">Legislation</h2>
-          <div>
+          <CollapsibleList initial={8} label="bills">
             {memberBills.map((b) => (
               <div
                 key={b.billId}
@@ -310,7 +304,7 @@ export default async function MemberPage({ params }: Props) {
                 </div>
               </div>
             ))}
-          </div>
+          </CollapsibleList>
         </section>
       )}
 
@@ -369,7 +363,7 @@ export default async function MemberPage({ params }: Props) {
             </div>
           </div>
           {/* Recent votes */}
-          <div>
+          <CollapsibleList initial={8} label="votes">
             {recentVotes.map((v) => (
               <div
                 key={v.voteId}
@@ -400,7 +394,7 @@ export default async function MemberPage({ params }: Props) {
                 </span>
               </div>
             ))}
-          </div>
+          </CollapsibleList>
         </section>
       )}
 
@@ -679,7 +673,7 @@ export default async function MemberPage({ params }: Props) {
                 Votes
               </span>
             </div>
-            <div>
+            <CollapsibleList initial={8} label="entries">
               {timeline.map((item, i) => (
                 <div
                   key={`${item.type}-${item.date}-${i}`}
@@ -732,7 +726,7 @@ export default async function MemberPage({ params }: Props) {
                   </div>
                 </div>
               ))}
-            </div>
+            </CollapsibleList>
           </section>
         );
       })()}
@@ -742,7 +736,7 @@ export default async function MemberPage({ params }: Props) {
         <h2 className="mb-3 font-serif text-lg font-semibold">
           Service History
         </h2>
-        <div>
+        <CollapsibleList initial={8} label="terms">
           {memberTerms.map((t) => (
             <div
               key={`${t.chamber}-${t.startDate}-${t.endDate ?? "present"}-${t.district ?? "statewide"}`}
@@ -767,10 +761,59 @@ export default async function MemberPage({ params }: Props) {
               </span>
             </div>
           ))}
-        </div>
+        </CollapsibleList>
       </section>
 
       <MemberCoverageCard items={coverageDetail} />
+    </div>
+  );
+}
+
+// Official-biography facts, grouped by what kind of fact they are. Ungrouped
+// facts keep a neutral heading rather than being dropped or forced into a
+// category the classifier could not justify.
+function BiographyGroups({
+  facts,
+}: {
+  facts: NonNullable<Awaited<ReturnType<typeof getPublishedMemberBiography>>>["facts"];
+}) {
+  const grouped = new Map<string, typeof facts>();
+  for (const fact of facts) {
+    const key = fact.factType ?? "other";
+    grouped.set(key, [...(grouped.get(key) ?? []), fact]);
+  }
+  const ordered: Array<[string, typeof facts]> = [];
+  for (const type of FACT_TYPE_ORDER) {
+    const group = grouped.get(type);
+    if (group?.length) ordered.push([FACT_TYPE_LABEL[type], group]);
+  }
+  const other = grouped.get("other");
+  if (other?.length) ordered.push(["Also stated", other]);
+
+  return (
+    <div className="mt-3 space-y-3">
+      {ordered.map(([label, group]) => (
+        <div key={label}>
+          <p className="font-mono text-[11px] uppercase tracking-wide text-neutral-400">
+            {label}
+          </p>
+          <ul className="mt-1 space-y-1.5 text-sm leading-relaxed text-neutral-700">
+            {group.map((fact) => (
+              <li key={fact.claimId}>
+                <span className="italic">&ldquo;{fact.sourceQuote}&rdquo;</span>{" "}
+                <a
+                  href={fact.sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-neutral-400 underline decoration-neutral-300 underline-offset-2"
+                >
+                  source
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
     </div>
   );
 }

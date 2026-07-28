@@ -68,3 +68,32 @@ export const STATES: StateInfo[] = [
 export const STATE_BY_CODE = Object.fromEntries(
   STATES.map((s) => [s.code, s])
 );
+
+// Puerto Rico elects a Resident Commissioner; the other five non-state
+// jurisdictions elect Delegates. None of them is a Representative, and none
+// votes on final passage — so calling them one is simply wrong on a site whose
+// premise is official records. Everything else is a Representative.
+const RESIDENT_COMMISSIONER = new Set(["PR"]);
+const DELEGATE = new Set(["DC", "AS", "GU", "MP", "VI"]);
+
+export function houseSeatTitle(stateCode: string): string {
+  const code = stateCode.toUpperCase();
+  if (RESIDENT_COMMISSIONER.has(code)) return "Resident Commissioner";
+  if (DELEGATE.has(code)) return "Delegate";
+  return "Representative";
+}
+
+/** Plural form for roster headings ("2 senators / 51 representatives"). */
+export function houseSeatTitlePlural(stateCode: string, count: number): string {
+  const title = houseSeatTitle(stateCode);
+  if (count === 1) return title;
+  return title === "Resident Commissioner"
+    ? "Resident Commissioners"
+    : `${title}s`;
+}
+
+/** True when the jurisdiction has no voting House seat and no senators. */
+export function isNonVotingJurisdiction(stateCode: string): boolean {
+  const code = stateCode.toUpperCase();
+  return RESIDENT_COMMISSIONER.has(code) || DELEGATE.has(code);
+}
