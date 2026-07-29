@@ -772,3 +772,47 @@ CREATE TABLE IF NOT EXISTS ask_cache (
 );
 
 CREATE INDEX IF NOT EXISTS idx_ask_cache_created ON ask_cache(created_at);
+
+-- Per-question audit log for /ask. One row per request that reached the
+-- engine (including cache hits, rate-limit rejections, and failures), so any
+-- answer the assistant ever served can be reproduced: what was asked, in what
+-- scope, which records the tool loop checked, which provider/model answered,
+-- what it cost, and how the request ended. ip_hash is a keyed HMAC — the raw
+-- address is never stored. Rows expire after 90 days via the same
+-- opportunistic cleanup that prunes ask_rate_limits and ask_cache.
+CREATE TABLE IF NOT EXISTS ask_log (
+  id                        BIGSERIAL PRIMARY KEY,
+  created_at                TIMESTAMPTZ NOT NULL DEFAULT now(),
+  ip_hash                   TEXT,
+  question                  TEXT NOT NULL,
+  scope_type                TEXT NOT NULL,           -- national | state | member
+  state_code                CHAR(2),
+  district                  INTEGER,
+  bioguide_id               TEXT,
+  history_turns             INTEGER NOT NULL DEFAULT 0,
+  -- Terminal grounded status from the model (answered | not_found |
+  -- out_of_scope | declined), or 'error' when no grounded answer was served.
+  outcome                   TEXT NOT NULL,
+  error_class               TEXT,                    -- rate_limited | provider_unavailable | timeout | ...
+  http_status               INTEGER,
+  cache_hit                 BOOLEAN NOT NULL DEFAULT false,
+  provider                  TEXT,
+  model                     TEXT,
+  fallback_used             BOOLEAN NOT NULL DEFAULT false,
+  refusal_category          TEXT,                    -- Anthropic stop_details.category on classifier refusals
+  latency_ms                INTEGER,
+  input_tokens              INTEGER,
+  cached_input_tokens       INTEGER,
+  cache_write_input_tokens  INTEGER,
+  output_tokens             INTEGER,
+  tool_calls                INTEGER,
+  trace                     JSONB,
+  citation_count            INTEGER,
+  -- Share of answer sentences carrying a server-validated citation marker.
+  citation_coverage         REAL,
+  answer                    TEXT,
+  prompt_version            TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_ask_log_created ON ask_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_ask_log_outcome ON ask_log(outcome, created_at);

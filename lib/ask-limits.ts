@@ -1,6 +1,6 @@
 import { createHmac } from "crypto";
 import { sql } from "drizzle-orm";
-import { ASK_PROMPT_VERSION, type AskProvider } from "./ask-engine";
+import { ASK_PROMPT_VERSION, type AskProvider, type AskStatus } from "./ask-engine";
 import type { Citation } from "./ask-citations";
 import type { AskScope } from "./ask-tools";
 import { db } from "./db";
@@ -8,7 +8,7 @@ import { db } from "./db";
 const IP_HOURLY_LIMIT = 20;
 const LOCATE_IP_HOURLY_LIMIT = 30;
 const SEARCH_IP_HOURLY_LIMIT = 60;
-const GLOBAL_DAILY_PROVIDER_ATTEMPT_LIMIT = 500;
+export const GLOBAL_DAILY_PROVIDER_ATTEMPT_LIMIT = 500;
 const PROVIDER_DAILY_ATTEMPT_LIMIT = 350;
 const CACHE_TTL_HOURS = 24;
 
@@ -27,6 +27,12 @@ function keyedHash(value: string, length = 32): string {
 
 function hashIp(ip: string): string {
   return keyedHash(`dd-ask-ip:${ip}`, 24);
+}
+
+// Same keyed hash the rate limiter uses, shared with ask_log so one reader's
+// rows correlate without the raw address ever being stored.
+export function logIpHash(ip: string): string {
+  return hashIp(ip);
 }
 
 export function createSafetyIdentifier(ip: string): string {
@@ -140,6 +146,7 @@ function cacheIdentity(question: string, scope: AskScope) {
 
 export interface CachedAnswer {
   answer: string;
+  status?: AskStatus;
   citations: Citation[];
   trace: unknown[];
   provider?: AskProvider;
@@ -157,6 +164,11 @@ function parseCachePayload(answer: string, value: unknown): CachedAnswer {
     const record = value as Record<string, unknown>;
     return {
       answer,
+      status: ["answered", "not_found", "out_of_scope", "declined"].includes(
+        String(record.status)
+      )
+        ? (record.status as AskStatus)
+        : undefined,
       citations: Array.isArray(record.citations)
         ? (record.citations as Citation[])
         : [],
@@ -194,15 +206,19 @@ export async function getCachedAnswer(
 export async function setCachedAnswer(
   question: string,
   scope: AskScope,
-  answer: string,
-  trace: unknown,
-  provider: AskProvider,
-  model: string,
-  fallbackUsed: boolean,
-  citations: Citation[] = []
+  result: {
+    answer: string;
+    status: AskStatus;
+    trace: unknown;
+    provider: AskProvider;
+    model: string;
+    fallbackUsed: boolean;
+    citations: Citation[];
+  }
 ): Promise<void> {
   if (scope.type === "national") return;
-  const payload = JSON.stringify({ trace, provider, model, fallbackUsed, citations });
+  const { answer, status, trace, provider, model, fallbackUsed, citations } = result;
+  const payload = JSON.stringify({ status, trace, provider, model, fallbackUsed, citations });
   await db.execute(sql`
     INSERT INTO ask_cache (question_norm, state_code, district, answer, trace, created_at)
     VALUES (${cacheIdentity(question, scope)}, ${scope.stateCode}, ${cacheDistrict(scope)}, ${answer}, ${payload}, now())
@@ -220,5 +236,7 @@ export function scheduleAskDataCleanup() {
   Promise.allSettled([
     db.execute(sql`DELETE FROM ask_rate_limits WHERE window_start < now() - interval '2 days'`),
     db.execute(sql`DELETE FROM ask_cache WHERE created_at < now() - interval '7 days'`),
+    // Audit rows expire with the corrections window described on /about.
+    db.execute(sql`DELETE FROM ask_log WHERE created_at < now() - interval '90 days'`),
   ]).catch(() => {});
 }

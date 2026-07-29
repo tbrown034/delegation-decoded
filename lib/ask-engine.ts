@@ -93,10 +93,13 @@ export function sanitizeAnswerLinks(answer: string, evidence: string): string {
 
 export class AskError extends Error {
   status: number;
+  /** Anthropic stop_details.category when a safety classifier declined. */
+  refusalCategory?: string;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, refusalCategory?: string) {
     super(message);
     this.status = status;
+    this.refusalCategory = refusalCategory;
   }
 }
 
@@ -109,8 +112,11 @@ export class AskProviderUnavailableError extends Error {
   }
 }
 
+export type AskStatus = "answered" | "not_found" | "out_of_scope" | "declined";
+
 export interface AskResult {
   answer: string;
+  status: AskStatus;
   citations: Citation[];
   trace: ToolTraceEntry[];
   provider: AskProvider;
@@ -159,6 +165,7 @@ interface PreparedAsk {
 
 interface ProviderResult {
   answer: string;
+  status: AskStatus;
   trace: ToolTraceEntry[];
   evidence: string;
   registry: EvidenceRegistry;
@@ -174,11 +181,14 @@ function emptyUsage(): AskUsage {
   };
 }
 
-function parseTerminalAnswer(input: Record<string, unknown>, traceLength: number) {
-  const status = input.status;
+function parseTerminalAnswer(
+  input: Record<string, unknown>,
+  traceLength: number
+): { answer: string; status: AskStatus } {
+  const status = String(input.status) as AskStatus;
   const answer = typeof input.answer === "string" ? input.answer.trim() : "";
   if (
-    !["answered", "not_found", "out_of_scope", "declined"].includes(String(status)) ||
+    !["answered", "not_found", "out_of_scope", "declined"].includes(status) ||
     !answer ||
     answer.length > 3000
   ) {
@@ -187,7 +197,7 @@ function parseTerminalAnswer(input: Record<string, unknown>, traceLength: number
   if (status === "answered" && traceLength === 0) {
     throw new AskError("The assistant did not verify that answer against a record.", 502);
   }
-  return answer;
+  return { answer, status };
 }
 
 function safeToolPayload(result: unknown) {
@@ -369,7 +379,14 @@ async function runAnthropic(
       usage.outputTokens += response.usage.output_tokens;
 
       if (response.stop_reason === "refusal") {
-        throw new AskError("The assistant declined that request.", 422);
+        // stop_details is informational and can be absent; read defensively.
+        const details = (response as { stop_details?: { category?: string | null } })
+          .stop_details;
+        throw new AskError(
+          "The assistant declined that request.",
+          422,
+          details?.category ?? undefined
+        );
       }
       const calls = response.content.filter(
         (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
@@ -379,11 +396,11 @@ async function runAnthropic(
       }
       const terminal = calls.find((call) => call.name === "submit_answer");
       if (terminal) {
-        const answer = parseTerminalAnswer(
+        const { answer, status } = parseTerminalAnswer(
           terminal.input as Record<string, unknown>,
           trace.length
         );
-        return { answer, trace, evidence, registry, usage };
+        return { answer, status, trace, evidence, registry, usage };
       }
 
       messages.push({ role: "assistant", content: response.content });
@@ -499,8 +516,8 @@ async function runOpenAI(
       });
       const terminal = parsed.find(({ call }) => call.name === "submit_answer");
       if (terminal) {
-        const answer = parseTerminalAnswer(terminal.input, trace.length);
-        return { answer, trace, evidence, registry, usage };
+        const { answer, status } = parseTerminalAnswer(terminal.input, trace.length);
+        return { answer, status, trace, evidence, registry, usage };
       }
 
       for (const { call, input: toolInput } of parsed) {
@@ -582,6 +599,7 @@ export async function runAsk(
       );
       return {
         answer,
+        status: result.status,
         citations,
         trace: result.trace,
         provider,

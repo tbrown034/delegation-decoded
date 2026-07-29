@@ -67,9 +67,12 @@ const tools: AskToolDefinition[] = [
   {
     name: "get_delegation",
     description:
-      "Get the current congressional delegation for the page's state. Use this for roster, party, chamber, and district questions.",
+      "Get the current congressional delegation for a state, DC, or territory by two-letter code (IN, DC, AS, GU, MP, VI, PR). Use this for any place-based roster, party, chamber, or district question — including territories, whose delegates are roster members.",
     inputSchema: objectSchema({
-      state_code: { type: "string", description: "The page's two-letter state code." },
+      state_code: {
+        type: "string",
+        description: "Two-letter state, DC, or territory code, e.g. IN, DC, AS.",
+      },
     }),
   },
   {
@@ -191,7 +194,7 @@ const tools: AskToolDefinition[] = [
   {
     name: "find_members",
     description:
-      "Search sitting members of Congress by name across all 50 states. Use this first when no location is set to resolve who the reader means, then read that member's records with the get_member_* tools using the returned bioguide_id. Optionally pass a two-letter state_code to restrict the search.",
+      "Search sitting members of Congress by a PERSON'S name. Use this when no location is set to resolve who the reader means, then read that member's records with the get_member_* tools using the returned bioguide_id. Not for place names — for 'who represents <state or territory>' use get_delegation with its two-letter code. Optionally pass a two-letter state_code to restrict the search.",
     inputSchema: objectSchema({
       query: {
         type: "string",

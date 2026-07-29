@@ -633,9 +633,28 @@ function AboutProcessDetails({
             Questions are capped in length, same-origin POST requests are
             enforced, provider retries are disabled, and one provider fallback
             is allowed only when the primary is unavailable. Per-connection and
-            daily provider limits cap abuse and spend. IP-derived identifiers
-            and cache keys are HMACed or hashed; questions are not stored in
-            plaintext in the answer cache.
+            daily provider limits cap abuse and spend. Fresh questions are
+            screened with a free moderation model before any paid provider
+            call; that check fails open, so a moderation outage never blocks
+            the feature. IP-derived identifiers and cache keys are HMACed or
+            hashed; questions are not stored in plaintext in the answer cache.
+          </p>
+          <p className="mt-2">
+            Every question and answer is kept in an audit log for 90 days,
+            keyed to a hashed connection identifier rather than an address.
+            The log records the model&apos;s own status for each reply —
+            answered, no matching record, out of scope, or declined — plus the
+            records checked, the provider used, latency, and what share of the
+            answer&apos;s sentences carry a validated citation. That makes any
+            answer the assistant ever served reproducible and correctable, and
+            the{" "}
+            <Link href="/health" className="text-neutral-900 underline decoration-neutral-300 underline-offset-2 hover:decoration-neutral-500">
+              health page
+            </Link>{" "}
+            publishes live totals from it. Replies that are not grounded
+            answers are labeled in the interface, no answer is reviewed by a
+            person before display, and every answer carries a report link for
+            corrections.
           </p>
           <p className="mt-2">
             Two ingestion pipelines use models. House PTR PDFs are parsed with

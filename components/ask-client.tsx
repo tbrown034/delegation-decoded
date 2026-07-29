@@ -50,9 +50,12 @@ type ProgressEvent =
   | { type: "tool"; tool: string; detail?: string }
   | { type: "tool_result"; tool: string; records: number };
 
+type AnswerStatus = "answered" | "not_found" | "out_of_scope" | "declined";
+
 interface Exchange {
   question: string;
   answer: string;
+  status?: AnswerStatus;
   citations: Citation[];
   trace: TraceEntry[];
   cached?: boolean;
@@ -423,6 +426,11 @@ export default function AskClient({
       {
         question,
         answer: typeof data.answer === "string" ? data.answer : "",
+        status: ["answered", "not_found", "out_of_scope", "declined"].includes(
+          String(data.status)
+        )
+          ? (data.status as AnswerStatus)
+          : undefined,
         citations: Array.isArray(data.citations)
           ? (data.citations as Citation[])
           : [],
@@ -946,6 +954,15 @@ export default function AskClient({
           {[...exchanges].reverse().map((ex, i) => (
             <li key={exchanges.length - i} className="rounded border border-neutral-200 bg-white p-4">
               <p className="text-sm font-medium text-neutral-900">{ex.question}</p>
+              {ex.status && ex.status !== "answered" && (
+                <span className="mt-2 inline-flex items-center rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-amber-700">
+                  {ex.status === "not_found"
+                    ? "No matching record"
+                    : ex.status === "out_of_scope"
+                      ? "Outside this site's records"
+                      : "Request declined"}
+                </span>
+              )}
               <div className="mt-3">{renderAnswer(ex.answer)}</div>
               {ex.citations.length > 0 && (
                 <details className="mt-3">
@@ -1003,7 +1020,17 @@ export default function AskClient({
                 ) : (
                   "Answered from the delegation roster. "
                 )}
-                Answers draw only on official records in this site&apos;s database.
+                Answers are AI-written from official records in this site&apos;s
+                database, are not reviewed by a person before display, and can
+                contain mistakes. Verify anything you plan to cite against the
+                linked sources.{" "}
+                <a
+                  href="mailto:trevorbrown.web@gmail.com?subject=Delegation%20Decoded%3A%20wrong%20Ask%20answer"
+                  className="underline decoration-neutral-200 underline-offset-2 hover:text-neutral-700"
+                >
+                  Report a wrong answer
+                </a>
+                .
                 {ex.cached && " Served from today's cache."}
                 {ex.provider && (
                   <>

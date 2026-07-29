@@ -12,6 +12,7 @@ import {
 } from "./elections/queries";
 import type { StateRaceCoverage } from "./elections/types";
 import { getMemberBiographyHealth } from "./biography-queries";
+import { GLOBAL_DAILY_PROVIDER_ATTEMPT_LIMIT } from "./ask-limits";
 
 export type HealthLevel = "ok" | "warn" | "crit";
 
@@ -68,8 +69,74 @@ export type HealthReport = {
     pendingFacts: number;
     verifiedFacts: number;
   };
+  ask: AskHealth;
   checks: HealthCheck[];
 };
+
+export type AskWindowStats = {
+  total: number;
+  answered: number;
+  notFound: number;
+  outOfScope: number;
+  declined: number;
+  errors: number;
+  cacheHits: number;
+  fallbacks: number;
+  p50LatencyMs: number | null;
+  p95LatencyMs: number | null;
+  inputTokens: number;
+  outputTokens: number;
+  avgCitationCoverage: number | null;
+  zeroCitationAnswered: number;
+};
+
+export type AskHealth = {
+  window24h: AskWindowStats;
+  window7d: AskWindowStats;
+  providerAttemptsToday: number;
+  providerAttemptLimit: number;
+};
+
+async function askWindowStats(interval: string): Promise<AskWindowStats> {
+  const result = await db.execute(sql`
+    SELECT
+      COUNT(*)::int AS total,
+      COUNT(*) FILTER (WHERE outcome = 'answered')::int AS answered,
+      COUNT(*) FILTER (WHERE outcome = 'not_found')::int AS not_found,
+      COUNT(*) FILTER (WHERE outcome = 'out_of_scope')::int AS out_of_scope,
+      COUNT(*) FILTER (WHERE outcome = 'declined')::int AS declined,
+      COUNT(*) FILTER (WHERE outcome = 'error')::int AS errors,
+      COUNT(*) FILTER (WHERE cache_hit)::int AS cache_hits,
+      COUNT(*) FILTER (WHERE fallback_used)::int AS fallbacks,
+      (percentile_cont(0.5) WITHIN GROUP (ORDER BY latency_ms)
+        FILTER (WHERE latency_ms IS NOT NULL AND cache_hit = false AND outcome <> 'error'))::int AS p50_ms,
+      (percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms)
+        FILTER (WHERE latency_ms IS NOT NULL AND cache_hit = false AND outcome <> 'error'))::int AS p95_ms,
+      COALESCE(SUM(input_tokens), 0) AS input_tokens,
+      COALESCE(SUM(output_tokens), 0) AS output_tokens,
+      AVG(citation_coverage) FILTER (WHERE outcome = 'answered') AS avg_coverage,
+      COUNT(*) FILTER (WHERE outcome = 'answered' AND citation_count = 0)::int AS zero_citation_answered
+    FROM ask_log
+    WHERE created_at > now() - ${interval}::interval
+  `);
+  const r = result.rows[0] as Record<string, unknown>;
+  return {
+    total: Number(r.total ?? 0),
+    answered: Number(r.answered ?? 0),
+    notFound: Number(r.not_found ?? 0),
+    outOfScope: Number(r.out_of_scope ?? 0),
+    declined: Number(r.declined ?? 0),
+    errors: Number(r.errors ?? 0),
+    cacheHits: Number(r.cache_hits ?? 0),
+    fallbacks: Number(r.fallbacks ?? 0),
+    p50LatencyMs: r.p50_ms == null ? null : Number(r.p50_ms),
+    p95LatencyMs: r.p95_ms == null ? null : Number(r.p95_ms),
+    inputTokens: Number(r.input_tokens ?? 0),
+    outputTokens: Number(r.output_tokens ?? 0),
+    avgCitationCoverage: r.avg_coverage == null ? null : Number(r.avg_coverage),
+    zeroCitationAnswered: Number(r.zero_citation_answered ?? 0),
+  };
+}
 
 // Sources deliberately paused. Their historical failures stop tripping the
 // crit alarms, but the pause itself renders as a visible warn so it is never
@@ -238,7 +305,60 @@ export async function buildHealthReport(): Promise<HealthReport> {
     getMemberBiographyHealth(),
   ]);
 
+  const [ask24h, ask7d, attemptsResult] = await Promise.all([
+    askWindowStats("24 hours"),
+    askWindowStats("7 days"),
+    db.execute(sql`
+      SELECT COALESCE(SUM(count), 0)::int AS n
+      FROM ask_rate_limits
+      WHERE bucket = 'global-provider-attempts'
+        AND window_start = date_trunc('day', now())
+    `),
+  ]);
+  const ask: AskHealth = {
+    window24h: ask24h,
+    window7d: ask7d,
+    providerAttemptsToday: Number((attemptsResult.rows[0] as { n: number })?.n ?? 0),
+    providerAttemptLimit: GLOBAL_DAILY_PROVIDER_ATTEMPT_LIMIT,
+  };
+
   const checks: HealthCheck[] = [];
+
+  // Ask assistant alarms. Small samples stay quiet: an error rate over a
+  // handful of questions says nothing.
+  if (ask24h.total >= 10) {
+    const errorRate = ask24h.errors / ask24h.total;
+    if (errorRate > 0.3) {
+      checks.push({
+        id: "ask-error-rate",
+        level: errorRate > 0.5 ? "crit" : "warn",
+        title: `Ask error rate at ${(errorRate * 100).toFixed(0)}% over the last 24h`,
+        detail: `${ask24h.errors} of ${ask24h.total} questions failed. Check provider status and the ask_log error_class mix.`,
+      });
+    }
+  }
+  if (
+    ask24h.answered >= 10 &&
+    ask24h.avgCitationCoverage != null &&
+    ask24h.avgCitationCoverage < 0.5
+  ) {
+    checks.push({
+      id: "ask-citation-coverage",
+      level: "warn",
+      title: `Ask citation coverage fell to ${(ask24h.avgCitationCoverage * 100).toFixed(0)}%`,
+      detail:
+        "Answered responses are citing records for fewer of their sentences than usual. Review recent ask_log rows before trusting new answers.",
+    });
+  }
+  if (ask.providerAttemptsToday >= ask.providerAttemptLimit * 0.8) {
+    checks.push({
+      id: "ask-provider-budget",
+      level: ask.providerAttemptsToday >= ask.providerAttemptLimit ? "crit" : "warn",
+      title: `Ask provider budget at ${ask.providerAttemptsToday}/${ask.providerAttemptLimit} today`,
+      detail:
+        "At the cap, the assistant declines new questions until midnight UTC. Records pages stay up regardless.",
+    });
+  }
 
   if (candidateResearch.crawlErrors > 0) {
     checks.push({
@@ -487,6 +607,7 @@ export async function buildHealthReport(): Promise<HealthReport> {
     electionCoverage,
     candidateResearch,
     memberBiographies,
+    ask,
     checks,
   };
 }

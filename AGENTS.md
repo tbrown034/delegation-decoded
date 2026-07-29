@@ -101,6 +101,7 @@ scripts/
   review-candidate-research.ts  Read-only review queue by default; explicit --apply verifies or rejects campaign claims and prior-service records.
   review-member-biographies.ts  Read-only official-biography queue; an applied decision requires --reviewer and stores review attribution.
   eval-candidate-extraction.ts  Paid synthetic smoke test for both campaign extraction providers; no database, crawler or Blob writes.
+  eval-ask-sweep.ts       Paid breadth sweep for /ask: one national-scope roster question per delegation (56), generated and graded from the members table. Scope with SWEEP_LIMIT / SWEEP_STATES. Complements eval-ask.ts (depth) — sweeps find data-corner bugs (territories, at-large, DC), not capability regressions.
 
 scripts/audit/
   divergence.ts           Compares our latest tx_date for curated high-volume traders against capitoltrades.com public profiles. Logs to sync_log under source='capitoltrades_divergence'; surfaces in /health when drift exceeds 4 days.

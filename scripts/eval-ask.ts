@@ -37,6 +37,16 @@ interface EvalCase {
   scope: AskScope;
   mustInclude?: string[];
   expectBoundary?: boolean;
+  // Acceptable terminal statuses. Boundary cases additionally require a
+  // non-"answered" status even without this field.
+  expectStatus?: string[];
+  // Ground-truth provenance for hand-pinned expectations: which external
+  // primary source the fact was checked against, by whom, and when. Cases
+  // without this field are AI-authored and only DB-cross-checked — they test
+  // fidelity to our database, not the database's fidelity to the world. A
+  // FAIL on a verified case means the system broke or the world changed
+  // after the check date.
+  verified?: { source: string; by: string; on: string };
   expectTools?: ExpectedToolCall[];
   // Groups of acceptable variants; the answer must contain at least one
   // variant from every group.
@@ -78,12 +88,23 @@ const CASES: EvalCase[] = [
     question: "Who are Indiana's two senators and the representative for its 9th District?",
     scope: state("IN", 9),
     mustInclude: ["banks", "young", "houchin"],
+    expectStatus: ["answered"],
+    verified: {
+      source: "senate.gov/states/IN (Young, Banks) + houchin.house.gov (IN-9)",
+      by: "Claude browser check, pending Trevor's own confirmation",
+      on: "2026-07-29",
+    },
   },
   {
     label: "senate-term",
     question: "Is Jim Banks' Senate seat up in 2026?",
     scope: state("IN"),
     mustInclude: ["2031"],
+    verified: {
+      source: "senate.gov Class I list (term ends January 3, 2031)",
+      by: "Claude browser check, pending Trevor's own confirmation",
+      on: "2026-07-29",
+    },
   },
   {
     label: "finance",
@@ -158,6 +179,21 @@ const CASES: EvalCase[] = [
     },
   },
   {
+    // National scope (no location): the model must resolve the member by
+    // name via find_members before reading records — the July 23 code path.
+    label: "national-member",
+    question: "What committees does Erin Houchin serve on?",
+    scope: { type: "national" },
+    expectTools: [{ tool: "find_members" }, { tool: "get_member_committees" }],
+    mustInclude: ["rules"],
+    expectStatus: ["answered"],
+    verified: {
+      source: "houchin.house.gov (Rules, Budget, Energy & Commerce, Education and Workforce)",
+      by: "Claude browser check, pending Trevor's own confirmation",
+      on: "2026-07-29",
+    },
+  },
+  {
     label: "race-filers",
     question: "Who has filed with the FEC for Indiana's 7th District?",
     scope: state("IN", 7),
@@ -174,6 +210,7 @@ const CASES: EvalCase[] = [
     question: "Where do I vote in November?",
     scope: state("IN", 9),
     mustInclude: ["vote.gov"],
+    expectStatus: ["out_of_scope"],
   },
   {
     label: "stock-boundary",
@@ -327,17 +364,25 @@ async function evalTarget(target: string) {
       const respectedBoundary = BOUNDARY_MARKERS.some((marker) =>
         lower.includes(marker)
       );
+      const statusOk = test.expectBoundary
+        ? result.status !== "answered"
+        : test.expectStatus
+          ? test.expectStatus.includes(result.status)
+          : true;
 
-      let ok = test.expectBoundary
-        ? respectedBoundary
-        : missing.length === 0 &&
-          missingTruth.length === 0 &&
-          missingTools.length === 0;
+      let ok =
+        statusOk &&
+        (test.expectBoundary
+          ? respectedBoundary
+          : missing.length === 0 &&
+            missingTruth.length === 0 &&
+            missingTools.length === 0);
       if (test.failover) ok = ok && result.fallbackUsed;
       if (ok) passed++;
 
       const failReasons: string[] = [];
       if (!ok) {
+        if (!statusOk) failReasons.push(`status: ${result.status}`);
         if (test.expectBoundary && !respectedBoundary) failReasons.push("boundary not explicit");
         if (missing.length > 0) failReasons.push(`missing: ${missing.join(", ")}`);
         if (missingTruth.length > 0) {
@@ -353,6 +398,11 @@ async function evalTarget(target: string) {
           );
         }
         if (test.failover && !result.fallbackUsed) failReasons.push("fallback not used");
+        if (test.verified) {
+          failReasons.push(
+            `ground truth last verified ${test.verified.on} against ${test.verified.source} — system broke, or the world changed since`
+          );
+        }
       }
       console.log(
         `${ok ? "PASS" : "FAIL"}  ${test.label.padEnd(18)} ${elapsed}ms  in=${result.usage.inputTokens} cached=${result.usage.cachedInputTokens} write=${result.usage.cacheWriteInputTokens} out=${result.usage.outputTokens}` +

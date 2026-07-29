@@ -6,14 +6,20 @@ import {
   type AskHistoryEntry,
   type AskResult,
 } from "@/lib/ask-engine";
+import { ASK_PROMPT_VERSION } from "@/lib/ask-engine";
+import { citationCoverage } from "@/lib/ask-citations";
 import {
   checkIpLimit,
   countProviderAttempt,
   createSafetyIdentifier,
   getCachedAnswer,
+  logIpHash,
   scheduleAskDataCleanup,
   setCachedAnswer,
+  type CachedAnswer,
 } from "@/lib/ask-limits";
+import { classifyAskError, logAsk } from "@/lib/ask-log";
+import { moderateQuestion } from "@/lib/ask-moderation";
 import type { AskScope } from "@/lib/ask-tools";
 import { getMemberByBioguideId, getMemberTerms } from "@/lib/queries";
 import { resolveMemberSeat } from "@/lib/elections/member-seat";
@@ -125,6 +131,7 @@ function parseHistory(value: unknown): AskHistoryEntry[] {
 function resultPayload(result: AskResult) {
   return {
     answer: result.answer,
+    status: result.status,
     citations: result.citations,
     trace: result.trace,
     provider: result.provider,
@@ -134,6 +141,7 @@ function resultPayload(result: AskResult) {
 }
 
 export async function POST(request: NextRequest) {
+  const startedAt = Date.now();
   const crossSite = rejectCrossSite(request);
   if (crossSite) return crossSite;
 
@@ -162,8 +170,56 @@ export async function POST(request: NextRequest) {
   const history = parseHistory(raw.history);
 
   const ip = clientIp(request);
+
+  // Every request that reached a validated question+scope writes one audit
+  // row, whatever path it exits through. Writes are fire-and-forget.
+  const logBase = {
+    ipHash: logIpHash(ip),
+    question,
+    scope,
+    historyTurns: history.length,
+    promptVersion: ASK_PROMPT_VERSION,
+  };
+  const logSuccess = (result: AskResult) =>
+    logAsk({
+      ...logBase,
+      outcome: result.status,
+      provider: result.provider,
+      model: result.model,
+      fallbackUsed: result.fallbackUsed,
+      usage: result.usage,
+      trace: result.trace,
+      citationCount: result.citations.length,
+      citationCoverage: citationCoverage(result.answer),
+      answer: result.answer,
+      latencyMs: Date.now() - startedAt,
+    });
+  const logCached = (cached: CachedAnswer) =>
+    logAsk({
+      ...logBase,
+      outcome: cached.status ?? "answered",
+      cacheHit: true,
+      provider: cached.provider,
+      model: cached.model,
+      fallbackUsed: cached.fallbackUsed,
+      citationCount: cached.citations.length,
+      citationCoverage: citationCoverage(cached.answer),
+      answer: cached.answer,
+      latencyMs: Date.now() - startedAt,
+    });
+  const logFailure = (status: number, refusalCategory?: string) =>
+    logAsk({
+      ...logBase,
+      outcome: "error",
+      errorClass: classifyAskError(status),
+      httpStatus: status,
+      refusalCategory,
+      latencyMs: Date.now() - startedAt,
+    });
+
   const rate = await checkIpLimit(ip, "ask");
   if (!rate.allowed) {
+    logFailure(429);
     return jsonError(rate.reason ?? "Question limit reached.", 429, rate.retryAfterSeconds);
   }
   scheduleAskDataCleanup();
@@ -172,6 +228,22 @@ export async function POST(request: NextRequest) {
   // in both directions: a history-shaped answer must not be served to (or
   // written for) someone who asked the same words fresh.
   const cached = history.length === 0 ? await getCachedAnswer(question, scope) : null;
+
+  // Fresh questions are screened by the free moderation endpoint before any
+  // paid provider call. Fail-open: only an explicit flag blocks.
+  if (!cached) {
+    const moderation = await moderateQuestion(question);
+    if (moderation.flagged) {
+      logAsk({
+        ...logBase,
+        outcome: "error",
+        errorClass: "flagged_input",
+        httpStatus: 422,
+        latencyMs: Date.now() - startedAt,
+      });
+      return jsonError("That question can't be answered here.", 422);
+    }
+  }
 
   const wantsStream =
     request.headers.get("accept")?.includes("text/event-stream") === true;
@@ -194,16 +266,7 @@ export async function POST(request: NextRequest) {
   const cacheResult = async (result: AskResult) => {
     if (history.length > 0) return;
     try {
-      await setCachedAnswer(
-        question,
-        scope,
-        result.answer,
-        result.trace,
-        result.provider,
-        result.model,
-        result.fallbackUsed,
-        result.citations
-      );
+      await setCachedAnswer(question, scope, result);
     } catch {
       // A cache write must never suppress a verified answer.
     }
@@ -226,6 +289,7 @@ export async function POST(request: NextRequest) {
         };
         try {
           if (cached) {
+            logCached(cached);
             send("result", { ...cached, cached: true });
             return;
           }
@@ -234,12 +298,15 @@ export async function POST(request: NextRequest) {
             onEvent: (event) => send("progress", event),
           });
           await cacheResult(result);
+          logSuccess(result);
           send("result", resultPayload(result));
         } catch (error) {
           if (error instanceof AskError) {
+            logFailure(error.status, error.refusalCategory);
             send("error", { error: error.message, status: error.status });
           } else {
             console.error("Unhandled ask stream failure", error);
+            logFailure(500);
             send("error", {
               error: "The lookup failed safely. The records pages still work.",
               status: 500,
@@ -264,18 +331,22 @@ export async function POST(request: NextRequest) {
   }
 
   if (cached) {
+    logCached(cached);
     return Response.json({ ...cached, cached: true }, { headers: NO_STORE });
   }
 
   try {
     const result = await runAsk(question, scope, runOptions);
     await cacheResult(result);
+    logSuccess(result);
     return Response.json(resultPayload(result), { headers: NO_STORE });
   } catch (error) {
     if (error instanceof AskError) {
+      logFailure(error.status, error.refusalCategory);
       return jsonError(error.message, error.status);
     }
     console.error("Unhandled ask route failure", error);
+    logFailure(500);
     return jsonError("The lookup failed safely. The records pages still work.", 500);
   }
 }

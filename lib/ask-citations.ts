@@ -24,7 +24,8 @@ interface EvidenceRecord {
 
 // Ref prefixes: v votes, b bills, f finance cycles, e employer contributors,
 // p finance committees (PACs), m assignments, t terms, r race candidates,
-// c campaign biography, s prior service, o official member biography.
+// c campaign biography, s prior service, o official member biography,
+// d current-roster entries (get_delegation / find_members).
 const MARKER_RE = /\s*\[([a-z]\d{1,3})\]/gi;
 
 export class EvidenceRegistry {
@@ -193,6 +194,20 @@ export function annotateToolResult(
         href: memberHref,
       }));
       break;
+    case "get_delegation":
+    case "find_members":
+      // Without refs on roster records the model improvises bracket labels
+      // like "[current member roster]" (the sweep surfaced this). Real refs
+      // give roster answers validated citations like every other record.
+      annotate("records", (rec) => ({
+        prefix: "d",
+        label: `${asString(rec.name)}, current member roster`,
+        href:
+          typeof rec.bioguide_id === "string" && BIOGUIDE_RE.test(rec.bioguide_id)
+            ? `/member/${rec.bioguide_id}`
+            : stateHref,
+      }));
+      break;
     case "get_race_candidates":
       annotateRaceRecords(r);
       if (Array.isArray(r.contests)) {
@@ -239,6 +254,22 @@ export function resolveCitations(
     answer: resolved.replace(/ ([.,;:])/g, "$1").replace(/ {2,}/g, " "),
     citations,
   };
+}
+
+// Share of answer sentences that carry a resolved citation marker ([1]..[n],
+// already validated against the registry). A grounding health signal, not a
+// gate: boundary answers ("that's outside this page's scope") legitimately
+// carry none, so coverage is logged and monitored rather than enforced.
+export function citationCoverage(answer: string): number | null {
+  // A run of adjacent markers ("[1] [2]") supports one claim, so count runs.
+  const markerRuns = (answer.match(/(?:\s*\[\d{1,3}\])+/g) ?? []).length;
+  const sentences = answer
+    .replace(/\s*\[\d{1,3}\]/g, "")
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 1);
+  if (sentences.length === 0) return null;
+  return Math.min(1, Math.round((markerRuns / sentences.length) * 100) / 100);
 }
 
 // The "Checked:" footer's link targets, shared with the client so the server

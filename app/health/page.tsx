@@ -2,7 +2,12 @@ export const dynamic = "force-dynamic";
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { buildHealthReport, type HealthLevel } from "@/lib/health";
+import {
+  buildHealthReport,
+  type AskHealth,
+  type AskWindowStats,
+  type HealthLevel,
+} from "@/lib/health";
 
 export const metadata: Metadata = {
   title: "Pipeline Health",
@@ -226,6 +231,43 @@ export default async function HealthPage() {
 
       <section className="mt-10">
         <h2 className="text-xs font-medium uppercase tracking-wider text-neutral-500">
+          Ask assistant
+        </h2>
+        <p className="mt-1 text-sm text-neutral-600">
+          Every question is logged with its scope, tool trace, provider, cost, and outcome.
+          Latency covers fresh answers only; boundary replies are the assistant declining to
+          answer beyond its records. Provider budget today:{" "}
+          <span className="font-medium tabular-nums text-neutral-900">
+            {report.ask.providerAttemptsToday}/{report.ask.providerAttemptLimit}
+          </span>
+          .
+        </p>
+        <div className="mt-4 overflow-hidden rounded border border-neutral-200">
+          <table className="w-full text-sm">
+            <thead className="bg-neutral-50 text-left text-[11px] uppercase tracking-wider text-neutral-500">
+              <tr>
+                <th className="px-3 py-2">Metric</th>
+                <th className="px-3 py-2 text-right">Last 24h</th>
+                <th className="px-3 py-2 text-right">Last 7d</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-100">
+              {askMetricRows(report.ask).map((row) => (
+                <tr key={row.label}>
+                  <td className="px-3 py-2 text-neutral-700">{row.label}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{row.day}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-neutral-500">
+                    {row.week}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="mt-10">
+        <h2 className="text-xs font-medium uppercase tracking-wider text-neutral-500">
           Active issues
         </h2>
         {report.checks.length === 0 ? (
@@ -275,6 +317,38 @@ export default async function HealthPage() {
       </p>
     </div>
   );
+}
+
+function askMetricRows(ask: AskHealth) {
+  const num = (pick: (w: AskWindowStats) => number) => ({
+    day: pick(ask.window24h).toLocaleString(),
+    week: pick(ask.window7d).toLocaleString(),
+  });
+  const ms = (pick: (w: AskWindowStats) => number | null) => ({
+    day: pick(ask.window24h) == null ? "—" : `${((pick(ask.window24h) as number) / 1000).toFixed(1)}s`,
+    week: pick(ask.window7d) == null ? "—" : `${((pick(ask.window7d) as number) / 1000).toFixed(1)}s`,
+  });
+  const share = (pick: (w: AskWindowStats) => number | null) => ({
+    day: pick(ask.window24h) == null ? "—" : `${Math.round((pick(ask.window24h) as number) * 100)}%`,
+    week: pick(ask.window7d) == null ? "—" : `${Math.round((pick(ask.window7d) as number) * 100)}%`,
+  });
+  return [
+    { label: "Questions", ...num((w) => w.total) },
+    { label: "Answered from records", ...num((w) => w.answered) },
+    {
+      label: "Boundary replies (no record / out of scope / declined)",
+      ...num((w) => w.notFound + w.outOfScope + w.declined),
+    },
+    { label: "Errors", ...num((w) => w.errors) },
+    { label: "Served from cache", ...num((w) => w.cacheHits) },
+    { label: "Provider fallbacks", ...num((w) => w.fallbacks) },
+    { label: "Median answer time", ...ms((w) => w.p50LatencyMs) },
+    { label: "95th percentile answer time", ...ms((w) => w.p95LatencyMs) },
+    { label: "Citation coverage (avg per answer)", ...share((w) => w.avgCitationCoverage) },
+    { label: "Answered with zero citations", ...num((w) => w.zeroCitationAnswered) },
+    { label: "Input tokens", ...num((w) => w.inputTokens) },
+    { label: "Output tokens", ...num((w) => w.outputTokens) },
+  ];
 }
 
 function Stat({
