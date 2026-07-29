@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import type { ReactNode } from "react";
+import { STATE_BY_CODE } from "@/lib/states";
 
 interface LocatedMember {
   bioguideId: string;
@@ -359,6 +360,25 @@ function needsLocationForSelf(q: string): boolean {
   return !words.slice(1).some((w) => /^[A-Z][a-z]/.test(w));
 }
 
+// Type-ahead over the 56 delegations (50 states + DC + territories). With a
+// list this small, forgiving text matching beats anything heavier: rank
+// starts-with hits (name or code) ahead of contains hits.
+const ALL_STATES = Object.values(STATE_BY_CODE).sort((a, b) =>
+  a.name.localeCompare(b.name)
+);
+
+function matchStates(query: string) {
+  const q = query.trim().toLowerCase();
+  if (!q) return ALL_STATES;
+  const starts = ALL_STATES.filter(
+    (s) => s.name.toLowerCase().startsWith(q) || s.code.toLowerCase().startsWith(q)
+  );
+  const contains = ALL_STATES.filter(
+    (s) => !starts.includes(s) && s.name.toLowerCase().includes(q)
+  );
+  return [...starts, ...contains];
+}
+
 export default function AskClient({
   initialLocated,
   scope,
@@ -376,6 +396,10 @@ export default function AskClient({
   const [located, setLocated] = useState<Located | null>(initialLocated ?? null);
   const [locating, setLocating] = useState(false);
   const [locateError, setLocateError] = useState<string | null>(null);
+  const [locationOpen, setLocationOpen] = useState(false);
+  const [locationTab, setLocationTab] = useState<"state" | "address">("state");
+  const [stateQuery, setStateQuery] = useState("");
+  const locationBoxRef = useRef<HTMLDivElement>(null);
 
   const [question, setQuestion] = useState("");
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
@@ -392,16 +416,17 @@ export default function AskClient({
 
   const asking = pendingQuestion !== null;
 
-  async function locate(e: React.FormEvent) {
-    e.preventDefault();
-    if (!locationInput.trim() || locating) return;
+  // Shared by the State tab (called with a two-letter code) and the Address
+  // tab (called with the typed address). Same endpoint, same scope plumbing.
+  async function locateQuery(q: string) {
+    if (!q.trim() || locating) return;
     setLocating(true);
     setLocateError(null);
     try {
       const r = await fetch("/api/ask/locate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ q: locationInput.trim() }),
+        body: JSON.stringify({ q: q.trim() }),
       });
       const json = await r.json();
       if (!r.ok) {
@@ -412,6 +437,9 @@ export default function AskClient({
       setExchanges([]);
       setAskError(null);
       setLocationNudge(false);
+      setLocationOpen(false);
+      setStateQuery("");
+      setLocationInput("");
       askInputRef.current?.focus();
     } catch {
       setLocateError("Lookup failed. Check your connection and try again.");
@@ -419,6 +447,43 @@ export default function AskClient({
       setLocating(false);
     }
   }
+
+  function locate(e: React.FormEvent) {
+    e.preventDefault();
+    void locateQuery(locationInput);
+  }
+
+  function clearLocation() {
+    // Scope is changing, so the conversation resets — a follow-up must never
+    // resolve against a delegation the reader just walked away from.
+    setLocated(null);
+    setExchanges([]);
+    setAskError(null);
+    setLocateError(null);
+    setLocationOpen(false);
+  }
+
+  // The location popover closes on outside click or Escape.
+  useEffect(() => {
+    if (!locationOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (
+        locationBoxRef.current &&
+        !locationBoxRef.current.contains(e.target as Node)
+      ) {
+        setLocationOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setLocationOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [locationOpen]);
 
   function pushExchange(question: string, data: Record<string, unknown>) {
     setExchanges((prev) => [
@@ -659,36 +724,177 @@ export default function AskClient({
 
   return (
     <div>
-      {/* Bar 1: location (hidden when the page pre-scopes the location) */}
-      {!fixedLocation && (
-      <form onSubmit={locate} className="flex gap-2">
+      {/* The question is the primary action everywhere; location is a
+          compact secondary control attached beneath it. */}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          ask(question);
+        }}
+        className="flex gap-2"
+      >
         <input
-          type="search"
-          value={locationInput}
-          onChange={(e) => setLocationInput(e.target.value)}
-          placeholder='Your state or address — "Indiana", "IN", or a street address'
-          aria-label="State or street address"
-          autoComplete="street-address"
-          spellCheck={false}
-          enterKeyHint="search"
-          className="flex-1 rounded border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-neutral-500 focus:outline-none"
-          required
+          ref={askInputRef}
+          type="text"
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          placeholder={
+            budgetExhausted
+              ? "The assistant is done for today — records below still work"
+              : located
+                ? scope?.type === "member"
+                  ? `Ask about ${located.members[0]?.fullName ?? "this lawmaker"}`
+                  : `Ask about the ${located.stateName} delegation`
+                : "Ask about any member of Congress..."
+          }
+          aria-label="Your question"
+          maxLength={400}
+          disabled={budgetExhausted}
+          enterKeyHint="send"
+          className="flex-1 rounded border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-neutral-500 focus:outline-none disabled:bg-neutral-50 disabled:text-neutral-400"
         />
         <button
           type="submit"
-          disabled={locating}
+          disabled={asking || budgetExhausted || !question.trim()}
           className="rounded bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-50"
         >
-          {locating ? "Locating..." : "Set location"}
+          {asking ? "Checking..." : "Ask"}
         </button>
       </form>
+
+      {!fixedLocation && (
+        <div className="relative mt-2" ref={locationBoxRef}>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center rounded-full border border-neutral-300 bg-white text-xs">
+              <button
+                type="button"
+                onClick={() => setLocationOpen((v) => !v)}
+                aria-expanded={locationOpen}
+                aria-haspopup="dialog"
+                className="flex items-center gap-1.5 rounded-full px-3 py-1 text-neutral-700 hover:text-neutral-900"
+              >
+                <span
+                  className={`size-1.5 rounded-full ${located ? "bg-emerald-600" : "bg-neutral-300"}`}
+                  aria-hidden
+                />
+                {located
+                  ? `${located.stateName}${located.district != null ? ` — District ${located.district}` : ""}`
+                  : "All of Congress — set a location"}
+                <span aria-hidden className="text-neutral-400">
+                  ▾
+                </span>
+              </button>
+              {located && (
+                <button
+                  type="button"
+                  onClick={clearLocation}
+                  aria-label="Clear location"
+                  className="rounded-full py-1 pl-1 pr-2.5 text-neutral-400 hover:text-neutral-900"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            {locating && (
+              <span className="text-xs text-neutral-400" role="status">
+                Locating...
+              </span>
+            )}
+          </div>
+          {locationOpen && (
+            <div
+              role="dialog"
+              aria-label="Set your location"
+              className="absolute left-0 z-10 mt-2 w-full max-w-sm rounded border border-neutral-200 bg-white p-3 shadow-lg"
+            >
+              <div className="flex gap-1 rounded bg-neutral-100 p-0.5">
+                {(["state", "address"] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    aria-pressed={locationTab === tab}
+                    onClick={() => setLocationTab(tab)}
+                    className={`flex-1 rounded px-3 py-1 text-xs font-medium ${
+                      locationTab === tab
+                        ? "bg-white text-neutral-900 shadow-sm"
+                        : "text-neutral-500 hover:text-neutral-900"
+                    }`}
+                  >
+                    {tab === "state" ? "State" : "Address"}
+                  </button>
+                ))}
+              </div>
+              {locationTab === "state" ? (
+                <div className="mt-2">
+                  <input
+                    type="search"
+                    value={stateQuery}
+                    onChange={(e) => setStateQuery(e.target.value)}
+                    placeholder='Type a state — "Indiana" or "IN"'
+                    aria-label="Search states and territories"
+                    autoFocus
+                    spellCheck={false}
+                    className="w-full rounded border border-neutral-300 px-3 py-1.5 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-neutral-500 focus:outline-none"
+                  />
+                  <ul className="mt-1 max-h-52 overflow-y-auto">
+                    {matchStates(stateQuery).map((s) => (
+                      <li key={s.code}>
+                        <button
+                          type="button"
+                          onClick={() => void locateQuery(s.code)}
+                          className="flex w-full items-baseline justify-between rounded px-2 py-1.5 text-left text-sm text-neutral-800 hover:bg-neutral-100"
+                        >
+                          <span>{s.name}</span>
+                          <span className="font-mono text-[10px] text-neutral-400">
+                            {s.code}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-1 text-[11px] text-neutral-400">
+                    A state scopes answers to its delegation. Use the Address
+                    tab to pin your House district too.
+                  </p>
+                </div>
+              ) : (
+                <form onSubmit={locate} className="mt-2">
+                  <input
+                    type="search"
+                    value={locationInput}
+                    onChange={(e) => setLocationInput(e.target.value)}
+                    placeholder="Street address, city, state"
+                    aria-label="Street address"
+                    autoComplete="street-address"
+                    autoFocus
+                    spellCheck={false}
+                    enterKeyHint="search"
+                    required
+                    className="w-full rounded border border-neutral-300 px-3 py-1.5 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-neutral-500 focus:outline-none"
+                  />
+                  <button
+                    type="submit"
+                    disabled={locating}
+                    className="mt-2 w-full rounded bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-50"
+                  >
+                    {locating ? "Locating..." : "Set location"}
+                  </button>
+                  <p className="mt-1 text-[11px] text-neutral-400">
+                    Matched through the Census geocoder to find your district;
+                    the address is not kept.
+                  </p>
+                </form>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
-      {!fixedLocation && !located && (
-        <p className="mt-2 text-xs text-neutral-500">
-          Optional. Setting your location pins your district, highlights your own
-          lawmakers, and tailors answers to your delegation. Or ask about any
-          member of Congress below.
+      {!budgetExhausted && (
+        <p className="mt-2 text-xs text-neutral-400">
+          Answers come only from retrieved records — votes, bills, campaign
+          money, committees and reviewed official-site biographies. Follow-ups can build on your last two answers;
+          every fact is re-checked against the records.
         </p>
       )}
 
@@ -785,56 +991,12 @@ export default function AskClient({
         </div>
       )}
 
-      {/* Bar 2: ask */}
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          ask(question);
-        }}
-        className="mt-6 flex gap-2"
-      >
-        <input
-          ref={askInputRef}
-          type="text"
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          placeholder={
-            budgetExhausted
-              ? "The assistant is done for today — records below still work"
-              : located
-                ? scope?.type === "member"
-                  ? `Ask about ${located.members[0]?.fullName ?? "this lawmaker"}`
-                  : `Ask about the ${located.stateName} delegation`
-                : "Ask about any member of Congress, or set your location above..."
-          }
-          aria-label="Your question"
-          maxLength={400}
-          disabled={budgetExhausted}
-          enterKeyHint="send"
-          className="flex-1 rounded border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-neutral-500 focus:outline-none disabled:bg-neutral-50 disabled:text-neutral-400"
-        />
-        <button
-          type="submit"
-          disabled={asking || budgetExhausted || !question.trim()}
-          className="rounded bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-50"
-        >
-          {asking ? "Checking..." : "Ask"}
-        </button>
-      </form>
-
-      {!budgetExhausted && (
-        <p className="mt-2 text-xs text-neutral-400">
-          Answers come only from retrieved records — votes, bills, campaign
-          money, committees and reviewed official-site biographies. Follow-ups can build on your last two answers;
-          every fact is re-checked against the records.
-        </p>
-      )}
-
       {locationNudge && (
         <div className="mt-3 rounded border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-700">
           No location is set, so there&apos;s nothing for &quot;me&quot; or
-          &quot;my&quot; to point at. Set your location above, or name a state —
-          like &quot;How did Ohio&apos;s senators vote?&quot;
+          &quot;my&quot; to point at. Set a location with the control under the
+          question box, or name a state — like &quot;How did Ohio&apos;s
+          senators vote?&quot;
         </div>
       )}
 

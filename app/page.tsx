@@ -101,55 +101,31 @@ export default async function Home() {
         </div>
       </div>
 
-      <div className="mb-8 grid gap-3 sm:grid-cols-3">
+      {/* Ask is the site's front door: the question box sits in the hero,
+          and the old navigation cards demote to a quiet link row. */}
+      <div className="mb-4 -mt-4">
+        <AskClient />
+      </div>
+
+      <div className="mb-12 flex flex-wrap gap-x-5 gap-y-1 text-sm">
         <Link
           href="/find"
-          className="rounded border border-neutral-200 bg-white p-4 no-underline transition-colors hover:border-neutral-400"
+          className="text-neutral-500 no-underline hover:text-neutral-900"
         >
-          <p className="font-serif text-lg font-semibold text-neutral-900">
-            Find my delegation
-          </p>
-          <p className="mt-1 text-sm text-neutral-500">
-            Match an address to its senators and House district.
-          </p>
+          Find my delegation →
         </Link>
         <a
           href="#states"
-          className="rounded border border-neutral-200 bg-white p-4 no-underline transition-colors hover:border-neutral-400"
+          className="text-neutral-500 no-underline hover:text-neutral-900"
         >
-          <p className="font-serif text-lg font-semibold text-neutral-900">
-            Explore a state
-          </p>
-          <p className="mt-1 text-sm text-neutral-500">
-            Review a delegation before asking the records assistant.
-          </p>
+          Explore a state →
         </a>
         <Link
           href="/for-journalists"
-          className="rounded border border-neutral-200 bg-white p-4 no-underline transition-colors hover:border-neutral-400"
+          className="text-neutral-500 no-underline hover:text-neutral-900"
         >
-          <p className="font-serif text-lg font-semibold text-neutral-900">
-            Report with the data
-          </p>
-          <p className="mt-1 text-sm text-neutral-500">
-            Download records, check freshness and follow source links.
-          </p>
+          Report with the data →
         </Link>
-      </div>
-
-      {/* Grounded lookup complements, rather than replaces, direct records. */}
-      <div className="mb-12 rounded-lg border border-neutral-200 bg-stone-50 p-5 sm:p-6">
-        <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <span className="rounded-full border border-neutral-300 bg-white px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-neutral-600">
-            Records assistant
-          </span>
-          <p className="text-sm text-neutral-500">
-            Ask in plain language about any member of Congress. Set your location
-            to focus on your own delegation and highlight your candidates. Every
-            answer shows which official records were checked.
-          </p>
-        </div>
-        <AskClient />
       </div>
 
       {/* Congress at a glance: state cartogram / House / Senate seat charts */}
