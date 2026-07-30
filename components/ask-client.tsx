@@ -1140,14 +1140,6 @@ export default function AskClient({
         </div>
       )}
 
-      {!budgetExhausted && (
-        <p className="mt-3 text-xs text-neutral-400">
-          Answers come only from retrieved records — votes, bills, campaign
-          money, committees and reviewed official-site biographies. Follow-ups can build on your last two answers;
-          every fact is re-checked against the records.
-        </p>
-      )}
-
       {askError && (
         <div role="alert" className="mt-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           {askError}
@@ -1264,6 +1256,14 @@ export default function AskClient({
             </li>
           ))}
         </ol>
+      )}
+
+      {!budgetExhausted && (
+        <p className="mt-4 text-xs text-neutral-400">
+          Answers come only from retrieved records — votes, bills, campaign
+          money, committees and reviewed official-site biographies. Follow-ups can build on your last two answers;
+          every fact is re-checked against the records.
+        </p>
       )}
     </div>
   );
