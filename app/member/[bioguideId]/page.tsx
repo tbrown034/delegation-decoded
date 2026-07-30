@@ -242,7 +242,7 @@ export default async function MemberPage({ params }: Props) {
       </section>
 
       {biography && biography.facts.length > 0 && (
-        <section className="mb-10 border-l-2 border-neutral-300 pl-4">
+        <section id="biography" className="mb-10 scroll-mt-6 border-l-2 border-neutral-300 pl-4">
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <h2 className="font-serif text-lg font-semibold">Official biography</h2>
             <a
@@ -265,7 +265,7 @@ export default async function MemberPage({ params }: Props) {
 
       {/* Legislation */}
       {memberBills.length > 0 && (
-        <section className="mb-10">
+        <section id="legislation" className="mb-10 scroll-mt-6">
           <h2 className="mb-3 font-serif text-lg font-semibold">Legislation</h2>
           <CollapsibleList initial={8} label="bills">
             {memberBills.map((b) => (
@@ -312,7 +312,7 @@ export default async function MemberPage({ params }: Props) {
 
       {/* Voting Record */}
       {voteSummary.total > 0 && (
-        <section className="mb-10">
+        <section id="votes" className="mb-10 scroll-mt-6">
           <h2 className="mb-3 font-serif text-lg font-semibold">
             Voting Record
           </h2>
@@ -493,7 +493,7 @@ export default async function MemberPage({ params }: Props) {
 
       {/* Campaign Finance */}
       {finance.length > 0 && (
-        <section className="mb-10">
+        <section id="finance" className="mb-10 scroll-mt-6">
           <h2 className="mb-3 font-serif text-lg font-semibold">
             Campaign Finance
           </h2>
@@ -579,7 +579,7 @@ export default async function MemberPage({ params }: Props) {
 
       {/* Top Contributors */}
       {contributors.length > 0 && (
-        <section className="mb-10">
+        <section id="contributors" className="mb-10 scroll-mt-6">
           <h2 className="mb-3 font-serif text-lg font-semibold">
             Top Contributors
           </h2>
@@ -603,7 +603,7 @@ export default async function MemberPage({ params }: Props) {
 
       {/* Committees */}
       {topCommittees.length > 0 && (
-        <section className="mb-10">
+        <section id="committees" className="mb-10 scroll-mt-6">
           <h2 className="mb-3 font-serif text-lg font-semibold">Committees</h2>
           <div className="space-y-3">
             {topCommittees.map((c) => {
@@ -734,7 +734,7 @@ export default async function MemberPage({ params }: Props) {
       })()}
 
       {/* Service History */}
-      <section>
+      <section id="terms" className="scroll-mt-6">
         <h2 className="mb-3 font-serif text-lg font-semibold">
           Service History
         </h2>

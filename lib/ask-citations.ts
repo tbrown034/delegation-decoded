@@ -72,6 +72,10 @@ export function annotateToolResult(
   const bioguide =
     typeof input.bioguide_id === "string" ? input.bioguide_id.trim().toUpperCase() : "";
   const memberHref = BIOGUIDE_RE.test(bioguide) ? `/member/${bioguide}` : null;
+  // Citations land on the member-page section that holds the record, so the
+  // link is meaningful even when the reader is already on that member's page.
+  const memberSection = (fragment: string) =>
+    memberHref ? `${memberHref}#${fragment}` : null;
   const state =
     typeof input.state_code === "string" ? input.state_code.trim().toUpperCase() : "";
   const stateHref = STATE_RE.test(state) ? `/state/${state}` : null;
@@ -143,7 +147,7 @@ export function annotateToolResult(
       annotate("records", (rec) => ({
         prefix: "v",
         label: `Roll call ${asString(rec.roll)} (${asString(rec.chamber)}), ${asString(rec.date)}`,
-        href: memberHref,
+        href: memberSection("votes"),
       }));
       break;
     case "get_member_bills":
@@ -153,45 +157,45 @@ export function annotateToolResult(
         href:
           typeof rec.bill_id === "string" && BILL_ID_RE.test(rec.bill_id)
             ? `/bill/${rec.bill_id}`
-            : memberHref,
+            : memberSection("legislation"),
       }));
       break;
     case "get_member_finance":
       annotate("by_cycle", (rec) => ({
         prefix: "f",
         label: `FEC totals, ${asString(rec.cycle)} cycle`,
-        href: memberHref,
+        href: memberSection("finance"),
       }));
       annotate("top_contributors", (rec) => ({
         prefix: "e",
         label: `Contributions via ${asString(rec.organization)}, ${asString(rec.cycle)} cycle (FEC Schedule A, by donor employer)`,
-        href: memberHref,
+        href: memberSection("contributors"),
       }));
       annotate("committees", (rec) => ({
         prefix: "p",
         label: `${asString(rec.name)} (${asString(rec.kind)}), FEC filings`,
-        href: memberHref,
+        href: memberSection("finance"),
       }));
       break;
     case "get_member_committees":
       annotate("records", (rec) => ({
         prefix: "m",
         label: `${asString(rec.name)} assignment (${asString(rec.role)})`,
-        href: memberHref,
+        href: memberSection("committees"),
       }));
       break;
     case "get_member_terms":
       annotate("records", (rec) => ({
         prefix: "t",
         label: `Term record, ${asString(rec.start)} to ${asString(rec.end) || "present"}`,
-        href: memberHref,
+        href: memberSection("terms"),
       }));
       break;
     case "get_member_biography":
       annotate("records", (rec) => ({
         prefix: "o",
         label: `Official-site biography statement: ${asString(rec.fact)}`,
-        href: memberHref,
+        href: memberSection("biography"),
       }));
       break;
     case "get_delegation":
@@ -290,8 +294,18 @@ export function traceEntryHref(entry: ToolTraceEntry): string | null {
     case "get_member_bills":
     case "get_member_terms":
     case "get_member_biography":
-    case "get_member_committees":
-      return id && BIOGUIDE_RE.test(id) ? `/member/${id}` : null;
+    case "get_member_committees": {
+      if (!id || !BIOGUIDE_RE.test(id)) return null;
+      const section: Record<string, string> = {
+        get_member_votes: "votes",
+        get_member_finance: "finance",
+        get_member_bills: "legislation",
+        get_member_terms: "terms",
+        get_member_biography: "biography",
+        get_member_committees: "committees",
+      };
+      return `/member/${id}#${section[entry.tool]}`;
+    }
     default:
       return null;
   }
