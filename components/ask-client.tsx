@@ -830,6 +830,15 @@ export default function AskClient({
                     type="search"
                     value={stateQuery}
                     onChange={(e) => setStateQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      // Enter takes the top match, so "indiana ⏎" works
+                      // without reaching for the mouse.
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        const first = matchStates(stateQuery)[0];
+                        if (first) void locateQuery(first.code);
+                      }
+                    }}
                     placeholder='Type a state — "Indiana" or "IN"'
                     aria-label="Search states and territories"
                     autoFocus
