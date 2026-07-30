@@ -492,3 +492,17 @@ Picked up a timed-out external agent's react-doctor refactor pass, verified it, 
 - User-gated next steps: set ASK_ADMIN_KEY, re-verify the two eval ground-truth facts personally (swap attribution to TB), commit today's work, then the Ask-first homepage/ask UI restructure (question box above location, location as toggle) — plan in progress.
 
 ---
+## 2026-07-29 (overnight) - Ask-first UI, UX audit, golden baseline
+
+**Session Summary:**
+- Ask became the site's front door: question box in the homepage hero, nav cards demoted to a link row, location collapsed to a pill opening a State (type-ahead over 56 delegations) / Address (Census geocoder) popover. Scope plumbing untouched.
+- UX audit via four user stories (desktop Chrome + headless Playwright at 390x844). Fixes shipped: Enter selects the top state match; homepage recent-activity rows gained min-w-0 (pre-existing phone overflow to 779px — the documented grid pitfall); /find mounts with the Address tab open (location-first page); "1 races" pluralization.
+- Golden baseline before the interview: eval 19/19 on Anthropic and 19/19 on OpenAI after two stale-grader fixes (Indiana races are state-authority covered now, so race-filers grades on the field not FEC wording; opinion legitimately ends status "answered" with refusal text). Delegation sweep 56/56 including territories after the get_delegation/find_members description fixes.
+- All Ask surfaces verified in-browser: home, /ask, /find, state, member, race embeds; /health and /races checked; 404 page incidentally verified.
+
+**Notable Changes:**
+- components/ask-client.tsx (restructure + pill/popover + defaultLocationOpen/Tab props), app/page.tsx (hero + min-w-0), app/find/page.tsx, app/races/page.tsx, scripts/eval-ask.ts (expectStatus precedence, regraded cases).
+- Commits (unpushed pending Trevor's morning review): 9c0626b, 2d5c85d, 6e7aeb5, 2241f66, a9b2eba. Prior push: d1b193d.
+- Mobile screenshots from the audit: session scratchpad m1–m6 PNGs.
+
+---
