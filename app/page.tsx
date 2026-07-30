@@ -224,7 +224,10 @@ export default async function Home() {
               return (
                 <div
                   key={e.id}
-                  className="flex items-start gap-2 border-b border-neutral-100 py-2"
+                  // min-w-0: grid children default to min-width auto, so one
+                  // long bill title otherwise widens the column past the
+                  // viewport on phones and truncate never engages.
+                  className="flex min-w-0 items-start gap-2 border-b border-neutral-100 py-2"
                 >
                   <span
                     className={`mt-1.5 size-1.5 shrink-0 rounded-full ${icon}`}
