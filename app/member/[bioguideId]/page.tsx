@@ -209,28 +209,8 @@ export default async function MemberPage({ params }: Props) {
         </div>
       </div>
 
-      {biography && biography.facts.length > 0 && (
-        <section className="mb-10 border-l-2 border-neutral-300 pl-4">
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <h2 className="font-serif text-lg font-semibold">Official biography</h2>
-            <a
-              href={biography.biographyUrl ?? biography.siteUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-neutral-500 underline decoration-neutral-300 underline-offset-2 hover:text-neutral-900"
-            >
-              Congressional source
-            </a>
-          </div>
-          <BiographyGroups facts={biography.facts} />
-          <p className="mt-2 text-[11px] leading-relaxed text-neutral-400">
-            Quoted verbatim from this lawmaker&apos;s official House or Senate
-            site. Passages are selected automatically; the wording is the
-            office&apos;s own, unedited.
-          </p>
-        </section>
-      )}
-
+      {/* Ask sits above the biography: chat stays above the fold on every
+          page that has it. */}
       <section className="mb-10 rounded-lg border border-neutral-200 bg-stone-50 p-5">
         <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h2 className="font-serif text-lg font-semibold">
@@ -260,6 +240,28 @@ export default async function MemberPage({ params }: Props) {
           }}
         />
       </section>
+
+      {biography && biography.facts.length > 0 && (
+        <section className="mb-10 border-l-2 border-neutral-300 pl-4">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h2 className="font-serif text-lg font-semibold">Official biography</h2>
+            <a
+              href={biography.biographyUrl ?? biography.siteUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-neutral-500 underline decoration-neutral-300 underline-offset-2 hover:text-neutral-900"
+            >
+              Congressional source
+            </a>
+          </div>
+          <BiographyGroups facts={biography.facts} />
+          <p className="mt-2 text-[11px] leading-relaxed text-neutral-400">
+            Quoted verbatim from this lawmaker&apos;s official House or Senate
+            site. Passages are selected automatically; the wording is the
+            office&apos;s own, unedited.
+          </p>
+        </section>
+      )}
 
       {/* Legislation */}
       {memberBills.length > 0 && (
