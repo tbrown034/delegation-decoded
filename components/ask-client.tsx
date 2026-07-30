@@ -383,6 +383,8 @@ export default function AskClient({
   initialLocated,
   scope,
   exampleQuestions,
+  defaultLocationOpen = false,
+  defaultLocationTab = "state",
 }: {
   // When set (state pages), the surface is pre-scoped: no location bar, no
   // delegation card — the page around it already shows the roster.
@@ -390,14 +392,18 @@ export default function AskClient({
   scope?: FixedAskScope;
   // Race pages swap in contest-specific chips; the ask flow is unchanged.
   exampleQuestions?: string[];
+  // /find is the location-first journey, so it mounts with the popover
+  // already open on the Address tab instead of burying it behind the pill.
+  defaultLocationOpen?: boolean;
+  defaultLocationTab?: "state" | "address";
 } = {}) {
   const fixedLocation = Boolean(initialLocated);
   const [locationInput, setLocationInput] = useState("");
   const [located, setLocated] = useState<Located | null>(initialLocated ?? null);
   const [locating, setLocating] = useState(false);
   const [locateError, setLocateError] = useState<string | null>(null);
-  const [locationOpen, setLocationOpen] = useState(false);
-  const [locationTab, setLocationTab] = useState<"state" | "address">("state");
+  const [locationOpen, setLocationOpen] = useState(defaultLocationOpen);
+  const [locationTab, setLocationTab] = useState<"state" | "address">(defaultLocationTab);
   const [stateQuery, setStateQuery] = useState("");
   const locationBoxRef = useRef<HTMLDivElement>(null);
 

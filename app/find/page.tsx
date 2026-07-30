@@ -25,7 +25,7 @@ export default function FindPage() {
       </div>
 
       <div className="rounded-lg border border-neutral-200 bg-stone-50 p-5 sm:p-6">
-        <AskClient />
+        <AskClient defaultLocationOpen defaultLocationTab="address" />
       </div>
 
       <p className="mt-4 text-xs leading-relaxed text-neutral-400">

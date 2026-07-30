@@ -86,7 +86,7 @@ export default async function RacesPage({ searchParams }: Props) {
                 >
                   <div className="flex items-baseline justify-between gap-3">
                     <span className="font-medium text-neutral-900">{STATE_BY_CODE[code]?.name ?? code}</span>
-                    <span className="font-mono text-[10px] text-neutral-400">{stateRaces.length} races</span>
+                    <span className="font-mono text-[10px] text-neutral-400">{stateRaces.length} race{stateRaces.length === 1 ? "" : "s"}</span>
                   </div>
                   <p className="mt-1 text-xs text-neutral-500">{COVERAGE_COPY[strongest]} · {candidateCount} records</p>
                 </Link>
