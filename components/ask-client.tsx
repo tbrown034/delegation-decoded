@@ -684,6 +684,25 @@ export default function AskClient({
         null)
       : null;
   const focusMembers = rep ? [...senators, rep] : senators;
+  // State-only scope previews the whole delegation: both senators plus the
+  // first House members by district, with the rest one click away.
+  const houseMembers = (located?.members ?? [])
+    .filter((m) => m.chamber === "house")
+    .sort((a, b) => (a.district ?? 0) - (b.district ?? 0));
+  const HOUSE_PREVIEW = 5;
+  const cardMembers =
+    located && located.district == null
+      ? [...senators, ...houseMembers.slice(0, HOUSE_PREVIEW)]
+      : focusMembers;
+  const moreHouseCount =
+    located && located.district == null
+      ? Math.max(0, houseMembers.length - HOUSE_PREVIEW)
+      : 0;
+
+  function openAddressTab() {
+    setLocationTab("address");
+    setLocationOpen(true);
+  }
   const scopedMember = scope?.type === "member" ? located?.members[0] ?? null : null;
 
   // Chips with real names outperform generic ones, and they teach the
@@ -801,6 +820,15 @@ export default function AskClient({
                 </button>
               )}
             </div>
+            {located && located.district == null && (
+              <button
+                type="button"
+                onClick={openAddressTab}
+                className="text-xs text-neutral-500 underline decoration-neutral-300 underline-offset-2 hover:text-neutral-900"
+              >
+                Add address for your district
+              </button>
+            )}
             {locating && (
               <span className="text-xs text-neutral-400" role="status">
                 Locating...
@@ -905,14 +933,6 @@ export default function AskClient({
         </div>
       )}
 
-      {!budgetExhausted && (
-        <p className="mt-2 text-xs text-neutral-400">
-          Answers come only from retrieved records — votes, bills, campaign
-          money, committees and reviewed official-site biographies. Follow-ups can build on your last two answers;
-          every fact is re-checked against the records.
-        </p>
-      )}
-
       {locateError && (
         <div role="alert" className="mt-3 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           {locateError}
@@ -936,7 +956,7 @@ export default function AskClient({
             )}
           </p>
           <ul className="mt-3 flex flex-wrap gap-2">
-            {(focusMembers.length > 0 ? focusMembers : located.members).map((m) => (
+            {(cardMembers.length > 0 ? cardMembers : located.members).map((m) => (
               <li key={m.bioguideId}>
                 <Link
                   href={`/member/${m.bioguideId}`}
@@ -954,6 +974,16 @@ export default function AskClient({
                 </Link>
               </li>
             ))}
+            {moreHouseCount > 0 && (
+              <li>
+                <Link
+                  href={`/state/${located.stateCode}`}
+                  className="flex items-center rounded-full border border-dashed border-neutral-300 bg-white px-3 py-1.5 text-xs text-neutral-500 no-underline hover:border-neutral-400 hover:text-neutral-900"
+                >
+                  +{moreHouseCount} more →
+                </Link>
+              </li>
+            )}
           </ul>
           {located.races && located.races.length > 0 && (
             <div className="mt-3 border-t border-neutral-200 pt-3">
@@ -1000,7 +1030,14 @@ export default function AskClient({
           )}
           {located.district == null && located.members.some((m) => m.chamber === "house") && (
             <p className="mt-2 text-xs text-neutral-400">
-              Add a street address to pin down your House district and see that race.
+              <button
+                type="button"
+                onClick={openAddressTab}
+                className="underline decoration-neutral-300 underline-offset-2 hover:text-neutral-700"
+              >
+                Add a street address
+              </button>{" "}
+              to pin down your House district and see that race.
             </p>
           )}
         </div>
@@ -1101,6 +1138,14 @@ export default function AskClient({
             </div>
           )}
         </div>
+      )}
+
+      {!budgetExhausted && (
+        <p className="mt-3 text-xs text-neutral-400">
+          Answers come only from retrieved records — votes, bills, campaign
+          money, committees and reviewed official-site biographies. Follow-ups can build on your last two answers;
+          every fact is re-checked against the records.
+        </p>
       )}
 
       {askError && (
