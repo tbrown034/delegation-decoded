@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "NODE_OPTIONS='--conditions=react-server' tsx --test tests/*.test.ts",
     "eval:ask": "NODE_OPTIONS='--conditions=react-server' tsx scripts/eval-ask.ts",
+    "eval:ask-sweep": "NODE_OPTIONS='--conditions=react-server' tsx scripts/eval-ask-sweep.ts",
     "eval:candidate-extraction": "tsx scripts/eval-candidate-extraction.ts"
   },
   "dependencies": {
