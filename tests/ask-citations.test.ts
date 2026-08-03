@@ -24,7 +24,7 @@ test("annotate injects sequential refs into vote records", () => {
     result.records.map((r) => r.ref),
     ["v1", "v2"]
   );
-  assert.equal(registry.get("v1")?.href, "/member/Y000064");
+  assert.equal(registry.get("v1")?.href, "/member/Y000064#votes");
   assert.match(registry.get("v2")?.label ?? "", /Roll call 198/);
 });
 
@@ -99,11 +99,19 @@ test("official biography records receive member-page citations", () => {
   const result = annotateToolResult(
     "get_member_biography",
     { bioguide_id: "B001299" },
-    { records: [{ fact: "The official biography says the senator attended IU." }] },
+    {
+      records: [
+        {
+          fact_type: "education",
+          quote: "The official biography says the senator attended IU.",
+        },
+      ],
+    },
     registry
   ) as { records: Array<{ ref: string }> };
   assert.equal(result.records[0].ref, "o1");
-  assert.equal(registry.get("o1")?.href, "/member/B001299");
+  assert.equal(registry.get("o1")?.href, "/member/B001299#biography");
+  assert.match(registry.get("o1")?.label ?? "", /education/);
 });
 
 test("member-seat race results cite campaign biography and prior service separately", () => {
@@ -120,8 +128,8 @@ test("member-seat race results cite campaign biography and prior service separat
             {
               name: "Jordan Lee",
               status: "active",
-              campaign_biography: [{ fact: "Campaign biography statement" }],
-              verified_prior_service: [{ office: "Mayor" }],
+              campaign_biography: [{ quote: "Campaign biography statement" }],
+              prior_service_stated_by_campaign: [{ office: "Mayor" }],
             },
           ],
         },
@@ -133,13 +141,13 @@ test("member-seat race results cite campaign biography and prior service separat
       records: Array<{
         ref: string;
         campaign_biography: Array<{ ref: string }>;
-        verified_prior_service: Array<{ ref: string }>;
+        prior_service_stated_by_campaign: Array<{ ref: string }>;
       }>;
     }>;
   };
   const candidate = result.contests[0].records[0];
   assert.equal(candidate.ref, "r1");
   assert.equal(candidate.campaign_biography[0].ref, "c1");
-  assert.equal(candidate.verified_prior_service[0].ref, "s1");
+  assert.equal(candidate.prior_service_stated_by_campaign[0].ref, "s1");
   assert.equal(registry.get("c1")?.href, "/race/2026-GA-S2-special");
 });
