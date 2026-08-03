@@ -506,3 +506,22 @@ Picked up a timed-out external agent's react-doctor refactor pass, verified it, 
 - Mobile screenshots from the audit: session scratchpad m1–m6 PNGs.
 
 ---
+## 2026-08-03 — Audit and hardening pass before hiring-manager review
+
+**Session Summary:**
+- Full-repo audit in priority order (correctness, security/spend, pipeline health, code health, docs truth), then fixes as small local commits. Nothing pushed without review.
+- Test suite went 79/82 to 82/82: three citation tests still asserted pre-anchor hrefs and a `verified_prior_service` key the race tool never emits. The code was right; the expectations moved to shipped behavior (d763ec0's section anchors, `prior_service_stated_by_campaign`, fact_type/quote biography records).
+- CI gate added at last: .github/workflows/ci.yml runs npm test, ESLint, and tsc --noEmit on every push and PR; `typecheck` script added. The README roadmap had admitted this gap since the tests landed.
+- Ingest failure issues now open fresh per workflow per day. The old de-dupe reused the most recent open `ingest-failure` issue forever, which is how issue #1 (April 29) collected four months of unrelated daily and weekly comments.
+- /health told two lies, both fixed. The House PTR note still said "paused pending key rotation" while the daily workflow re-enabled the step July 27 — the real residue is four oversized filings (three Khanna, one McCaul) that blow the vision parser's 16,000-token output cap and mark the source failed daily. And the finance-backlog alarm added the same morning crit-ed at >50% stale share (77% at ship), which failed today's weekly dispatch and would have redded every daily until the budget-limited crawl drained — demoted to warn with the percentage in the title; a dead crawl still crits via sync staleness.
+- /ask security guards re-verified end to end against docs/ask-security-review.md: validation before spend, IP limit before cache before moderation before provider budget, same-origin and byte-limited POSTs, no-store POST locate with a 6s geocoder timeout, 12-call/55s engine budgets with no SDK retries, HMAC-hashed IPs and cache keys, retention cleanup. The review doc's status paragraph matches the code.
+- README rewritten from the route tree, workflows, and .env.example: Ask, trades, races, /for-journalists, /health, all seven CSVs, the real stack (no Recharts — charts are hand-rolled SVG), thirty env vars, npm test, honest roadmap.
+- npm and pnpm override blocks reconciled: npm's blanket esbuild 0.28.1 became the same per-range pins pnpm uses, so CI (npm ci) and Vercel (pnpm) finally install the same tree. Which lockfile survives is still an open decision — Vercel detects pnpm-lock.yaml while workflows run npm ci.
+- Trade timeline: aria-label now reports purchase/sale counts and points at the table below; tooltip date formats readably (UTC-pinned). Verified in-browser on /trades/K000389.
+
+**Notable Changes:**
+- The May 31 UI/UX list is now mostly closed: tabular-nums rides the global mono rule, the timeline has a real accessible name, dates format consistently. Still open: /trades loads all transactions per request (server-side aggregation is the fix) and a pre-existing dev-only hydration warning from Date.now() in trade-timeline layout.
+- Files: tests/ask-citations.test.ts, .github/workflows/{ci,ingest-daily,ingest-weekly}.yml, lib/health.ts, components/trade-timeline.tsx, package.json, package-lock.json, README.md.
+- Known-good gates at session end: next build clean, tsc clean, eslint clean, 82/82 tests, npm ci and pnpm install both verified.
+
+---
