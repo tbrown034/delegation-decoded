@@ -11,9 +11,13 @@ import { sql, eq, and, isNotNull } from "drizzle-orm";
 import { fetchCandidateFinancials } from "../lib/fec-api";
 import { mapCandidateFinance } from "../lib/fec-mapping";
 
-// FEC allows 1,000 req/hr. We make 1-2 requests per member.
-// With 537 members, we need to be careful. 600ms delay = ~6000 req/hr theoretical
-// but we only do 1 request at a time, so effective rate is ~100/min = safe.
+// Pacing lives in scripts/lib/fec-api.ts, which throttles from the gateway's
+// x-ratelimit headers. The comment that used to sit here reasoned that doing
+// "1 request at a time" made ~100/min safe; that conflates concurrency with
+// volume, and 100/min is ~100x the ceiling the gateway publishes. It never
+// bit this script only because 1-2 requests per member stays under the cap on
+// total volume alone. finance-committees.ts copied the constant, made ~5
+// requests per member, and timed out. This delay is now just extra slack.
 const DELAY_MS = 600;
 
 // Forces every member down the full-cycle-history path instead of the

@@ -110,52 +110,72 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           FEC_API_KEY: ${{ secrets.FEC_API_KEY }}
 
-      # This is the longest weekly FEC job and can approach the hourly API
-      # ceiling. Keep all evidence collection ahead of both finance jobs so
-      # candidate research gets the first small share of the weekly FEC quota.
+      # The heaviest FEC consumer: ~5 requests per member across 535 sitting
+      # members, against a gateway that publishes a 60-request budget. It is
+      # not expected to cover the roster in one run. It processes members
+      # stalest-first and stops at FINANCE_RUN_BUDGET_MS, so an interrupted
+      # pass resumes rather than restarting and stranding the same tail.
+      #
+      # Budget (45m) plus the ~25m of steps above leaves headroom under the
+      # job's 90m ceiling. step timeout-minutes is only a backstop: exceeding
+      # it fails the step loudly instead of cancelling the whole job, which
+      # would skip the health check and the issue-opener below.
       - name: Ingest finance committees and top contributors
         if: ${{ !cancelled() && (inputs.mode == '' || inputs.mode == 'full') }}
+        timeout-minutes: 55
         run: npx tsx scripts/ingest/finance-committees.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           FEC_API_KEY: ${{ secrets.FEC_API_KEY }}
+          FINANCE_RUN_BUDGET_MS: "2700000"
 
+      # !cancelled() rather than a bare mode check: these three read from the
+      # database and do not depend on the FEC steps above, so a finance
+      # failure should not also cost the activity feed and the briefs.
       - name: Ingest press releases
-        if: ${{ inputs.mode == '' || inputs.mode == 'full' }}
+        if: ${{ !cancelled() && (inputs.mode == '' || inputs.mode == 'full') }}
         run: npx tsx scripts/ingest/press-releases.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Generate delegation briefs
-        if: ${{ inputs.mode == '' || inputs.mode == 'full' }}
+        if: ${{ !cancelled() && (inputs.mode == '' || inputs.mode == 'full') }}
         run: npx tsx scripts/ingest/generate-briefs.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Generate events feed
-        if: ${{ inputs.mode == '' || inputs.mode == 'full' }}
+        if: ${{ !cancelled() && (inputs.mode == '' || inputs.mode == 'full') }}
         run: npx tsx scripts/ingest/generate-events.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
+      # always(), not !cancelled(): the 90-minute job timeout cancels the job,
+      # and these two are exactly what has to run when it does — the stranded
+      # 'running' sync_log row is left by the step that got killed.
       - name: Cleanup stuck runs
-        if: ${{ !cancelled() }}
+        if: always()
         run: npx tsx scripts/cleanup-stuck-runs.ts --apply
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Health check
-        if: ${{ !cancelled() }}
+        if: always()
         run: npx tsx scripts/health-check.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
+      # A job-timeout reports as cancelled, not failed. Gating on failure()
+      # alone let the 2026-08-02 timeout pass with no issue and no comment.
       - name: Open issue on failure
-        if: failure()
+        if: ${{ failure() || cancelled() }}
         uses: actions/github-script@v7
+        env:
+          JOB_STATUS: ${{ job.status }}
         with:
           script: |
             const run = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const status = process.env.JOB_STATUS || 'failure';
             const title = `Weekly ingest failed — ${new Date().toISOString().slice(0, 10)}`;
             const existing = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
@@ -166,6 +186,7 @@ jobs:
             });
             const body = [
               `Workflow: **${context.workflow}**`,
+              `Outcome: \`${status}\`${status === 'cancelled' ? ' — most likely the 90-minute job timeout, so later steps never ran.' : ''}`,
               `Run: ${run}`,
               `Triggered: \`${context.eventName}\``,
               ``,

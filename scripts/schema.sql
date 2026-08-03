@@ -243,6 +243,25 @@ CREATE TABLE IF NOT EXISTS ingest_cursors (
   PRIMARY KEY (source, key)
 );
 
+-- Per-member attempt log for the FEC finance-committee crawl, which cannot
+-- finish the whole roster inside one job window. The crawl orders members by
+-- last_attempt_at (nulls first), so an interrupted run resumes at the stalest
+-- member instead of restarting at the top and stranding the same tail.
+--
+-- This records the ATTEMPT, not the write. Keying resumption off
+-- finance_committees.updated_at would starve the queue: a member whose FEC
+-- lookup legitimately returns no committees writes no row, so they would look
+-- permanently unsynced and be retried at the front of every run.
+CREATE TABLE IF NOT EXISTS finance_sync_state (
+  bioguide_id     VARCHAR(10) PRIMARY KEY REFERENCES members(bioguide_id) ON DELETE CASCADE,
+  last_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_status     VARCHAR(16) NOT NULL DEFAULT 'ok' CHECK (last_status IN ('ok', 'empty', 'error')),
+  error_message   TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_finance_sync_attempt
+  ON finance_sync_state(last_attempt_at);
+
 -- =============================================================================
 -- Sync tracking
 -- =============================================================================

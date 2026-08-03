@@ -69,6 +69,14 @@ export type HealthReport = {
     pendingFacts: number;
     verifiedFacts: number;
   };
+  // The FEC finance-committee crawl cannot cover the roster in one run, so
+  // "did the run succeed" says nothing about coverage. Track the backlog.
+  financeStaleness: {
+    totalMembers: number;
+    staleMembers: number;
+    neverAttempted: number;
+    errorMembers: number;
+  };
   ask: AskHealth;
   checks: HealthCheck[];
 };
@@ -305,6 +313,34 @@ export async function buildHealthReport(): Promise<HealthReport> {
     getMemberBiographyHealth(),
   ]);
 
+  const financeStalenessRows = await db.execute(sql`
+    SELECT
+      COUNT(*)::int AS total_members,
+      COUNT(*) FILTER (
+        WHERE s.last_attempt_at IS NULL
+           OR s.last_attempt_at < now() - interval '14 days'
+      )::int AS stale_members,
+      COUNT(*) FILTER (WHERE s.last_attempt_at IS NULL)::int AS never_attempted,
+      COUNT(*) FILTER (WHERE s.last_status = 'error')::int AS error_members
+    FROM members m
+    LEFT JOIN finance_sync_state s ON s.bioguide_id = m.bioguide_id
+    WHERE m.in_office = true AND m.fec_candidate_id IS NOT NULL
+  `);
+  const financeStalenessRow = financeStalenessRows.rows[0] as
+    | {
+        total_members: number;
+        stale_members: number;
+        never_attempted: number;
+        error_members: number;
+      }
+    | undefined;
+  const financeStaleness = {
+    totalMembers: financeStalenessRow?.total_members ?? 0,
+    staleMembers: financeStalenessRow?.stale_members ?? 0,
+    neverAttempted: financeStalenessRow?.never_attempted ?? 0,
+    errorMembers: financeStalenessRow?.error_members ?? 0,
+  };
+
   const [ask24h, ask7d, attemptsResult] = await Promise.all([
     askWindowStats("24 hours"),
     askWindowStats("7 days"),
@@ -375,6 +411,29 @@ export async function buildHealthReport(): Promise<HealthReport> {
       level: "warn",
       title: `${candidateResearch.blockedSites} candidate${candidateResearch.blockedSites === 1 ? " has" : "s have"} no current FEC campaign website`,
       detail: "These verified candidacies remain visible, but campaign-site claims stay unavailable unless a current principal or authorized committee reports a website.",
+    });
+  }
+
+  // The finance-committee crawl is budget-limited and resumes across runs, so
+  // a single run finishing is not evidence the roster is covered. Without this
+  // check the tail it never reached stays invisible: the run reports success,
+  // and the missing members simply have no contributor rows.
+  if (financeStaleness.staleMembers > 0) {
+    const share =
+      financeStaleness.staleMembers / Math.max(financeStaleness.totalMembers, 1);
+    // "Falling behind" only means something once the crawl has actually run.
+    // Before the first pass every member is legitimately unattempted, and a
+    // crit there would fail the workflow for a backlog the crawl has not had
+    // a chance to work yet.
+    const started = financeStaleness.neverAttempted < financeStaleness.totalMembers;
+    checks.push({
+      id: "finance-committee-staleness",
+      level: started && share > 0.5 ? "crit" : "warn",
+      title: started
+        ? `${financeStaleness.staleMembers} of ${financeStaleness.totalMembers} members have finance data older than 14 days`
+        : `Finance-committee crawl has not completed a first pass (${financeStaleness.totalMembers} members queued)`,
+      detail:
+        "The FEC crawl processes members stalest-first within a per-run budget, so one run is not expected to cover the roster. A backlog that stops shrinking means runs are not keeping pace — check the run's budget-limited stop line and the FEC rate-limit cooldowns.",
     });
   }
 
@@ -607,6 +666,7 @@ export async function buildHealthReport(): Promise<HealthReport> {
     electionCoverage,
     candidateResearch,
     memberBiographies,
+    financeStaleness,
     ask,
     checks,
   };

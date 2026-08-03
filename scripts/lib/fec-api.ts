@@ -1,5 +1,62 @@
 const BASE_URL = "https://api.open.fec.gov/v1";
 
+// ─── Pacing ──────────────────────────────────────────────────────────────────
+//
+// The gateway reports its own budget on every response (x-ratelimit-limit and
+// x-ratelimit-remaining), so pace from that signal instead of a hardcoded
+// delay. Every previous caller picked its own DELAY_MS from a guess at the
+// quota, and the guesses were wrong: the comment in finance.ts reasoned that
+// "1 request at a time" made 100 req/min safe, which conflates concurrency
+// with volume and describes a rate 100x the ceiling the gateway actually
+// publishes (60). That mismatch is what walked the weekly finance-committee
+// crawl into a 429/retry loop until the job timed out.
+//
+// Measured against a live key (2026-08-02): x-ratelimit-limit is 60. A burst
+// of 12 requests drained it 55 -> 44, roughly one token per request with no
+// refill mid-burst. It recovered to 50 after 65s idle and to 59 after 150s
+// idle, so the bucket refills over minutes rather than resetting on a clean
+// boundary. The readings are noisy enough (the gateway is eventually
+// consistent across nodes) that no fixed delay is reliably correct — which is
+// the whole argument for reading the header instead of assuming a window.
+const RATE_RESERVE = 8;
+const BASE_SPACING_MS = 250;
+const COOLDOWN_MS = 45_000;
+
+let lastRequestAt = 0;
+let budgetLimit: number | null = null;
+let budgetRemaining: number | null = null;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Current gateway budget, for callers that report progress. */
+export function fecBudget(): { limit: number | null; remaining: number | null } {
+  return { limit: budgetLimit, remaining: budgetRemaining };
+}
+
+async function pace(): Promise<void> {
+  const since = Date.now() - lastRequestAt;
+  if (since < BASE_SPACING_MS) await sleep(BASE_SPACING_MS - since);
+  // Near the floor, stop drawing the bucket down and let it refill. Walking
+  // into the 429 is strictly worse: the retry still costs a request.
+  if (budgetRemaining != null && budgetRemaining <= RATE_RESERVE) {
+    console.log(
+      `  FEC budget low (${budgetRemaining}/${budgetLimit}); cooling down ${COOLDOWN_MS / 1000}s...`
+    );
+    await sleep(COOLDOWN_MS);
+    // Force the next response to re-establish the reading rather than
+    // cooling down repeatedly off one stale value.
+    budgetRemaining = null;
+  }
+  lastRequestAt = Date.now();
+}
+
+function readBudget(res: Response): void {
+  const limit = Number(res.headers.get("x-ratelimit-limit"));
+  const remaining = Number(res.headers.get("x-ratelimit-remaining"));
+  if (Number.isFinite(limit) && limit > 0) budgetLimit = limit;
+  if (Number.isFinite(remaining) && remaining >= 0) budgetRemaining = remaining;
+}
+
 function getApiKey(): string {
   const key = process.env.FEC_API_KEY;
   if (!key) throw new Error("FEC_API_KEY is not set");
@@ -14,11 +71,13 @@ async function fetchWithRetry(url: string, retries = 3): Promise<Response> {
   })();
   async function attempt(i: number): Promise<Response> {
     let res: Response;
+    await pace();
     try {
       res = await fetch(url, {
         signal: AbortSignal.timeout(20_000),
         headers: { "User-Agent": "DelegationDecodedFECIngest/1.0" },
       });
+      readBudget(res);
     } catch (error) {
       if (i < retries - 1) {
         await new Promise((resolve) => setTimeout(resolve, Math.pow(2, i) * 1000));

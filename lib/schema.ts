@@ -343,6 +343,21 @@ export const ingestCursors = pgTable(
   (table) => [primaryKey({ columns: [table.source, table.key] })]
 );
 
+// Per-member attempt log for the FEC finance-committee crawl. Ordering members
+// by last_attempt_at (nulls first) is what makes an interrupted run resume at
+// the stalest member rather than restarting at the top. Records the attempt,
+// not the write — see scripts/schema.sql for why.
+export const financeSyncState = pgTable("finance_sync_state", {
+  bioguideId: varchar("bioguide_id", { length: 10 })
+    .primaryKey()
+    .references(() => members.bioguideId, { onDelete: "cascade" }),
+  lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  lastStatus: varchar("last_status", { length: 16 }).notNull().default("ok"),
+  errorMessage: text("error_message"),
+});
+
 // =============================================================================
 // Finance Committees
 // =============================================================================

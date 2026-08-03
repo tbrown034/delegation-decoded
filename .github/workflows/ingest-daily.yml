@@ -156,12 +156,17 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
+      # A job-timeout reports as cancelled, not failed, so failure() alone
+      # would let the 75-minute ceiling pass silently.
       - name: Open issue on failure
-        if: failure()
+        if: ${{ failure() || cancelled() }}
         uses: actions/github-script@v7
+        env:
+          JOB_STATUS: ${{ job.status }}
         with:
           script: |
             const run = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const status = process.env.JOB_STATUS || 'failure';
             const title = `Daily ingest failed — ${new Date().toISOString().slice(0, 10)}`;
             // Avoid issue spam: reuse the most recent open auto-issue with this label.
             const existing = await github.rest.issues.listForRepo({
@@ -173,6 +178,7 @@ jobs:
             });
             const body = [
               `Workflow: **${context.workflow}**`,
+              `Outcome: \`${status}\`${status === 'cancelled' ? ' — most likely the 75-minute job timeout, so later steps never ran.' : ''}`,
               `Run: ${run}`,
               `Triggered: \`${context.eventName}\``,
               ``,

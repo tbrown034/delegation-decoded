@@ -3,27 +3,37 @@ import "../lib/env";
 import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
 import {
-  members,
   financeCommittees,
   committeeFinance,
   topContributors,
   syncLog,
 } from "../../lib/schema";
-import { sql, eq, and, isNotNull } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import {
+  fecBudget,
   fetchCandidateCommittees,
   fetchCommitteeTotals,
   fetchTopContributorsByEmployer,
 } from "../lib/fec-api";
 import { isReportableEmployer } from "../lib/fec-mapping";
 
-// FEC allows 1,000 req/hr. Per member: 1 committee-list request, 1 totals
-// request per committee (~2), and 1-2 by-employer requests for the principal
-// committee. 600ms spacing keeps the effective rate near 100/min.
-const DELAY_MS = 600;
+// Pacing lives in scripts/lib/fec-api.ts, which throttles from the gateway's
+// own x-ratelimit headers. This script used to set its own 600ms delay from a
+// guess at the quota; that guess ran ~100x over the published ceiling and is
+// what drove the run into a 429/retry loop until the job timed out.
+//
+// This crawl is the heaviest FEC consumer: roughly five requests per member
+// (committee list, totals per committee, one or two by-employer calls) across
+// the full sitting roster. It is not guaranteed to finish the roster inside
+// one job window, so it is built to stop cleanly and resume, rather than to
+// run to completion. Members are processed stalest-first, so whatever a run
+// does not reach is simply first in line next time.
 const CURRENT_CYCLE = 2026;
 
-const delay = () => new Promise((r) => setTimeout(r, DELAY_MS));
+// Wall-clock budget. Set below the workflow's job timeout so the script exits
+// on its own terms — a killed run strands a 'running' sync_log row and loses
+// the attempt bookkeeping for whichever member was mid-flight.
+const RUN_BUDGET_MS = Number(process.env.FINANCE_RUN_BUDGET_MS ?? 45 * 60 * 1000);
 
 async function main() {
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
@@ -41,15 +51,33 @@ async function main() {
     })
     .returning();
 
+  const startedAt = Date.now();
+
   try {
-    const membersWithFec = await db
-      .select({
-        bioguideId: members.bioguideId,
-        fecCandidateId: members.fecCandidateId,
-        fullName: members.fullName,
-      })
-      .from(members)
-      .where(and(eq(members.inOffice, true), isNotNull(members.fecCandidateId)));
+    // Stalest first, never-attempted before that. This ordering IS the resume
+    // mechanism: an interrupted run leaves its unreached members with the
+    // oldest last_attempt_at, so the next run starts exactly where this one
+    // ran out of clock instead of re-walking the same first N members.
+    const queued = (await db.execute(sql`
+      SELECT m.bioguide_id, m.fec_candidate_id, m.full_name, s.last_attempt_at
+      FROM members m
+      LEFT JOIN finance_sync_state s ON s.bioguide_id = m.bioguide_id
+      WHERE m.in_office = true AND m.fec_candidate_id IS NOT NULL
+      ORDER BY s.last_attempt_at ASC NULLS FIRST, m.bioguide_id ASC
+    `)) as unknown as {
+      rows: {
+        bioguide_id: string;
+        fec_candidate_id: string;
+        full_name: string;
+        last_attempt_at: string | null;
+      }[];
+    };
+    const membersWithFec = queued.rows.map((row) => ({
+      bioguideId: row.bioguide_id,
+      fecCandidateId: row.fec_candidate_id,
+      fullName: row.full_name,
+      lastAttemptAt: row.last_attempt_at,
+    }));
 
     // Members with no contributor rows also get the prior cycle on first run.
     const existingContribs = await db
@@ -57,20 +85,51 @@ async function main() {
       .from(topContributors);
     const hasContribs = new Set(existingContribs.map((r) => r.bioguideId));
 
-    console.log(`${membersWithFec.length} members with FEC IDs to process`);
+    const neverAttempted = membersWithFec.filter((m) => !m.lastAttemptAt).length;
+    console.log(
+      `${membersWithFec.length} members with FEC IDs queued stalest-first (${neverAttempted} never attempted)`
+    );
+    console.log(
+      `Run budget ${Math.round(RUN_BUDGET_MS / 60000)} min; will stop cleanly and resume next run.`
+    );
+
+    // Records the attempt whatever the outcome. Keying resumption off written
+    // rows would starve the queue: a member whose FEC lookup legitimately
+    // returns no committees writes nothing and would stay permanently "stale".
+    const markAttempt = (
+      bioguideId: string,
+      status: "ok" | "empty" | "error",
+      errorMessage?: string
+    ) =>
+      db.execute(sql`
+        INSERT INTO finance_sync_state (bioguide_id, last_attempt_at, last_status, error_message)
+        VALUES (${bioguideId}, now(), ${status}, ${errorMessage ?? null})
+        ON CONFLICT (bioguide_id) DO UPDATE SET
+          last_attempt_at = now(),
+          last_status = EXCLUDED.last_status,
+          error_message = EXCLUDED.error_message
+      `);
 
     let committeeCount = 0;
     let cycleRowCount = 0;
     let contributorCount = 0;
     let errors = 0;
+    let processed = 0;
+    let stoppedEarly = false;
 
     for (let i = 0; i < membersWithFec.length; i++) {
+      if (Date.now() - startedAt >= RUN_BUDGET_MS) {
+        stoppedEarly = true;
+        console.log(
+          `  Run budget reached after ${processed} members; ${membersWithFec.length - i} remain for the next run.`
+        );
+        break;
+      }
       const member = membersWithFec[i];
       const fecId = member.fecCandidateId!;
 
       try {
         const committees = await fetchCandidateCommittees(fecId);
-        await delay();
 
         for (const committee of committees) {
           if (!committee.committee_id || !committee.name) continue;
@@ -104,7 +163,6 @@ async function main() {
           committeeCount++;
 
           const totals = await fetchCommitteeTotals(committee.committee_id);
-          await delay();
           for (const t of totals) {
             if (!t.cycle) continue;
             await db
@@ -144,7 +202,6 @@ async function main() {
               principal.committee_id,
               cycle
             );
-            await delay();
             const top = rows
               .filter(
                 (r) => r.total && r.total > 0 && isReportableEmployer(r.employer)
@@ -177,16 +234,21 @@ async function main() {
             }
           }
         }
+        await markAttempt(
+          member.bioguideId,
+          committees.length > 0 ? "ok" : "empty"
+        );
+        processed++;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes("429")) {
-          console.log(
-            `  Rate limited at member ${i + 1}/${membersWithFec.length}. Waiting 30s...`
-          );
-          await new Promise((r) => setTimeout(r, 30000));
-          i--; // Retry this member
-          continue;
-        }
+        // No retry-in-place here. The client already backs off on 429 and
+        // paces from the gateway's own budget, so a 429 reaching this point
+        // means the window is genuinely exhausted. Retrying the same member
+        // (the old `i--`) burned the run's remaining clock on one row; marking
+        // the attempt and moving on keeps the queue advancing, and the stale
+        // ordering brings this member back to the front next run.
+        await markAttempt(member.bioguideId, "error", msg.slice(0, 300));
+        processed++;
         errors++;
         if (errors <= 10) {
           console.log(
@@ -196,11 +258,28 @@ async function main() {
       }
 
       if ((i + 1) % 25 === 0 || i === membersWithFec.length - 1) {
+        const budget = fecBudget();
+        const elapsed = Math.round((Date.now() - startedAt) / 60000);
         console.log(
-          `  ${i + 1}/${membersWithFec.length} processed — ${committeeCount} committees, ${cycleRowCount} cycle rows, ${contributorCount} contributors, ${errors} errors`
+          `  ${i + 1}/${membersWithFec.length} processed — ${committeeCount} committees, ${cycleRowCount} cycle rows, ${contributorCount} contributors, ${errors} errors` +
+            ` [${elapsed}m elapsed, FEC budget ${budget.remaining ?? "?"}/${budget.limit ?? "?"}]`
         );
       }
     }
+
+    // A budget-limited stop is a success, not a failure: the queue advanced and
+    // the next run resumes from the new stalest member. Only surfacing it as a
+    // distinct record count would hide it, so say so in the log line too.
+    const [{ stale_count: staleCount } = { stale_count: 0 }] = (
+      (await db.execute(sql`
+        SELECT COUNT(*)::int AS stale_count
+        FROM members m
+        LEFT JOIN finance_sync_state s ON s.bioguide_id = m.bioguide_id
+        WHERE m.in_office = true
+          AND m.fec_candidate_id IS NOT NULL
+          AND (s.last_attempt_at IS NULL OR s.last_attempt_at < now() - interval '7 days')
+      `)) as unknown as { rows: { stale_count: number }[] }
+    ).rows;
 
     await db
       .update(syncLog)
@@ -212,7 +291,11 @@ async function main() {
       .where(sql`id = ${syncEntry.id}`);
 
     console.log(
-      `Done. ${committeeCount} committees, ${cycleRowCount} cycle rows, ${contributorCount} contributor rows, ${errors} errors.`
+      `Done${stoppedEarly ? " (budget-limited)" : ""}. ${processed} members attempted, ` +
+        `${committeeCount} committees, ${cycleRowCount} cycle rows, ${contributorCount} contributor rows, ${errors} errors.`
+    );
+    console.log(
+      `${staleCount} members still unattempted or older than 7 days.`
     );
   } catch (err) {
     await db
