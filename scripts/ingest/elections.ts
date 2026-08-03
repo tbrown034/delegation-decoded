@@ -74,6 +74,9 @@ const DRY_RUN = process.argv.includes("--dry-run");
 const BACKFILL = process.argv.includes("--backfill");
 const STATE_ARG = process.argv.find((argument) => argument.startsWith("--state="));
 const REQUESTED_STATE = STATE_ARG?.split("=", 2)[1]?.trim().toUpperCase() ?? null;
+// Every state with an implemented adapter. The adapterKey list inside
+// selectedStates stays literal on purpose: keys are named, not derived.
+const ADAPTER_STATES = ["IN", "DE", "FL", "RI", "NE", "MI", "WA"];
 const INDIANA_SOURCE_ID = "state-in";
 const DELAWARE_SOURCE_ID = "state-de";
 const FLORIDA_SOURCE_ID = "state-fl";
@@ -2746,7 +2749,7 @@ async function ingestWashington(db: Database) {
 
 async function selectedStates(db: Database) {
   if (REQUESTED_STATE) return [REQUESTED_STATE];
-  if (BACKFILL) return ["IN", "DE", "FL", "RI", "NE", "MI", "WA"];
+  if (BACKFILL) return ADAPTER_STATES;
   const due = await db
     .select({ stateCode: electionSources.stateCode })
     .from(electionSources)
@@ -2768,19 +2771,14 @@ async function selectedStates(db: Database) {
 }
 
 async function main() {
-  if (
-    REQUESTED_STATE &&
-    !["IN", "DE", "FL", "RI", "NE", "MI", "WA"].includes(REQUESTED_STATE)
-  ) {
+  if (REQUESTED_STATE && !ADAPTER_STATES.includes(REQUESTED_STATE)) {
     throw new Error(`No verified adapter is available for ${REQUESTED_STATE}`);
   }
 
   if (DRY_RUN) {
-    const states = REQUESTED_STATE
-      ? [REQUESTED_STATE]
-      : BACKFILL
-        ? ["IN", "DE", "FL", "RI", "NE", "MI", "WA"]
-        : ["IN", "DE", "FL", "RI", "NE", "MI", "WA"];
+    // Dry runs never touch the database, so --due has nothing to consult;
+    // every adapter state runs unless one was requested explicitly.
+    const states = REQUESTED_STATE ? [REQUESTED_STATE] : ADAPTER_STATES;
     let count = 0;
     for (const state of states) {
       if (state === "IN") count += await ingestIndiana({} as Database);
