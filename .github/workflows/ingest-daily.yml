@@ -168,14 +168,18 @@ jobs:
             const run = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const status = process.env.JOB_STATUS || 'failure';
             const title = `Daily ingest failed — ${new Date().toISOString().slice(0, 10)}`;
-            // Avoid issue spam: reuse the most recent open auto-issue with this label.
-            const existing = await github.rest.issues.listForRepo({
+            // De-dupe only within the same workflow and day: reuse an open
+            // issue whose title matches exactly, otherwise open a fresh dated
+            // issue. Matching any open ingest-failure issue let one issue
+            // accumulate months of unrelated failures across both workflows.
+            const open = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
               state: 'open',
               labels: 'ingest-failure',
-              per_page: 1,
+              per_page: 100,
             });
+            const existing = open.data.find((issue) => issue.title === title);
             const body = [
               `Workflow: **${context.workflow}**`,
               `Outcome: \`${status}\`${status === 'cancelled' ? ' — most likely the 75-minute job timeout, so later steps never ran.' : ''}`,
@@ -184,11 +188,11 @@ jobs:
               ``,
               `Check the run logs and the [/health page](https://delegation-decoded.vercel.app/health) for details.`,
             ].join('\n');
-            if (existing.data.length > 0) {
+            if (existing) {
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: existing.data[0].number,
+                issue_number: existing.number,
                 body,
               });
             } else {
