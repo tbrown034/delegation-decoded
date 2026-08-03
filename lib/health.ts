@@ -151,7 +151,7 @@ async function askWindowStats(interval: string): Promise<AskWindowStats> {
 // silent. Remove the entry to resume normal alerting.
 const PAUSED_SOURCES: Record<string, string> = {
   "disclosures-clerk.house.gov":
-    "House PTR ingest paused July 20, 2026: the upstream API key is rejected and the scheduled job is disabled pending key rotation. Already-ingested trades remain published; Senate PTR ingest is unaffected.",
+    "House PTR ingest resumed July 27, 2026 and parses new filings daily. Four oversized filings (three Khanna, one McCaul — thousands of transactions each) exceed the vision parser's 16,000-token output cap and fail every run, so this source reports failed while everything else parses. Kept out of the crit gate until oversized filings are chunked or triaged; all parsed trades are published.",
 };
 
 // Per-entity thresholds for staleness (in hours), keyed by sync_log
@@ -421,19 +421,20 @@ export async function buildHealthReport(): Promise<HealthReport> {
   if (financeStaleness.staleMembers > 0) {
     const share =
       financeStaleness.staleMembers / Math.max(financeStaleness.totalMembers, 1);
-    // "Falling behind" only means something once the crawl has actually run.
-    // Before the first pass every member is legitimately unattempted, and a
-    // crit there would fail the workflow for a backlog the crawl has not had
-    // a chance to work yet.
+    // A large backlog is the expected state while the budget-limited crawl
+    // works the roster down — the day this alarm shipped it stood at 77% and
+    // a crit here failed every scheduled run for a crawl behaving exactly as
+    // designed. Backlog size is warn-only; the crit signal for a crawl that
+    // stopped running entirely is the finance_committees sync-staleness gate.
     const started = financeStaleness.neverAttempted < financeStaleness.totalMembers;
     checks.push({
       id: "finance-committee-staleness",
-      level: started && share > 0.5 ? "crit" : "warn",
+      level: "warn",
       title: started
-        ? `${financeStaleness.staleMembers} of ${financeStaleness.totalMembers} members have finance data older than 14 days`
+        ? `${financeStaleness.staleMembers} of ${financeStaleness.totalMembers} members have finance data older than 14 days (${Math.round(share * 100)}% backlog)`
         : `Finance-committee crawl has not completed a first pass (${financeStaleness.totalMembers} members queued)`,
       detail:
-        "The FEC crawl processes members stalest-first within a per-run budget, so one run is not expected to cover the roster. A backlog that stops shrinking means runs are not keeping pace — check the run's budget-limited stop line and the FEC rate-limit cooldowns.",
+        "The FEC crawl processes members stalest-first within a per-run budget, so one run is not expected to cover the roster. Watch this number across runs: a backlog that stops shrinking means runs are not keeping pace — check the run's budget-limited stop line and the FEC rate-limit cooldowns. A crawl that stops running entirely trips the finance_committees staleness crit instead.",
     });
   }
 
