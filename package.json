@@ -2,6 +2,7 @@
   "name": "delegation-decoded",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.28.1",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -50,15 +51,5 @@
       "postcss": "8.5.12",
       "sharp": "0.35.0"
     }
-  },
-  "overrides": {
-    "@babel/core": "7.29.6",
-    "brace-expansion@1.1.14": "1.1.16",
-    "brace-expansion@5.0.5": "5.0.7",
-    "esbuild@0.18.20": "0.25.12",
-    "esbuild@0.27.7": "0.28.1",
-    "js-yaml@4.1.1": "4.3.0",
-    "postcss": "8.5.12",
-    "sharp": "0.35.0"
   }
 }

@@ -68,9 +68,9 @@ Pages fetch through Server Components and centralized query helpers. Every inges
 ## Local Setup
 
 ```bash
-npm install
+pnpm install
 cp .env.example .env.local
-npm run dev
+pnpm dev
 ```
 
 `.env.example` documents every variable. The site renders with just `DATABASE_URL`; the rest split by concern:
@@ -82,12 +82,12 @@ npm run dev
 ## Commands
 
 ```bash
-npm run dev        # local dev server
-npm test           # node:test suite
-npm run lint       # ESLint
-npm run typecheck  # tsc --noEmit
-npm run build      # production build
-npm run eval:ask   # graded eval of the Ask loop (calls paid APIs)
+pnpm dev            # local dev server
+pnpm test           # node:test suite
+pnpm run lint       # ESLint
+pnpm run typecheck  # tsc --noEmit
+pnpm run build      # production build
+pnpm run eval:ask   # graded eval of the Ask loop (calls paid APIs)
 ```
 
 CI runs the test suite, lint, and typecheck on every push and pull request. Ingestion scripts run with `npx tsx scripts/<name>.ts`; the full catalog, including audit and QA tools, is documented in `AGENTS.md`.
