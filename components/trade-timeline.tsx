@@ -127,7 +127,7 @@ export function TradeTimeline({ trades, height = 220 }: Props) {
         viewBox={`0 0 ${layout.width} ${height}`}
         className="w-full"
         role="img"
-        aria-label="Trade timeline"
+        aria-label={`Trade timeline: ${buys.length} purchases and ${sells.length} sales or exchanges. Full details in the transactions table below.`}
       >
         <rect
           x={layout.padX}
@@ -259,7 +259,14 @@ export function TradeTimeline({ trades, height = 220 }: Props) {
           return (
             <div className="mt-3 rounded border border-neutral-200 bg-white p-3 text-xs shadow-sm">
               <div className="flex items-baseline justify-between gap-3">
-                <span className="font-mono">{tx.txDate}</span>
+                <span className="font-mono">
+                  {new Date(tx.txDate).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                    timeZone: "UTC",
+                  })}
+                </span>
                 <span className="font-medium">
                   {tx.txType === "P"
                     ? "Purchase"
