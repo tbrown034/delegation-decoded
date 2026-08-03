@@ -525,3 +525,20 @@ Picked up a timed-out external agent's react-doctor refactor pass, verified it, 
 - Known-good gates at session end: next build clean, tsc clean, eslint clean, 82/82 tests, npm ci and pnpm install both verified.
 
 ---
+## 2026-08-03 — Evening ship: CI live, issue hygiene, pnpm-only
+
+**Session Summary:**
+- Second half of the day's audit session: everything the morning pass held for approval got decided and shipped. Eleven audit commits pushed (8a22e65..928aee5), then the pnpm standardization (07738cc).
+- CI ran for the first time in this repo's history and passed twice: once on the audit push (npm-based), once after the pnpm switch. Test, lint, and typecheck gate every push and PR now.
+- Issue #1 closed with a summary comment explaining the four months of piled-up failure reports; the de-dupe fix means future failures open fresh dated issues per workflow per day. Zero open issues at close.
+- Merged branches ask-portfolio-polish and fix/review-findings deleted on origin and locally; both were 0 ahead of main.
+- Package manager unified on pnpm: all five workflows install with pnpm install --frozen-lockfile via pnpm/action-setup@v4, version pinned by the new packageManager field (pnpm@10.28.1), package-lock.json and the npm-only overrides block deleted, README setup updated. Production already built with pnpm, so prod behavior is unchanged by design.
+- Dead code resolved: components/trades-monthly-bars.tsx removed (orphaned since 53487e3); eval-ask-sweep kept and wired as pnpm run eval:ask-sweep to match its sibling evals.
+- elections.ts got the two zero-risk cleanups from the code-health survey: one ADAPTER_STATES constant replaces a four-times-repeated state literal, and the dry-run BACKFILL ternary with identical arms is gone.
+
+**Notable Changes:**
+- Production deploys verified READY at 928aee5 and 07738cc; live /health confirmed serving the corrected House PTR text.
+- CI log carries one benign annotation: pnpm/action-setup@v4 internally targets Node 20 and is auto-forced to Node 24 by GitHub. Upstream's issue.
+- Deferred, on record: House PTR chunked parsing (4 oversized filings still fail daily, suppressed from the crit gate), /trades server-side aggregation, elections.ts per-state split paired with fecMatchesFor* consolidation (~205 lines to ~30), ALLOWED_HOSTS rename (two different allowlists share the name), party vocabulary unification on party-mark.tsx, trade-timeline Date.now() hydration warning, ASK_ADMIN_KEY missing from .env.example.
+
+---
