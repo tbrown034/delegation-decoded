@@ -24,7 +24,8 @@ interface EvidenceRecord {
 
 // Ref prefixes: v votes, b bills, f finance cycles, e employer contributors,
 // p finance committees (PACs), m assignments, t terms, r race candidates,
-// c campaign biography, s prior service, o official member biography,
+// c campaign biography, q campaign stated positions, s prior service,
+// o official member biography,
 // d current-roster entries (get_delegation / find_members).
 const MARKER_RE = /\s*\[([a-z]\d{1,3})\]/gi;
 
@@ -54,6 +55,14 @@ type Rec = Record<string, unknown>;
 
 function asString(value: unknown): string {
   return typeof value === "string" ? value : String(value ?? "");
+}
+
+// Quote-bearing records cite a verbatim passage, which is far longer than the
+// identifier-style labels the other tools produce. Trim to keep the source
+// list scannable; the href still lands the reader on the full passage.
+function snippet(value: unknown, len = 80): string {
+  const text = asString(value).replace(/\s+/g, " ").trim();
+  return text.length > len ? `${text.slice(0, len).trimEnd()}...` : text;
 }
 
 // Walks a successful tool result and injects a ref into each record the model
@@ -107,37 +116,46 @@ export function annotateToolResult(
         `${name}, ${asString(rec.status)} (${asString(container.source)})`,
         href
       );
-      const campaignBiography = Array.isArray(rec.campaign_biography)
-        ? (rec.campaign_biography as unknown[]).map((fact) => {
-            if (!fact || typeof fact !== "object") return fact;
-            const record = fact as Rec;
-            const ref = registry.register(
-              "c",
-              tool,
-              `${name} campaign-site biography statement`,
-              href
-            );
-            return { ref, ...record };
-          })
-        : rec.campaign_biography;
-      const priorService = Array.isArray(rec.verified_prior_service)
-        ? (rec.verified_prior_service as unknown[]).map((service) => {
-            if (!service || typeof service !== "object") return service;
-            const record = service as Rec;
-            const ref = registry.register(
-              "s",
-              tool,
-              `${name} prior-service record: ${asString(record.office)}`,
-              href
-            );
-            return { ref, ...record };
-          })
-        : rec.verified_prior_service;
+      // Every quote the model receives needs a ref, or the prompt's
+      // "use only refs that appear in tool results" rule leaves the claim
+      // uncitable. These key names must track raceToolPayload exactly.
+      const annotateQuotes = (
+        value: unknown,
+        prefix: string,
+        describe: (record: Rec) => string
+      ) =>
+        Array.isArray(value)
+          ? (value as unknown[]).map((item) => {
+              if (!item || typeof item !== "object") return item;
+              const record = item as Rec;
+              const ref = registry.register(prefix, tool, describe(record), href);
+              return { ref, ...record };
+            })
+          : value;
+
+      const campaignBiography = annotateQuotes(
+        rec.campaign_biography,
+        "c",
+        () => `${name} campaign-site biography statement`
+      );
+      const campaignPositions = annotateQuotes(
+        rec.campaign_stated_positions,
+        "q",
+        (record) =>
+          `${name} campaign-site stated position: "${snippet(record.quote)}"`
+      );
+      const priorService = annotateQuotes(
+        rec.prior_service_stated_by_campaign,
+        "s",
+        (record) =>
+          `${name} prior service stated by campaign: ${asString(record.office)}`
+      );
       return {
         ref: candidateRef,
         ...rec,
         campaign_biography: campaignBiography,
-        verified_prior_service: priorService,
+        campaign_stated_positions: campaignPositions,
+        prior_service_stated_by_campaign: priorService,
       };
     });
   };
@@ -192,9 +210,12 @@ export function annotateToolResult(
       }));
       break;
     case "get_member_biography":
+      // The record carries fact_type + quote (the tool stopped emitting a
+      // `fact` field when biographies moved to verbatim passages); reading the
+      // old key rendered every one of these citations as an empty label.
       annotate("records", (rec) => ({
         prefix: "o",
-        label: `Official-site biography statement: ${asString(rec.fact)}`,
+        label: `Official-site biography (${asString(rec.fact_type) || "other"}): "${snippet(rec.quote)}"`,
         href: memberSection("biography"),
       }));
       break;
