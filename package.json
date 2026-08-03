@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
     "test": "NODE_OPTIONS='--conditions=react-server' tsx --test tests/*.test.ts",
     "eval:ask": "NODE_OPTIONS='--conditions=react-server' tsx scripts/eval-ask.ts",
     "eval:candidate-extraction": "tsx scripts/eval-candidate-extraction.ts"
