@@ -58,7 +58,21 @@ export async function GET(
     });
   }
 
-  // 3. Try Congress.gov API to get the actual image URL (for newer members)
+  // 3. Try the Bioguide portrait archive (covers new members before the
+  // unitedstates repo and Congress.gov catch up)
+  const bgImage = await fetchImage(
+    `https://bioguide.congress.gov/photo/${id}.jpg`
+  );
+  if (bgImage) {
+    return new NextResponse(bgImage, {
+      headers: {
+        "Content-Type": "image/jpeg",
+        "Cache-Control": CACHE_HEADER,
+      },
+    });
+  }
+
+  // 4. Try Congress.gov API to get the actual image URL (for newer members)
   const apiKey = process.env.CONGRESS_API_KEY;
   if (apiKey) {
     try {

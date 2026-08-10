@@ -75,7 +75,7 @@ export async function getMemberDisclosureSummary(
         sellCount: sql<number>`COUNT(*) FILTER (WHERE ${stockTransactions.txType} LIKE 'S%')::int`,
         lateCount: sql<number>`COUNT(*) FILTER (WHERE ${stockTransactions.filedLate} = true)::int`,
         estimatedMin: sql<number>`COALESCE(SUM(${stockTransactions.amountMin}), 0)::bigint`,
-        estimatedMax: sql<number>`COALESCE(SUM(${stockTransactions.amountMax}), 0)::bigint`,
+        estimatedMax: sql<number>`COALESCE(SUM(COALESCE(${stockTransactions.amountMax}, ${stockTransactions.amountMin})), 0)::bigint`,
         earliestTrade: sql<string | null>`MIN(${stockTransactions.txDate})`,
         latestTrade: sql<string | null>`MAX(${stockTransactions.txDate})`,
       })

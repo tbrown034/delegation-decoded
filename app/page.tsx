@@ -322,7 +322,8 @@ function HomeFreshnessAndTerritories({
                       {label}
                     </p>
                     <p className="font-mono text-[10px] text-neutral-400">
-                      {(s.records_count || 0).toLocaleString()} records
+                      {(s.records_count || 0).toLocaleString()}{" "}
+                      {(s.records_count || 0) === 1 ? "record" : "records"}
                       {" / "}
                       {ageLabel}
                     </p>
