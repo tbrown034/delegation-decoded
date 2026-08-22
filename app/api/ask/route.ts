@@ -19,7 +19,7 @@ import {
   type CachedAnswer,
 } from "@/lib/ask-limits";
 import { classifyAskError, logAsk } from "@/lib/ask-log";
-import { moderateQuestion } from "@/lib/ask-moderation";
+import { matchesAttackSignature, moderateText } from "@/lib/ask-moderation";
 import type { AskScope } from "@/lib/ask-tools";
 import { getMemberByBioguideId, getMemberTerms } from "@/lib/queries";
 import { resolveMemberSeat } from "@/lib/elections/member-seat";
@@ -102,8 +102,13 @@ async function parseScope(raw: Record<string, unknown>): Promise<AskScope | null
   return { type: "state", stateCode, district };
 }
 
+// Control characters become spaces; zero-width and invisible-format
+// characters (a known text-hiding channel) are removed outright rather than
+// blocked on, since they also appear in innocently pasted text.
 const stripControl = (s: string) =>
-  s.replace(/[\u0000-\u001f\u007f]/g, " ");
+  s
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/[\u200b-\u200f\u2060-\u2064\u00ad\ufeff]/g, "");
 
 // Prior exchanges are untrusted client input: bound the count, truncate hard,
 // and strip control characters. Anything malformed is dropped, not rejected —
@@ -123,7 +128,13 @@ function parseHistory(value: unknown): AskHistoryEntry[] {
     const answer = stripControl(record.answer)
       .trim()
       .slice(0, MAX_HISTORY_ANSWER_CHARS);
-    if (question && answer) entries.push({ question, answer });
+    if (!question || !answer) continue;
+    // History replays into the model's context, so a planted injection in a
+    // "prior exchange" is dropped the same way malformed entries are.
+    if (matchesAttackSignature(question) || matchesAttackSignature(answer)) {
+      continue;
+    }
+    entries.push({ question, answer });
   }
   return entries;
 }
@@ -224,6 +235,23 @@ export async function POST(request: NextRequest) {
   }
   scheduleAskDataCleanup();
 
+  // Free signature check for known injection patterns, after the rate limit
+  // (probes still burn their hourly quota) and before any cache read or paid
+  // call. A match is logged with its signature id so the list can grow from
+  // the audit log.
+  const signature = matchesAttackSignature(question);
+  if (signature) {
+    logAsk({
+      ...logBase,
+      outcome: "error",
+      errorClass: "flagged_input",
+      refusalCategory: `signature:${signature}`,
+      httpStatus: 422,
+      latencyMs: Date.now() - startedAt,
+    });
+    return jsonError("That question can't be answered here.", 422);
+  }
+
   // Follow-ups are context-dependent, so they bypass the shared answer cache
   // in both directions: a history-shaped answer must not be served to (or
   // written for) someone who asked the same words fresh.
@@ -232,7 +260,7 @@ export async function POST(request: NextRequest) {
   // Fresh questions are screened by the free moderation endpoint before any
   // paid provider call. Fail-open: only an explicit flag blocks.
   if (!cached) {
-    const moderation = await moderateQuestion(question);
+    const moderation = await moderateText(question);
     if (moderation.flagged) {
       logAsk({
         ...logBase,
@@ -272,6 +300,28 @@ export async function POST(request: NextRequest) {
     }
   };
 
+  // Output gate: answers are cached for 24 hours and replayed to other
+  // readers, so a bad answer would be amplified. One free moderation pass
+  // before anything is served or cached; same fail-open contract as the
+  // input pass — only an explicit flag blocks.
+  const OUTPUT_BLOCK_MESSAGE =
+    "The assistant's answer failed a safety check and was not shown. The records pages still work.";
+  const screenResult = async (result: AskResult): Promise<boolean> => {
+    const moderation = await moderateText(result.answer);
+    if (!moderation.flagged) return true;
+    logAsk({
+      ...logBase,
+      outcome: "error",
+      errorClass: "flagged_output",
+      httpStatus: 502,
+      provider: result.provider,
+      model: result.model,
+      trace: result.trace,
+      latencyMs: Date.now() - startedAt,
+    });
+    return false;
+  };
+
   if (wantsStream) {
     // SSE: verified progress events while the tool loop runs, then the exact
     // JSON payload the non-streaming path returns, as a terminal event.
@@ -297,6 +347,10 @@ export async function POST(request: NextRequest) {
             ...runOptions,
             onEvent: (event) => send("progress", event),
           });
+          if (!(await screenResult(result))) {
+            send("error", { error: OUTPUT_BLOCK_MESSAGE, status: 502 });
+            return;
+          }
           await cacheResult(result);
           logSuccess(result);
           send("result", resultPayload(result));
@@ -337,6 +391,9 @@ export async function POST(request: NextRequest) {
 
   try {
     const result = await runAsk(question, scope, runOptions);
+    if (!(await screenResult(result))) {
+      return jsonError(OUTPUT_BLOCK_MESSAGE, 502);
+    }
     await cacheResult(result);
     logSuccess(result);
     return Response.json(resultPayload(result), { headers: NO_STORE });

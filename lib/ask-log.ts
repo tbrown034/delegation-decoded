@@ -17,6 +17,7 @@ export type AskErrorClass =
   | "provider_unavailable"
   | "refusal"
   | "flagged_input"
+  | "flagged_output"
   | "invalid_answer"
   | "timeout"
   | "cancelled"
