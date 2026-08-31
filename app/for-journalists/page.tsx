@@ -11,6 +11,7 @@ import {
 } from "@/lib/schema";
 import { count, eq } from "drizzle-orm";
 import { getRaceExportRows } from "@/lib/elections/queries";
+import { JsonLd, SITE_URL } from "@/components/json-ld";
 
 export const metadata: Metadata = {
   title: "For Journalists",
@@ -41,11 +42,45 @@ async function getCounts() {
   };
 }
 
+const CSV_DISTRIBUTIONS: { path: string; name: string }[] = [
+  { path: "/api/data/members.csv", name: "Current congressional roster" },
+  { path: "/api/data/races.csv", name: "2026 race candidate field" },
+  { path: "/api/data/candidates.csv", name: "Raw 2026 FEC candidate filers" },
+  { path: "/api/data/votes.csv", name: "Roll-call positions" },
+  { path: "/api/data/finance.csv", name: "Campaign finance summaries" },
+  { path: "/api/data/trades.csv", name: "Stock transactions (preview)" },
+  { path: "/api/data/filings.csv", name: "Disclosure filings (preview)" },
+];
+
 export default async function ForJournalistsPage() {
   const c = await getCounts();
 
+  // The page copy names no license beyond "no registration is required", so
+  // the terms link points back at the page itself rather than inventing one.
+  const datasetLd = {
+    "@context": "https://schema.org",
+    "@type": "Dataset",
+    name: "Delegation Decoded congressional accountability data",
+    description:
+      "Bulk CSV exports of the current congressional roster, 2026 race candidate fields, FEC candidate filings, roll-call positions, campaign finance summaries and stock disclosure previews.",
+    url: `${SITE_URL}/for-journalists`,
+    creator: {
+      "@type": "Person",
+      name: "Trevor Brown",
+    },
+    isAccessibleForFree: true,
+    license: `${SITE_URL}/for-journalists`,
+    distribution: CSV_DISTRIBUTIONS.map((d) => ({
+      "@type": "DataDownload",
+      name: d.name,
+      contentUrl: `${SITE_URL}${d.path}`,
+      encodingFormat: "text/csv",
+    })),
+  };
+
   return (
     <article className="mx-auto max-w-3xl px-4 py-10">
+      <JsonLd data={datasetLd} />
       <header className="mb-8">
         <p className="font-mono text-xs uppercase tracking-wide text-neutral-500">
           For journalists

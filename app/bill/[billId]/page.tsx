@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { bills, billSponsorships, members } from "@/lib/schema";
 import { eq } from "drizzle-orm";
 import { ActionText } from "@/lib/render-action-text";
+import { JsonLd, SITE_URL } from "@/components/json-ld";
 
 type Props = { params: Promise<{ billId: string }> };
 
@@ -56,6 +57,19 @@ const PARTY_DOT: Record<string, string> = {
   Independent: "bg-purple-500",
 };
 
+// Citation forms used by Congress.gov; anything unmapped falls back to the
+// bare uppercase type rather than a guessed abbreviation.
+const BILL_TYPE_CITATION: Record<string, string> = {
+  hr: "H.R.",
+  s: "S.",
+  hres: "H.Res.",
+  sres: "S.Res.",
+  hjres: "H.J.Res.",
+  sjres: "S.J.Res.",
+  hconres: "H.Con.Res.",
+  sconres: "S.Con.Res.",
+};
+
 function fmtDate(iso: string | null) {
   if (!iso) return null;
   return new Date(iso).toLocaleDateString("en-US", {
@@ -81,8 +95,31 @@ export default async function BillPage({ params }: Props) {
     {}
   );
 
+  const legislationLd: Record<string, unknown> = {
+    "@context": "https://schema.org",
+    "@type": "Legislation",
+    name: bill.title,
+    legislationIdentifier: `${
+      BILL_TYPE_CITATION[bill.billType.toLowerCase()] ??
+      bill.billType.toUpperCase()
+    } ${bill.billNumber}`,
+    url: `${SITE_URL}/bill/${bill.billId}`,
+  };
+  if (bill.introducedDate) {
+    legislationLd.dateCreated = bill.introducedDate;
+    legislationLd.legislationDate = bill.introducedDate;
+  }
+  if (sponsor) {
+    legislationLd.sponsor = {
+      "@type": "Person",
+      name: sponsor.fullName,
+      url: `${SITE_URL}/member/${sponsor.bioguideId}`,
+    };
+  }
+
   return (
     <article className="mx-auto max-w-3xl px-4 py-10">
+      <JsonLd data={legislationLd} />
       <nav className="mb-6 font-mono text-xs text-neutral-400">
         <Link href="/" className="hover:text-neutral-700">
           Home

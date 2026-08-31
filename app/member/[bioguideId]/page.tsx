@@ -27,6 +27,7 @@ import { effectiveTotal, fmt } from "@/lib/finance";
 import { MemberCoverageBar } from "@/components/data-coverage";
 import { buildActivityTimeline } from "@/lib/press-analytics";
 import AskClient from "@/components/ask-client";
+import { JsonLd, SITE_URL } from "@/components/json-ld";
 import { FACT_TYPE_LABEL, FACT_TYPE_ORDER } from "@/lib/biography-classify";
 
 type Props = {
@@ -95,8 +96,45 @@ export default async function MemberPage({ params }: Props) {
     (race) => race.hasData && race.candidates.length > 0
   );
 
+  // Delegates and Resident Commissioners are not Representatives, so the
+  // "United States" prefix only applies to the two voting titles.
+  const jobTitle =
+    member.chamber === "senate"
+      ? "United States Senator"
+      : chamber === "Representative"
+        ? "United States Representative"
+        : chamber;
+
+  const sameAs = [
+    member.websiteUrl,
+    member.twitter ? `https://twitter.com/${member.twitter}` : null,
+  ].filter((url): url is string => Boolean(url));
+
+  const personLd: Record<string, unknown> = {
+    "@context": "https://schema.org",
+    "@type": "Person",
+    name: member.fullName,
+    jobTitle,
+    url: `${SITE_URL}/member/${member.bioguideId}`,
+    image: `${SITE_URL}/api/photo/${member.bioguideId}`,
+    affiliation: {
+      "@type": "GovernmentOrganization",
+      name: `${stateName} Congressional Delegation`,
+      url: `${SITE_URL}/state/${member.stateCode}`,
+    },
+  };
+  if (sameAs.length > 0) personLd.sameAs = sameAs;
+  if (topCommittees.length > 0) {
+    personLd.memberOf = topCommittees.map((c) => ({
+      "@type": "GovernmentOrganization",
+      name: c.name,
+      url: `${SITE_URL}/committee/${c.committeeId}`,
+    }));
+  }
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
+      <JsonLd data={personLd} />
       {/* Breadcrumb */}
       <nav className="mb-8 font-mono text-xs text-neutral-400">
         <Link

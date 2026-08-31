@@ -13,6 +13,8 @@ export const metadata: Metadata = {
   title: "Pipeline Health",
   description:
     "Live status of the Delegation Decoded data pipeline — coverage by source, recent run history, and any active issues.",
+  // Live status page: linked for humans, kept out of the search index.
+  robots: { index: false, follow: true },
 };
 
 const LEVEL_COPY: Record<HealthLevel, { label: string; tone: string; bar: string }> = {

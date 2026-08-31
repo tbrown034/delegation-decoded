@@ -17,6 +17,7 @@ import { StateCoverageNote } from "@/components/data-coverage";
 import { effectiveTotal, fmt } from "@/lib/finance";
 import { houseSeatTitlePlural, isNonVotingJurisdiction } from "@/lib/states";
 import AskClient from "@/components/ask-client";
+import { JsonLd, SITE_URL } from "@/components/json-ld";
 import { getStateRaceIndex } from "@/lib/elections/queries";
 
 type Props = {
@@ -96,8 +97,23 @@ export default async function StatePage({ params }: Props) {
     (a, b) => effectiveTotal(b) - effectiveTotal(a)
   );
 
+  const delegationLd: Record<string, unknown> = {
+    "@context": "https://schema.org",
+    "@type": "GovernmentOrganization",
+    name: `${state.name} Congressional Delegation`,
+    url: `${SITE_URL}/state/${state.code}`,
+  };
+  if (membersList.length > 0) {
+    delegationLd.member = membersList.map((m) => ({
+      "@type": "Person",
+      name: m.fullName,
+      url: `${SITE_URL}/member/${m.bioguideId}`,
+    }));
+  }
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
+      <JsonLd data={delegationLd} />
       {/* Breadcrumb */}
       <nav className="mb-8 font-mono text-xs text-neutral-400">
         <Link
