@@ -19,11 +19,13 @@ import { getMembersByState, getStateByCode } from "@/lib/queries";
 type Props = { params: Promise<{ contestId: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const race = await getRaceByContestId((await params).contestId);
+  const { contestId } = await params;
+  const race = await getRaceByContestId(contestId);
   if (!race) return { title: "Race Not Found" };
   return {
     title: race.title,
     description: `Current 2026 candidate field for ${race.title}, with source and verification status.`,
+    alternates: { canonical: `/race/${contestId}` },
   };
 }
 

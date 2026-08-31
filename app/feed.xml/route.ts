@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const BASE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL ?? "https://delegation-decoded.vercel.app";
+  process.env.NEXT_PUBLIC_SITE_URL ?? "https://delegationdecoded.org";
 
 const SITE_TITLE = "Delegation Decoded — Stock disclosure preview";
 const SITE_DESCRIPTION =

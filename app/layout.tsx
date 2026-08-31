@@ -24,7 +24,7 @@ const sourceSerif = Source_Serif_4({
 });
 
 const SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL ?? "https://delegation-decoded.vercel.app";
+  process.env.NEXT_PUBLIC_SITE_URL ?? "https://delegationdecoded.org";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

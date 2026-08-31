@@ -20,6 +20,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title: c.name,
     description: `Members and parent committee for ${c.name}.`,
+    alternates: { canonical: `/committee/${c.committeeId}` },
   };
 }
 

@@ -18,6 +18,7 @@ export const metadata: Metadata = {
   title: "For Journalists",
   description:
     "Bulk CSV downloads, methodology, contact, and reporting tips for journalists using Delegation Decoded data.",
+  alternates: { canonical: "/for-journalists" },
 };
 
 async function getCounts() {

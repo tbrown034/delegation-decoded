@@ -7,6 +7,7 @@ export const metadata: Metadata = {
   title: "2026 Congressional Races",
   description:
     "A verification-first 2026 congressional race tracker, with state election-authority records where covered and clearly labeled FEC filing fallbacks elsewhere.",
+  alternates: { canonical: "/races" },
 };
 
 type Props = {

@@ -36,6 +36,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title: `${state.name} Delegation`,
     description: `${state.name}'s congressional delegation — senators, representatives, committees, legislation, and campaign finance.`,
+    alternates: { canonical: `/state/${state.code}` },
   };
 }
 

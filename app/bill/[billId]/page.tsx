@@ -16,6 +16,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title: `${label} — ${b.title.slice(0, 80)}`,
     description: b.title,
+    alternates: { canonical: `/bill/${b.billId}` },
   };
 }
 

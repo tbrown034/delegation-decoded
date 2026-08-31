@@ -36,10 +36,13 @@ type Props = {
 export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
   const sp = await searchParams;
   const mode = sp.mode || "delegation";
+  // Every comparison is a query-param view of the same page, so they all point
+  // back at the bare /compare URL.
+  const alternates = { canonical: "/compare" };
 
   if (mode === "delegation" && sp.state) {
     const name = STATE_BY_CODE[sp.state.toUpperCase()]?.name;
-    if (name) return { title: `Compare ${name} Delegation` };
+    if (name) return { title: `Compare ${name} Delegation`, alternates };
   }
 
   if (mode === "members" && sp.a && sp.b) {
@@ -47,16 +50,16 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
       getMemberByBioguideId(sp.a),
       getMemberByBioguideId(sp.b),
     ]);
-    if (a && b) return { title: `${a.lastName} vs. ${b.lastName}` };
+    if (a && b) return { title: `${a.lastName} vs. ${b.lastName}`, alternates };
   }
 
   if (mode === "states" && sp.a && sp.b) {
     const nameA = STATE_BY_CODE[sp.a.toUpperCase()]?.name;
     const nameB = STATE_BY_CODE[sp.b.toUpperCase()]?.name;
-    if (nameA && nameB) return { title: `${nameA} vs. ${nameB}` };
+    if (nameA && nameB) return { title: `${nameA} vs. ${nameB}`, alternates };
   }
 
-  return { title: "Compare" };
+  return { title: "Compare", alternates };
 }
 
 export default async function ComparePage({ searchParams }: Props) {

@@ -19,6 +19,7 @@ export const metadata: Metadata = {
   title: "Delegation Decoded",
   description:
     "A state-by-state reporting guide to Congress and the 2026 midterms, built from official records.",
+  alternates: { canonical: "/" },
 };
 
 function formatFreshnessAge(completedAt: string | null, nowMs: number): string {

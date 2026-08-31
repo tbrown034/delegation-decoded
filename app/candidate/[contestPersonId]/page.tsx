@@ -27,12 +27,14 @@ async function load(rawId: string) {
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const loaded = await load((await params).contestPersonId);
+  const { contestPersonId } = await params;
+  const loaded = await load(contestPersonId);
   if (!loaded) return { title: "Candidate Not Found" };
   const name = loaded.kind === "fec" ? loaded.fec.name : loaded.profile.name;
   return {
     title: name,
     description: `2026 candidacy records for ${name}, with the source behind every statement.`,
+    alternates: { canonical: `/candidate/${contestPersonId}` },
   };
 }
 

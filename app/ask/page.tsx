@@ -8,6 +8,7 @@ export const metadata: Metadata = {
   title: "Ask about your delegation",
   description:
     "Ask plain-language questions about any member of Congress, or set your state or address to focus on your delegation: votes, bills, committees, and campaign money, answered only from official records.",
+  alternates: { canonical: "/ask" },
 };
 
 export default function AskPage() {

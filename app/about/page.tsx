@@ -22,6 +22,7 @@ export const metadata: Metadata = {
   title: "About & Methodology",
   description:
     "How Delegation Decoded works, data sources, collection methodology, known limitations, and technical details.",
+  alternates: { canonical: "/about" },
 };
 
 async function getDataStats() {

@@ -41,6 +41,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title: `${member.fullName}, ${stateName}`,
     description: `${member.fullName}, ${member.party} ${member.chamber === "senate" ? "Senator" : houseSeatTitle(member.stateCode)} from ${stateName}. Committees, legislation, and campaign finance.`,
+    alternates: { canonical: `/member/${member.bioguideId}` },
   };
 }
 

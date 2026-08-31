@@ -5,6 +5,7 @@ export const metadata: Metadata = {
   title: "Find your delegation",
   description:
     "Use a state or street address to find your two senators and House representative.",
+  alternates: { canonical: "/find" },
 };
 
 export default function FindPage() {
