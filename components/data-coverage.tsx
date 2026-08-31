@@ -10,7 +10,6 @@ const memberCoverageSources = [
   { key: "bills", label: "Legislation" },
   { key: "votes", label: "Votes" },
   { key: "finance", label: "Finance" },
-  { key: "pressReleases", label: "Press" },
   { key: "committees", label: "Committees" },
 ] as const;
 

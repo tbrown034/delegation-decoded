@@ -109,20 +109,20 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-      # Re-enabled July 27, 2026. Paused July 20 with a note blaming a House
-      # Clerk API key, but the Clerk serves public PDFs and takes no key — every
-      # logged 401 was Anthropic's ("authentication_error"), raised by the
-      # Sonnet vision parse in scripts/lib/parse-ptr.ts. ANTHROPIC_API_KEY was
-      # rotated July 22 and now authenticates. This step bills vision tokens per
-      # PDF, so watch the first run; continue-on-error keeps a parse failure
-      # from taking the whole daily ingest down with it.
-      - name: Ingest House PTR disclosures
-        if: always()
-        continue-on-error: true
-        run: npx tsx scripts/ingest/disclosures-house.ts
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      # House PTR ingest paused deliberately Aug 31, 2026. The vision-parse
+      # pipeline (Sonnet, billed per PDF) had failed 30 consecutive nightly
+      # runs: one oversized McCaul filing aborted the queue mid-pass every
+      # night, and oversized filings need chunking before this is rebuilt as
+      # a proper feature. Senate eFD ingest above continues; parsed House
+      # trades remain published. lib/health.ts PAUSED_SOURCES carries the
+      # matching note. To resume, restore this step:
+      #   - name: Ingest House PTR disclosures
+      #     if: always()
+      #     continue-on-error: true
+      #     run: npx tsx scripts/ingest/disclosures-house.ts
+      #     env:
+      #       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      #       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: Generate events feed
         if: always()

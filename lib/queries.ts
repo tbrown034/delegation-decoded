@@ -636,14 +636,13 @@ export interface MemberCoverage {
   bills: CoverageStatus;
   finance: CoverageStatus;
   votes: CoverageStatus;
-  pressReleases: CoverageStatus;
   committees: CoverageStatus;
 }
 
 export async function getMemberCoverage(
   bioguideId: string
 ): Promise<MemberCoverage> {
-  const [[billRow], [financeRow], [voteRow], [pressRow], [committeeRow]] =
+  const [[billRow], [financeRow], [voteRow], [committeeRow]] =
     await Promise.all([
       db
         .select({ count: count() })
@@ -659,10 +658,6 @@ export async function getMemberCoverage(
         .where(eq(votePositions.bioguideId, bioguideId)),
       db
         .select({ count: count() })
-        .from(pressReleases)
-        .where(eq(pressReleases.bioguideId, bioguideId)),
-      db
-        .select({ count: count() })
         .from(committeeAssignments)
         .where(eq(committeeAssignments.bioguideId, bioguideId)),
     ]);
@@ -671,16 +666,12 @@ export async function getMemberCoverage(
     bills: (billRow?.count || 0) > 0 ? "good" : "none",
     finance: (financeRow?.count || 0) > 0 ? "good" : "none",
     votes: (voteRow?.count || 0) > 0 ? "good" : "none",
-    pressReleases:
-      (pressRow?.count || 0) > 0
-        ? "good"
-        : "none", // "none" means no RSS feed found
     committees: (committeeRow?.count || 0) > 0 ? "good" : "none",
   };
 }
 
 export type CoverageDetailItem = {
-  source: "bills" | "votes" | "committees" | "finance" | "press" | "trades";
+  source: "bills" | "votes" | "committees" | "finance" | "trades";
   label: string;
   count: number;
   status: "present" | "expected_empty" | "missing";
@@ -698,7 +689,6 @@ export async function getMemberCoverageDetail(
     [voteRow],
     [committeeRow],
     [financeRow],
-    [pressRow],
     [tradeRow],
     [filingRow],
     [memberRow],
@@ -707,7 +697,6 @@ export async function getMemberCoverageDetail(
     db.select({ n: count() }).from(votePositions).where(eq(votePositions.bioguideId, bioguideId)),
     db.select({ n: count() }).from(committeeAssignments).where(eq(committeeAssignments.bioguideId, bioguideId)),
     db.select({ n: count() }).from(campaignFinance).where(eq(campaignFinance.bioguideId, bioguideId)),
-    db.select({ n: count() }).from(pressReleases).where(eq(pressReleases.bioguideId, bioguideId)),
     db
       .select({ n: count() })
       .from(stockTransactions)
@@ -727,7 +716,6 @@ export async function getMemberCoverageDetail(
   const votes = voteRow?.n ?? 0;
   const committees = committeeRow?.n ?? 0;
   const finance = financeRow?.n ?? 0;
-  const press = pressRow?.n ?? 0;
   const trades = tradeRow?.n ?? 0;
   const filings = filingRow?.n ?? 0;
 
@@ -773,16 +761,6 @@ export async function getMemberCoverageDetail(
           : memberRow?.fecCandidateId
             ? "FEC candidate ID is set but no committee data ingested yet."
             : "No FEC candidate ID linked to this member yet.",
-    },
-    {
-      source: "press",
-      label: "Press releases",
-      count: press,
-      status: press > 0 ? "present" : "expected_empty",
-      description:
-        press > 0
-          ? "Pulled from the member's official RSS feed."
-          : "Office does not publish a discoverable RSS feed. Many members of Congress communicate primarily through social media and email lists rather than RSS.",
     },
     {
       source: "trades",

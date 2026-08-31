@@ -151,7 +151,9 @@ async function askWindowStats(interval: string): Promise<AskWindowStats> {
 // silent. Remove the entry to resume normal alerting.
 const PAUSED_SOURCES: Record<string, string> = {
   "disclosures-clerk.house.gov":
-    "House PTR ingest resumed July 27, 2026 and parses new filings daily. Four oversized filings (three Khanna, one McCaul — thousands of transactions each) exceed the vision parser's 16,000-token output cap and fail every run, so this source reports failed while everything else parses. Kept out of the crit gate until oversized filings are chunked or triaged; all parsed trades are published.",
+    "House PTR ingest paused deliberately Aug 31, 2026: the vision-parse pipeline is a future feature to be rebuilt properly (oversized filings exceed the parser's output cap and were aborting the queue). Senate eFD ingest continues daily; all previously parsed House trades remain published. Re-add the workflow step in ingest-daily.yml to resume.",
+  press_releases:
+    "Press-release collection retired Aug 31, 2026. Statements now point to Capitol Releases (companion project); existing rows remain in the table. Remove this entry and restore the weekly workflow step to resume.",
 };
 
 // Per-entity thresholds for staleness (in hours), keyed by sync_log
@@ -165,7 +167,6 @@ const STALENESS: Record<string, { warn: number; crit: number }> = {
   committees: { warn: 24 * 9, crit: 24 * 14 },
   campaign_finance: { warn: 24 * 9, crit: 24 * 14 },
   finance_committees: { warn: 24 * 9, crit: 24 * 14 },
-  press_releases: { warn: 24 * 9, crit: 24 * 14 },
   disclosures: { warn: 24 * 9, crit: 24 * 21 },
   elections: { warn: 36, crit: 72 },
   candidate_research: { warn: 24 * 9, crit: 24 * 14 },
@@ -177,7 +178,6 @@ const SOURCE_TABLES: { source: string; table: string }[] = [
   { source: "votes", table: "vote_positions" },
   { source: "campaign_finance", table: "campaign_finance" },
   { source: "finance_committees", table: "finance_committees" },
-  { source: "press_releases", table: "press_releases" },
   { source: "disclosures", table: "disclosure_filings" },
   { source: "trades", table: "stock_transactions" },
   { source: "committees", table: "committee_assignments" },

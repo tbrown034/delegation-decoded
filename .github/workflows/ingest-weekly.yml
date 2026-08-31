@@ -133,15 +133,12 @@ jobs:
           FEC_API_KEY: ${{ secrets.FEC_API_KEY }}
           FINANCE_RUN_BUDGET_MS: "2700000"
 
-      # !cancelled() rather than a bare mode check: these three read from the
+      # !cancelled() rather than a bare mode check: these two read from the
       # database and do not depend on the FEC steps above, so a finance
       # failure should not also cost the activity feed and the briefs.
-      - name: Ingest press releases
-        if: ${{ !cancelled() && (inputs.mode == '' || inputs.mode == 'full') }}
-        run: npx tsx scripts/ingest/press-releases.ts
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-
+      # (Press-release collection retired Aug 31, 2026 — statements point to
+      # Capitol Releases. Its 16-19 minutes were what pushed this job past
+      # the 90-minute ceiling.)
       - name: Generate delegation briefs
         if: ${{ !cancelled() && (inputs.mode == '' || inputs.mode == 'full') }}
         run: npx tsx scripts/ingest/generate-briefs.ts
