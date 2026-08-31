@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import AskClient from "@/components/ask-client";
 
+// On the proxy's nonce-CSP list, so must never be served from cache.
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   // The root layout appends " | Delegation Decoded" via its title template, so
   // naming the site here too renders it twice in the tab and in search results.

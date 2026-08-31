@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import AskClient from "@/components/ask-client";
 
+// On the proxy's nonce-CSP list, so must never be served from cache.
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Find your delegation",
   description:

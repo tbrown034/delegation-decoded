@@ -1,4 +1,6 @@
-export const dynamic = "force-dynamic";
+// Fresher than the site-wide default: the homepage shows the activity
+// feed and data-freshness panel.
+export const revalidate = 3600;
 
 import Link from "next/link";
 import type { Metadata } from "next";

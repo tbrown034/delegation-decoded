@@ -36,8 +36,10 @@ export const metadata: Metadata = {
     "A state-by-state reporting guide to Congress and the 2026 midterms, with member profiles, votes, legislation, campaign finance, and FEC candidate filings.",
 };
 
-// A per-request nonce is required for the enforced Content Security Policy.
-export const dynamic = "force-dynamic";
+// Content routes cache for a day (data changes once daily via ingest);
+// routes on the proxy's nonce-CSP list must override with force-dynamic
+// because a cached page would carry a stale nonce.
+export const revalidate = 86400;
 
 export default function RootLayout({
   children,

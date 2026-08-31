@@ -33,6 +33,9 @@ type Props = {
   }>;
 };
 
+// On the proxy's nonce-CSP list, so must never be served from cache.
+export const dynamic = "force-dynamic";
+
 export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
   const sp = await searchParams;
   const mode = sp.mode || "delegation";

@@ -394,3 +394,9 @@ function CandidateList({
     </ul>
   );
 }
+
+// No build-time prerender: pages generate on first request, then serve
+// from the ISR cache for the site-wide revalidate window.
+export function generateStaticParams() {
+  return [];
+}

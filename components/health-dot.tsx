@@ -17,7 +17,10 @@ const fetchLevel = unstable_cache(
     }
   },
   ["footer-health-level"],
-  { revalidate: 60 }
+  // The footer renders on every page, so this value caps the whole site's
+  // route revalidate (Next takes the minimum). Keep it at an hour — /health
+  // itself is force-dynamic and always fresh.
+  { revalidate: 3600 }
 );
 
 const STYLE: Record<Level, { color: string; label: string }> = {
