@@ -343,6 +343,103 @@ CREATE INDEX IF NOT EXISTS idx_tx_date ON stock_transactions(tx_date);
 CREATE INDEX IF NOT EXISTS idx_tx_review ON stock_transactions(needs_review) WHERE needs_review = true;
 
 -- =============================================================================
+-- Roll-call votes
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS votes (
+  vote_id       TEXT PRIMARY KEY,
+  chamber       VARCHAR(10) NOT NULL,
+  congress      INTEGER NOT NULL,
+  session       INTEGER NOT NULL,
+  roll_number   INTEGER NOT NULL,
+  vote_date     DATE NOT NULL,
+  question      TEXT,
+  description   TEXT,
+  result        TEXT,
+  bill_id       TEXT,
+  yeas          INTEGER NOT NULL DEFAULT 0,
+  nays          INTEGER NOT NULL DEFAULT 0,
+  present       INTEGER NOT NULL DEFAULT 0,
+  not_voting    INTEGER NOT NULL DEFAULT 0,
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_votes_chamber ON votes(chamber);
+CREATE INDEX IF NOT EXISTS idx_votes_date ON votes(vote_date);
+
+-- =============================================================================
+-- Vote positions (one row per member per roll call)
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS vote_positions (
+  id            SERIAL PRIMARY KEY,
+  vote_id       TEXT NOT NULL REFERENCES votes(vote_id) ON DELETE CASCADE,
+  bioguide_id   VARCHAR(10) NOT NULL REFERENCES members(bioguide_id) ON DELETE CASCADE,
+  position      VARCHAR(15) NOT NULL,
+  CONSTRAINT uq_vote_position UNIQUE (vote_id, bioguide_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_votepos_member ON vote_positions(bioguide_id);
+CREATE INDEX IF NOT EXISTS idx_votepos_vote ON vote_positions(vote_id);
+
+-- =============================================================================
+-- Press releases (member office RSS feeds)
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS press_releases (
+  id            SERIAL PRIMARY KEY,
+  bioguide_id   VARCHAR(10) NOT NULL REFERENCES members(bioguide_id) ON DELETE CASCADE,
+  title         TEXT NOT NULL,
+  url           TEXT NOT NULL,
+  published_at  TIMESTAMPTZ,
+  description   TEXT,
+  source        VARCHAR(20) DEFAULT 'rss',
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_press_release_url UNIQUE (url)
+);
+
+CREATE INDEX IF NOT EXISTS idx_press_member ON press_releases(bioguide_id);
+CREATE INDEX IF NOT EXISTS idx_press_date ON press_releases(published_at);
+
+-- =============================================================================
+-- Events (unified activity feed synthesized by generate-events.ts)
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS events (
+  id            SERIAL PRIMARY KEY,
+  event_type    VARCHAR(30) NOT NULL,
+  bioguide_id   VARCHAR(10) REFERENCES members(bioguide_id) ON DELETE CASCADE,
+  state_code    CHAR(2) REFERENCES states(code),
+  title         TEXT NOT NULL,
+  description   TEXT,
+  related_id    TEXT,
+  event_date    DATE NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_events_state ON events(state_code);
+CREATE INDEX IF NOT EXISTS idx_events_member ON events(bioguide_id);
+CREATE INDEX IF NOT EXISTS idx_events_date ON events(event_date);
+CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
+
+-- =============================================================================
+-- Delegation briefs (per-state summaries from generate-briefs.ts)
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS delegation_briefs (
+  id            SERIAL PRIMARY KEY,
+  state_code    CHAR(2) NOT NULL REFERENCES states(code),
+  generated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  period_start  DATE NOT NULL,
+  period_end    DATE NOT NULL,
+  summary       TEXT NOT NULL,
+  stats         TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_briefs_state ON delegation_briefs(state_code);
+CREATE INDEX IF NOT EXISTS idx_briefs_date ON delegation_briefs(generated_at);
+
+-- =============================================================================
 -- Events dedupe guard
 -- generate-events.ts relies on ON CONFLICT DO NOTHING, but the table shipped
 -- without a natural-key constraint, so every run re-inserted the same rows.
