@@ -155,14 +155,24 @@ export async function parsePtr(
     "THE", "NEW", "OLD", "FRANCE", "USA", "USD", "INC", "CORP", "CO", "LTD",
     "LLC", "AND", "OF", "FUND", "TRUST", "PFD", "ADR", "ETF", "REIT", "GROUP",
     "MGMT", "CLASS", "SERIES", "DELAWARE", "NEVADA", "TEXAS",
+    // Escapees found in the Aug 2026 audit: a Treasury CUSIP and a typo the
+    // model emitted as a ticker.
+    "91282CGJ4", "PRNTH",
   ]);
+  // Shape gate: real tickers are 1-6 capitals with an optional class suffix
+  // (BRK.B). CUSIPs, mixed-case fragments, and other model artifacts fail
+  // this and carry no ticker rather than minting a bogus company page.
+  const TICKER_SHAPE = /^[A-Z]{1,6}([.-][A-Z]{1,2})?$/;
   for (const tx of parsed) {
     if (!tx.ticker) {
       const match = tx.assetDescription.match(/\(([A-Z]{1,6})\)/);
       if (match && !BOGUS_TICKERS.has(match[1])) tx.ticker = match[1];
     }
     if (tx.ticker) {
-      if (BOGUS_TICKERS.has(tx.ticker)) {
+      if (
+        BOGUS_TICKERS.has(tx.ticker.toUpperCase()) ||
+        !TICKER_SHAPE.test(tx.ticker)
+      ) {
         tx.ticker = null;
       } else {
         const inBrackets = tx.assetDescription.split(`[${tx.ticker}]`).length > 1;

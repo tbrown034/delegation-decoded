@@ -204,7 +204,7 @@ export const INDIANA_2026_SOURCES = {
   // Pinned fallback; the adapter discovers the newest dated revision from the
   // candidate-information landing page because the state re-dates the file.
   generalCandidateList:
-    "https://www.in.gov/sos/elections/files/2026-General-Candidate-List.7-22-26.pm.xlsx",
+    "https://www.in.gov/sos/elections/files/2026-General-Candidate-List-Updated-8.27.2026.xlsx",
   candidateLanding: "https://www.in.gov/sos/elections/candidate-information/",
   primarySettings: "https://enr.indianavoters.in.gov/site/data/settings.json",
   primaryHouseResults:
@@ -446,12 +446,13 @@ export const STATE_ELECTION_TRIAGE: Record<string, StateElectionTriage> = {
     electionSiteUrl: "https://www.in.gov/sos/elections/",
     primaryDate: "2026-05-05",
     primaryHeld: true,
-    generalListUrl: "https://www.in.gov/sos/elections/files/2026-General-Candidate-List.7-22-26.pm.xlsx",
+    generalListUrl:
+      "https://www.in.gov/sos/elections/files/2026-General-Candidate-List-Updated-8.27.2026.xlsx",
     generalListFormat: "xlsx",
     resultsUrl: "https://enr.indianavoters.in.gov/site/index.html",
     resultsFormat: "portal",
     triage: "adapter_live",
-    triageNote: "indiana-2026 adapter live. State publishes a dated general candidate list xlsx (7-22-26 revision verified locally); the list self-describes as updatable, so matchups cite it as a state list, not a certified ballot.",
+    triageNote: "indiana-2026 adapter live. State publishes a dated general candidate list xlsx (8-27-2026 revision verified locally); the list self-describes as updatable, so matchups cite it as a state list, not a certified ballot.",
   },
   IA: {
     stateCode: "IA",

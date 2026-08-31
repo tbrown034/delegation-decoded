@@ -99,6 +99,21 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
+      # Daily 15-minute finance pass, added Aug 31 2026. The weekly 45m run
+      # covers ~84 members per pass against a 535-member roster, so the
+      # 14-day freshness target was unreachable (backlog hit 67%). The
+      # script is stalest-first and resumable, and the FEC quota refills
+      # between runs, so several short passes compound where one long one
+      # cannot. continue-on-error: a slow FEC day shouldn't cost the rest of
+      # the daily ingest.
+      - name: Ingest finance committees and top contributors
+        continue-on-error: true
+        run: npx tsx scripts/ingest/finance-committees.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          FEC_API_KEY: ${{ secrets.FEC_API_KEY }}
+          FINANCE_RUN_BUDGET_MS: "900000"
+
       # PTR disclosures — Senate is fast HTML, House is slower (PDF + vision).
       # continue-on-error so a flake in one chamber doesn't kill the workflow;
       # divergence audit will catch real ingest gaps.

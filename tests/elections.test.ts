@@ -97,6 +97,36 @@ test("same-name candidates in one contest are not collapsed across ballot lines"
   );
 });
 
+test("Indiana's re-cased header wording is accepted but a missing header still throws", () => {
+  const parsed = parseIndianaGeneralRows([
+    { A: "ALL COUNTIES", B: "2026 GENERAL ELECTION - 11/3/2026 11:59:00 PM" },
+    { A: "OFFICE", B: "CANDIDATE NAME", C: "PARTY", D: "DISTRICT", E: "DATE FILED" },
+    {
+      A: "US REPRESENTATIVE",
+      B: "Alex Smith",
+      C: "Democratic",
+      D: "United States Representative, Second District",
+    },
+  ]);
+  assert.deepEqual(
+    parsed.map((candidate) => [candidate.name, candidate.district]),
+    [["Alex Smith", 2]]
+  );
+  assert.throws(
+    () =>
+      parseIndianaGeneralRows([
+        { A: "OFFICE", B: "CANDIDATE NAME", C: "PARTY", D: "COUNTY" },
+        {
+          A: "US REPRESENTATIVE",
+          B: "Alex Smith",
+          C: "Democratic",
+          D: "United States Representative, Second District",
+        },
+      ]),
+    /header was not found/
+  );
+});
+
 test("an office switch with a new FEC ID creates a new candidacy instead of overwriting the old one", () => {
   const name = normalizeCandidateName("Jordan Lee");
   const house = candidateIdentity(

@@ -30,6 +30,27 @@ export type IndianaPrimaryCandidate = {
   isWinner: boolean;
 };
 
+// The state re-issues this list with the header casing and wording it happens to
+// export that day ("Office/Name" in July 2026, "OFFICE/CANDIDATE NAME" in August).
+// All four columns must still be present and in position, so a different sheet
+// cannot slip through.
+const HEADER_COLUMNS: Array<{ column: "A" | "B" | "C" | "D"; accepted: string[] }> = [
+  { column: "A", accepted: ["OFFICE"] },
+  { column: "B", accepted: ["NAME", "CANDIDATE NAME"] },
+  { column: "C", accepted: ["PARTY"] },
+  { column: "D", accepted: ["DISTRICT"] },
+];
+
+function normalizeHeaderCell(value: string | undefined) {
+  return (value ?? "").replace(/\s+/g, " ").trim().toUpperCase();
+}
+
+function isHeaderRow(row: Record<string, string>) {
+  return HEADER_COLUMNS.every(({ column, accepted }) =>
+    accepted.includes(normalizeHeaderCell(row[column]))
+  );
+}
+
 function parseDistrict(value: string) {
   const numeric = /\b(\d{1,2})(?:st|nd|rd|th)?\b/.exec(value)?.[1];
   if (numeric) return Number(numeric);
@@ -41,9 +62,7 @@ function parseDistrict(value: string) {
 }
 
 export function parseIndianaGeneralRows(rows: Array<Record<string, string>>) {
-  const headerIndex = rows.findIndex(
-    (row) => row.A === "Office" && row.B === "Name" && row.C === "Party" && row.D === "District"
-  );
+  const headerIndex = rows.findIndex(isHeaderRow);
   if (headerIndex < 0) throw new Error("Indiana workbook header was not found");
 
   const candidates = new Map<string, IndianaGeneralCandidate>();
