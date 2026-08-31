@@ -3,6 +3,7 @@ import { getRaceExportRows } from "@/lib/elections/queries";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const HEADER = [
   "contest_id",

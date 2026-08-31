@@ -119,6 +119,17 @@ export async function getMemberByBioguideId(bioguideId: string) {
   return member || null;
 }
 
+// Existence probe for routes that fan out to upstreams: the photo proxy must
+// not spend a request (or the Congress.gov key) on an ID we never ingested.
+export async function memberExists(bioguideId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ bioguideId: members.bioguideId })
+    .from(members)
+    .where(eq(members.bioguideId, bioguideId))
+    .limit(1);
+  return Boolean(row);
+}
+
 export async function getMemberTerms(bioguideId: string) {
   return db
     .select()

@@ -8,6 +8,9 @@ import { db } from "./db";
 const IP_HOURLY_LIMIT = 20;
 const LOCATE_IP_HOURLY_LIMIT = 30;
 const SEARCH_IP_HOURLY_LIMIT = 60;
+// A state page renders ~20 headshots at once, so the ceiling has to clear a
+// dozen-plus page views an hour before it ever touches real browsing.
+const PHOTO_IP_HOURLY_LIMIT = 300;
 export const GLOBAL_DAILY_PROVIDER_ATTEMPT_LIMIT = 500;
 const PROVIDER_DAILY_ATTEMPT_LIMIT = 350;
 const CACHE_TTL_HOURS = 24;
@@ -73,27 +76,45 @@ async function bumpCounter(
   return Number(rows.rows?.[0]?.count ?? 0);
 }
 
+type IpLimitKind = "ask" | "locate" | "search" | "photo";
+
+const IP_LIMIT_BUCKETS: Record<
+  IpLimitKind,
+  { prefix: string; limit: number; reason: (limit: number) => string }
+> = {
+  ask: {
+    prefix: "ip",
+    limit: IP_HOURLY_LIMIT,
+    reason: (limit) =>
+      `That is ${limit} questions in an hour — the limit that keeps this public.`,
+  },
+  locate: {
+    prefix: "loc",
+    limit: LOCATE_IP_HOURLY_LIMIT,
+    reason: () => "Too many location lookups from your connection this hour.",
+  },
+  search: {
+    prefix: "search",
+    limit: SEARCH_IP_HOURLY_LIMIT,
+    reason: () => "Too many searches from your connection this hour.",
+  },
+  photo: {
+    prefix: "photo",
+    limit: PHOTO_IP_HOURLY_LIMIT,
+    reason: () => "Too many photo requests from your connection this hour.",
+  },
+};
+
 export async function checkIpLimit(
   ip: string,
-  kind: "ask" | "locate" | "search" = "ask"
+  kind: IpLimitKind = "ask"
 ): Promise<RateDecision> {
-  const prefix = kind === "locate" ? "loc" : kind === "search" ? "search" : "ip";
-  const limit =
-    kind === "locate"
-      ? LOCATE_IP_HOURLY_LIMIT
-      : kind === "search"
-        ? SEARCH_IP_HOURLY_LIMIT
-        : IP_HOURLY_LIMIT;
-  const count = await bumpCounter(`${prefix}:${hashIp(ip)}`, "hour");
-  if (count > limit) {
+  const bucket = IP_LIMIT_BUCKETS[kind];
+  const count = await bumpCounter(`${bucket.prefix}:${hashIp(ip)}`, "hour");
+  if (count > bucket.limit) {
     return {
       allowed: false,
-      reason:
-        kind === "locate"
-          ? "Too many location lookups from your connection this hour."
-          : kind === "search"
-            ? "Too many searches from your connection this hour."
-          : `That is ${limit} questions in an hour — the limit that keeps this public.`,
+      reason: bucket.reason(bucket.limit),
       retryAfterSeconds: secondsToNextHour(),
     };
   }
