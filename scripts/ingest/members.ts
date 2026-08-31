@@ -165,6 +165,26 @@ async function main() {
           )})`
         )
         .returning({ bioguideId: members.bioguideId });
+
+      // Close out term rows for anyone out of office — not just this run's
+      // retirees, so rows stranded by earlier runs (before this cleanup
+      // existed) self-heal. in_office alone left departed members showing a
+      // current term on their profile and reading as sitting members to /ask.
+      const closedTerms = await db
+        .update(terms)
+        .set({ isCurrent: false })
+        .where(
+          sql`is_current = true AND bioguide_id IN (SELECT bioguide_id FROM members WHERE in_office = false)`
+        )
+        .returning({ bioguideId: terms.bioguideId });
+      if (closedTerms.length > 0) {
+        console.log(
+          `Closed ${closedTerms.length} stale current-term row(s): ${closedTerms
+            .map((r) => r.bioguideId)
+            .join(", ")}`
+        );
+      }
+
       if (retired.length > 0) {
         console.log(
           `Retired ${retired.length} member(s) no longer in office: ${retired
