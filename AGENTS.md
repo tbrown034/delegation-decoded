@@ -10,6 +10,8 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 Congressional accountability tracking organized by state delegation. 538 members, 50 delegations, 7 official data sources.
 
+Purpose and scope are canon in `GOALS.md` — read it before feature decisions. Short version: portfolio proof first (ingestion, pipelines, display, grounded AI), users second; trades are quiet-tier, statements live at Capitol Releases.
+
 ## Stack
 
 - Next.js 16 (App Router only, Server Components by default), React 19, TypeScript
