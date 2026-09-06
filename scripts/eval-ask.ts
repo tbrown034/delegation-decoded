@@ -5,6 +5,7 @@
  *   NODE_OPTIONS='--conditions=react-server' npx tsx scripts/eval-ask.ts anthropic:claude-sonnet-5 openai:gpt-5.6-terra
  *
  * Filter to specific cases with ASK_EVAL_FILTER=<label substring>.
+ * ASK_EVAL_VERBOSE=1 prints complete answers and traces for manual inspection.
  *
  * Checks per case, all opt-in: keyword presence (mustInclude), boundary
  * refusal (expectBoundary), tool-call shape (expectTools, subset match on the
@@ -143,6 +144,21 @@ const CASES: EvalCase[] = [
     budget: { maxMs: 30_000 },
   },
   {
+    label: "finance-spending",
+    question: "How much did Todd Young spend in total disbursements during the 2022 election cycle?",
+    scope: state("IN"),
+    expectTools: [{ tool: "get_member_finance", input: { cycle: 2022 } }],
+    dbTruth: async () => {
+      const result = await db.execute(sql`
+        SELECT total_disbursements FROM campaign_finance
+        WHERE bioguide_id = 'Y000064' AND election_cycle = 2022 LIMIT 1
+      `);
+      const amount = result.rows[0]?.total_disbursements;
+      if (amount == null) throw new Error("Spending eval has no stored disbursement ground truth.");
+      return [["2022"], moneyVariants(Number(amount))];
+    },
+  },
+  {
     label: "topic-votes",
     question: "How has Erin Houchin voted on immigration?",
     scope: state("IN", 9),
@@ -215,9 +231,10 @@ const CASES: EvalCase[] = [
   },
   {
     label: "departed-filer",
-    question: "What do the FEC filings show for South Carolina's 2026 Senate race?",
+    question: "For South Carolina’s regular 2026 Class 2 Senate race, which FEC filers were marked incumbent but no longer hold office?",
     scope: state("SC"),
     mustInclude: ["fec", "no longer"],
+    expectTools: [{ tool: "get_race_candidates", input: { senate_class: 2, election_type: "regular" } }],
   },
   {
     label: "vote-logistics",
@@ -489,8 +506,8 @@ async function evalTarget(target: string) {
           `WARN  ${test.label.padEnd(18)} over token budget (out=${result.usage.outputTokens} > ${test.budget.maxOutputTokens})`
         );
       }
-      if (!ok) {
-        console.log(`      ${result.answer.slice(0, 260).replace(/\n/g, " ")}`);
+      if (!ok || process.env.ASK_EVAL_VERBOSE === "1") {
+        console.log(`      ${result.answer.replace(/\n/g, " ")}`);
         console.log(`      trace=${JSON.stringify(result.trace)}`);
       }
     } catch (error) {
@@ -504,6 +521,7 @@ async function evalTarget(target: string) {
   console.log(
     `-- ${passed}/${CASES.length} passed · avg ${Math.round(totalMs / CASES.length)}ms · tokens in=${totalIn} cached=${totalCachedIn} write=${totalCacheWriteIn} out=${totalOut}`
   );
+  return passed === CASES.length;
 }
 
 // Free pre-flight for the route's signature gate: known attack strings must
@@ -573,7 +591,12 @@ async function main() {
       if (!CASES[index].label.includes(filter)) CASES.splice(index, 1);
     }
   }
-  for (const target of targets) await evalTarget(target);
+  if (CASES.length === 0) {
+    throw new Error("ASK_EVAL_FILTER matched no cases; no evaluation ran.");
+  }
+  for (const target of targets) {
+    if (!(await evalTarget(target))) process.exitCode = 1;
+  }
 }
 
 main().catch((error) => {

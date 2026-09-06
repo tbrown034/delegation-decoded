@@ -59,6 +59,8 @@ export type HealthReport = {
     crawlErrors: number;
     pendingClaims: number;
     verifiedClaims: number;
+    eligibleClaimRows: number;
+    eligibleServiceRows: number;
     pendingService: number;
     verifiedService: number;
   };
@@ -66,6 +68,8 @@ export type HealthReport = {
     verifiedSites: number;
     crawlErrors: number;
     membersWithVerifiedFacts: number;
+    membersWithEligibleQuotes: number;
+    eligibleQuoteRows: number;
     pendingFacts: number;
     verifiedFacts: number;
   };
@@ -401,7 +405,7 @@ export async function buildHealthReport(): Promise<HealthReport> {
       id: "candidate-crawl-errors",
       level: "warn",
       title: `${candidateResearch.crawlErrors} verified campaign site${candidateResearch.crawlErrors === 1 ? " has" : "s have"} crawl errors`,
-      detail: "The site link remains visible, but no extracted claim is published unless its evidence passes human review.",
+      detail: "The site link and previously captured non-rejected quotes may remain visible. New extraction requires a successful crawl and a quote-presence check; individual human approval is not required.",
     });
   }
 
@@ -443,7 +447,7 @@ export async function buildHealthReport(): Promise<HealthReport> {
       id: "member-biography-crawl-errors",
       level: "warn",
       title: `${memberBiographies.crawlErrors} official member site${memberBiographies.crawlErrors === 1 ? " has" : "s have"} biography crawl errors`,
-      detail: "No biography fact is published or supplied to Ask unless its official-site quote passes human review.",
+      detail: "Previously captured non-rejected quotes may remain visible and available to Ask. New extraction requires a successful crawl and a quote-presence check; individual human approval is not required.",
     });
   }
 

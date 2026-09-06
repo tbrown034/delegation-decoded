@@ -9,7 +9,7 @@ This is first and foremost a job-search artifact. It exists to show a hiring man
 - **Ingest messy public data** — seven official sources (Congress.gov, House and Senate roll-call XML, FEC, @unitedstates, Senate eFD, state election authorities), each with its own format and failure modes.
 - **Build durable pipelines** — idempotent daily/weekly ingests, sync logging, self-auditing health gates, rate-limit-aware API clients, and a /health page rendered from the same checks that gate CI.
 - **Display data with editorial judgment** — state-delegation dashboards, member profiles, race pages, and journalist CSV exports, designed like a newsroom tool rather than a database dump.
-- **Use AI on top of real data, responsibly** — /ask answers only from this site's database, cites every claim, refuses when the records can't answer, and is hardened against prompt injection with a logged audit trail.
+- **Use AI on top of real data, responsibly** — /ask answers only from this site's database, requires a retrieved-record citation for factual answers, refuses when the records can't answer, and is hardened against prompt injection with a logged audit trail.
 
 Every feature decision should sharpen one of those four proofs. Polish on less beats ambition half-built.
 

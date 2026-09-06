@@ -104,14 +104,15 @@ export default async function HealthPage() {
           Official member biographies
         </h2>
         <p className="mt-1 text-sm text-neutral-600">
-          Sources must be official House or Senate sites. Extracted facts stay unpublished and unavailable to Ask until a human verifies the source and exact quote.
+          Sources must be official House or Senate sites. Extracted quotes are checked against captured source text. Non-rejected quotes can appear without individual human approval; they remain the office’s own claims. Eligible counts are stored rows before display deduplication; “needs review” is a stored review label, not a publication hold.
         </p>
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <Stat label="Verified sites" value={report.memberBiographies.verifiedSites} />
           <Stat label="Crawl errors" value={report.memberBiographies.crawlErrors} tone={report.memberBiographies.crawlErrors > 0 ? "warn" : "ok"} />
-          <Stat label="Members published" value={report.memberBiographies.membersWithVerifiedFacts} />
-          <Stat label="Facts queued" value={report.memberBiographies.pendingFacts} tone={report.memberBiographies.pendingFacts > 0 ? "warn" : "ok"} />
-          <Stat label="Facts verified" value={report.memberBiographies.verifiedFacts} />
+          <Stat label="Members with eligible quotes" value={report.memberBiographies.membersWithEligibleQuotes} />
+          <Stat label="Eligible quote rows" value={report.memberBiographies.eligibleQuoteRows} />
+          <Stat label="Marked needs review" value={report.memberBiographies.pendingFacts} />
+          <Stat label="Human-approved rows" value={report.memberBiographies.verifiedFacts} />
         </div>
       </section>
 
@@ -120,16 +121,18 @@ export default async function HealthPage() {
           Candidate-site research
         </h2>
         <p className="mt-1 text-sm text-neutral-600">
-          Sites are linked through FEC committee filings. Model-extracted claims stay unpublished until a human verifies the source and quote.
+          Sites are linked through FEC committee filings. Extracted quotes are checked against captured source text. Non-rejected quotes can appear without individual human approval; they remain campaign claims. Eligible counts are stored rows before display deduplication and race-specific filtering; “needs review” does not block publication.
         </p>
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <Stat label="Verified sites" value={report.candidateResearch.verifiedSites} />
           <Stat label="No FEC site" value={report.candidateResearch.blockedSites} tone={report.candidateResearch.blockedSites > 0 ? "warn" : "ok"} />
           <Stat label="Crawl errors" value={report.candidateResearch.crawlErrors} tone={report.candidateResearch.crawlErrors > 0 ? "warn" : "ok"} />
-          <Stat label="Claims queued" value={report.candidateResearch.pendingClaims} tone={report.candidateResearch.pendingClaims > 0 ? "warn" : "ok"} />
-          <Stat label="Claims verified" value={report.candidateResearch.verifiedClaims} />
-          <Stat label="Service queued" value={report.candidateResearch.pendingService} tone={report.candidateResearch.pendingService > 0 ? "warn" : "ok"} />
-          <Stat label="Service verified" value={report.candidateResearch.verifiedService} />
+          <Stat label="Eligible claim rows" value={report.candidateResearch.eligibleClaimRows} />
+          <Stat label="Claims marked needs review" value={report.candidateResearch.pendingClaims} />
+          <Stat label="Human-approved claims" value={report.candidateResearch.verifiedClaims} />
+          <Stat label="Eligible service rows" value={report.candidateResearch.eligibleServiceRows} />
+          <Stat label="Service marked needs review" value={report.candidateResearch.pendingService} />
+          <Stat label="Human-approved service" value={report.candidateResearch.verifiedService} />
         </div>
       </section>
 

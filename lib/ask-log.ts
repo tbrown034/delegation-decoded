@@ -1,8 +1,8 @@
 // Per-question audit log for /ask. One row per request that reached the
 // engine, written fire-and-forget: a logging failure must never delay or
-// suppress a reader's answer. The row makes any served answer reproducible —
+// suppress a reader's answer. The row supports investigation of a served answer —
 // question, scope, tool trace, provider, cost, and how the request ended —
-// which is the accountability layer the citations UI stands on.
+// without preserving every retrieved payload or guaranteeing a replay.
 
 import { sql } from "drizzle-orm";
 import { db } from "./db";

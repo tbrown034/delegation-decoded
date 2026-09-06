@@ -171,9 +171,10 @@ export default async function TradesMethodologyPage() {
           <li>
             <span className="font-medium">Validation.</span> Each row is
             checked against the canonical list of STOCK Act amount ranges and
-            transaction types. Rows that fail validation or score below 0.8
-            confidence are held for human review and not surfaced until
-            cleared.
+            transaction types. Parsed rows below 80% confidence are flagged
+            for review and can remain visible with a warning. A warning is
+            not a publication hold or evidence of human approval; check the
+            original filing before citing a transaction.
           </li>
           <li>
             <span className="font-medium">Late-filing math.</span> A

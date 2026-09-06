@@ -590,6 +590,7 @@ export async function getPublishedCampaignResearch(contestId: string) {
     for (const row of service.rows as Array<Record<string, unknown>>) {
       const research = byCandidacy.get(row.candidacy_id as string);
       if (!research) continue;
+      if (!(row.source_quote as string | null)?.trim()) continue;
       const officeTitle = row.office_title as string;
       // A campaign listing the seat this person currently holds, or a caucus
       // membership, is not prior service.
@@ -1066,6 +1067,24 @@ export async function getCandidateResearchHealth() {
   try {
     const result = await db.execute(sql`
       SELECT
+        (SELECT COUNT(*)::int FROM candidate_site_claims claim
+         WHERE claim.review_status <> 'rejected' AND BTRIM(claim.source_quote) <> ''
+           AND EXISTS (
+             SELECT 1 FROM candidate_campaign_sites site
+             JOIN candidacies ca ON ca.candidacy_id = site.candidacy_id
+             WHERE site.candidacy_id = claim.candidacy_id
+               AND site.verification_status = 'verified'
+               AND site.site_url IS NOT NULL AND site.verified_source_url IS NOT NULL
+           )) AS eligible_claim_rows,
+        (SELECT COUNT(*)::int FROM candidate_prior_service service
+         WHERE service.verification_status <> 'rejected' AND BTRIM(service.source_quote) <> ''
+           AND EXISTS (
+             SELECT 1 FROM candidacies ca
+             JOIN candidate_campaign_sites site ON site.candidacy_id = ca.candidacy_id
+             WHERE ca.person_id = service.person_id
+               AND site.verification_status = 'verified'
+               AND site.site_url IS NOT NULL AND site.verified_source_url IS NOT NULL
+           )) AS eligible_service_rows,
         (SELECT COUNT(*)::int FROM candidate_campaign_sites WHERE verification_status = 'verified') AS verified_sites,
         (SELECT COUNT(*)::int FROM candidate_campaign_sites WHERE verification_status = 'blocked') AS blocked_sites,
         (SELECT COUNT(*)::int FROM candidate_campaign_sites WHERE verification_status = 'verified' AND crawl_error IS NOT NULL) AS crawl_errors,
@@ -1081,6 +1100,8 @@ export async function getCandidateResearchHealth() {
       crawlErrors: Number(row?.crawl_errors ?? 0),
       pendingClaims: Number(row?.pending_claims ?? 0),
       verifiedClaims: Number(row?.verified_claims ?? 0),
+      eligibleClaimRows: Number(row?.eligible_claim_rows ?? 0),
+      eligibleServiceRows: Number(row?.eligible_service_rows ?? 0),
       pendingService: Number(row?.pending_service ?? 0),
       verifiedService: Number(row?.verified_service ?? 0),
     };
@@ -1092,6 +1113,8 @@ export async function getCandidateResearchHealth() {
       crawlErrors: 0,
       pendingClaims: 0,
       verifiedClaims: 0,
+      eligibleClaimRows: 0,
+      eligibleServiceRows: 0,
       pendingService: 0,
       verifiedService: 0,
     };

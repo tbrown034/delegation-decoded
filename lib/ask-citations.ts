@@ -27,7 +27,7 @@ interface EvidenceRecord {
 // c campaign biography, q campaign stated positions, s prior service,
 // o official member biography,
 // d current-roster entries (get_delegation / find_members).
-const MARKER_RE = /\s*\[([a-z]\d{1,3})\]/gi;
+const MARKER_RE = /\s*\[([a-z]?\d+)\]/gi;
 
 export class EvidenceRegistry {
   private records = new Map<string, EvidenceRecord>();
@@ -39,6 +39,18 @@ export class EvidenceRegistry {
     const ref = `${prefix}${next}`;
     this.records.set(ref, { ref, tool, label, href });
     return ref;
+  }
+
+  fork(): EvidenceRegistry {
+    const copy = new EvidenceRegistry();
+    copy.records = new Map(this.records);
+    copy.counters = new Map(this.counters);
+    return copy;
+  }
+
+  adopt(other: EvidenceRegistry): void {
+    this.records = new Map(other.records);
+    this.counters = new Map(other.counters);
   }
 
   get(ref: string): EvidenceRecord | undefined {
@@ -96,7 +108,7 @@ export function annotateToolResult(
       const rec = item as Rec;
       const { prefix, label, href } = make(rec);
       const ref = registry.register(prefix, tool, label, href);
-      return { ref, ...rec };
+      return { ...rec, ref };
     });
   };
 
@@ -129,7 +141,7 @@ export function annotateToolResult(
               if (!item || typeof item !== "object") return item;
               const record = item as Rec;
               const ref = registry.register(prefix, tool, describe(record), href);
-              return { ref, ...record };
+              return { ...record, ref };
             })
           : value;
 
@@ -151,8 +163,8 @@ export function annotateToolResult(
           `${name} prior service stated by campaign: ${asString(record.office)}`
       );
       return {
-        ref: candidateRef,
         ...rec,
+        ref: candidateRef,
         campaign_biography: campaignBiography,
         campaign_stated_positions: campaignPositions,
         prior_service_stated_by_campaign: priorService,
@@ -247,30 +259,99 @@ export function annotateToolResult(
   return r;
 }
 
-// Validates and renumbers markers. Unknown markers are stripped (same
-// fail-soft posture as sanitizeAnswerLinks); an answer with zero surviving
-// markers degrades to the tool-level footer, never to a failed request.
+// Keep complete JSON records within the tool budget. Only commit citation
+// references for the payload actually sent to the model, never discarded rows.
+export function prepareToolPayload(
+  tool: string,
+  input: Rec,
+  result: unknown,
+  registry: EvidenceRegistry,
+  maxChars: number
+): string {
+  const candidate = JSON.parse(JSON.stringify(result)) as unknown;
+  for (;;) {
+    const trial = registry.fork();
+    const annotated = annotateToolResult(tool, input, structuredClone(candidate), trial);
+    const payload = JSON.stringify(annotated);
+    if (payload.length <= maxChars) {
+      registry.adopt(trial);
+      return payload;
+    }
+    // Drop whole trailing records from the largest array, then re-annotate.
+    // Counts of all matches remain intact; showing follows retained records.
+    const arrays: unknown[][] = [];
+    const visit = (value: unknown) => {
+      if (Array.isArray(value)) {
+        if (value.length > 0) arrays.push(value);
+        for (const child of value) visit(child);
+      } else if (value && typeof value === "object") {
+        for (const child of Object.values(value)) visit(child);
+      }
+    };
+    visit(candidate);
+    arrays.sort((a, b) => JSON.stringify(b).length - JSON.stringify(a).length);
+    if (!arrays[0]) {
+      return JSON.stringify({ error: "The record exceeded the lookup size limit. Do not infer an answer from it." });
+    }
+    arrays[0].pop();
+    const updateCounts = (value: unknown) => {
+      if (!value || typeof value !== "object") return;
+      const rec = value as Rec;
+      if (Array.isArray(rec.records) && "showing" in rec) rec.showing = rec.records.length;
+      for (const child of Object.values(value)) updateCounts(child);
+    };
+    updateCounts(candidate);
+    if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
+      (candidate as Rec).truncation_note = "Some records were omitted to fit the lookup limit. This is a partial result.";
+    }
+  }
+}
+
+// Resolves markers and reports unknown references to the engine. The engine
+// rejects unknown references and answered responses without a valid citation.
 export function resolveCitations(
   answer: string,
   registry: EvidenceRegistry
-): { answer: string; citations: Citation[] } {
+): { answer: string; citations: Citation[]; unknownRefs: string[] } {
   const citations: Citation[] = [];
+  const unknownRefs = new Set<string>();
   const numbered = new Map<string, number>();
-  const resolved = answer.replace(MARKER_RE, (whole, ref: string) => {
+  // Normalize lists/ranges before numbering, validating every expanded ref.
+  // Citation-looking labels that cannot be parsed remain an explicit error.
+  const expanded = answer.replace(/\[([^\]\n]+)\](?!\()/g, (whole, group: string) => {
+    if (!/^(?:[a-z]?\d|ref\s|source\s*:)/i.test(group.trim())) return whole;
+    const refs: string[] = [];
+    const parts = group.trim().replace(/^ref\s+/i, "").split(/[\s,;]+/);
+    for (const part of parts) {
+      const range = /^([a-z])(\d+)[-–]([a-z]?)(\d+)$/i.exec(part);
+      if (range) {
+        const [, prefix, start, endPrefix, end] = range;
+        if ((endPrefix && prefix.toLowerCase() !== endPrefix.toLowerCase()) || Number(end) < Number(start) || Number(end) - Number(start) > 100) {
+          unknownRefs.add(group);
+          return "";
+        }
+        for (let n = Number(start); n <= Number(end); n++) refs.push(`${prefix}${n}`);
+      } else if (/^[a-z]?\d+$/i.test(part)) {
+        refs.push(part);
+      } else {
+        unknownRefs.add(group);
+        return "";
+      }
+    }
+    return refs.map(ref => `[${ref}]`).join("");
+  });
+  const resolved = expanded.replace(MARKER_RE, (whole, ref: string) => {
     const normalizedRef = ref.toLowerCase();
     const record = registry.get(normalizedRef);
-    if (!record) return "";
+    if (!record) {
+      unknownRefs.add(normalizedRef);
+      return "";
+    }
     let n = numbered.get(normalizedRef);
     if (n == null) {
       n = citations.length + 1;
       numbered.set(normalizedRef, n);
-      citations.push({
-        n,
-        ref,
-        tool: record.tool,
-        label: record.label,
-        href: record.href,
-      });
+      citations.push({ n, ref, tool: record.tool, label: record.label, href: record.href });
     }
     const spacer = whole.startsWith(" ") ? " " : "";
     return `${spacer}[${n}]`;
@@ -278,6 +359,7 @@ export function resolveCitations(
   return {
     answer: resolved.replace(/ ([.,;:])/g, "$1").replace(/ {2,}/g, " "),
     citations,
+    unknownRefs: [...unknownRefs],
   };
 }
 

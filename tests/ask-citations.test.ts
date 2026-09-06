@@ -4,6 +4,7 @@ import {
   EvidenceRegistry,
   annotateToolResult,
   resolveCitations,
+  prepareToolPayload,
 } from "../lib/ask-citations";
 
 test("annotate injects sequential refs into vote records", () => {
@@ -150,4 +151,41 @@ test("member-seat race results cite campaign biography and prior service separat
   assert.equal(candidate.campaign_biography[0].ref, "c1");
   assert.equal(candidate.prior_service_stated_by_campaign[0].ref, "s1");
   assert.equal(registry.get("c1")?.href, "/race/2026-GA-S2-special");
+});
+
+
+test("untrusted record fields cannot override server citation references", () => {
+  const registry = new EvidenceRegistry();
+  const result = annotateToolResult("get_member_votes", {}, { records: [{ ref: "v99", roll: 1 }] }, registry) as { records: { ref: string }[] };
+  assert.equal(result.records[0].ref, "v1");
+  assert.deepEqual(resolveCitations("Claim. [v99]", registry).unknownRefs, ["v99"]);
+});
+
+
+test("oversized tool results retain complete records and never register omitted evidence", () => {
+  const registry = new EvidenceRegistry();
+  registry.register("f", "get_member_finance", "Earlier evidence", null);
+  const payload = prepareToolPayload("get_member_votes", {}, {
+    matched: 3, showing: 3,
+    records: [{ roll: 1, text: "a".repeat(250) }, { roll: 2, text: "b".repeat(250) }, { roll: 3, text: "c".repeat(250) }],
+  }, registry, 550);
+  const result = JSON.parse(payload);
+  assert.ok(payload.length <= 550);
+  assert.equal(result.records.length, 1);
+  assert.equal(result.showing, 1);
+  assert.equal(result.matched, 3);
+  assert.ok(result.truncation_note);
+  assert.ok(registry.get("v1"));
+  assert.equal(registry.get("v2"), undefined);
+  assert.ok(registry.get("f1"));
+});
+
+
+test("citation lists and ranges validate every constituent record", () => {
+  const registry = new EvidenceRegistry();
+  for (let n = 1; n <= 3; n++) registry.register("p", "get_member_finance", `Committee ${n}`, null);
+  const result = resolveCitations("Committees. [p1-p3] Again. [p1, p3]", registry);
+  assert.equal(result.answer, "Committees. [1][2][3] Again. [1][3]");
+  assert.deepEqual(result.unknownRefs, []);
+  assert.equal(result.citations.length, 3);
 });

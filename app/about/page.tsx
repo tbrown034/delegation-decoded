@@ -266,8 +266,8 @@ export default async function AboutPage() {
                 disclosures-clerk.house.gov
               </p>
               <p className="mt-1">
-                Preview ingestion of STOCK Act Periodic Transaction Reports for House members. The
-                Clerk publishes annual ZIPs of PTR PDFs. Each PDF is parsed
+                House PTR ingestion has been paused since August 31, 2026. The
+                Clerk publishes annual ZIPs of PTR PDFs. Historically, PDFs were parsed
                 with Anthropic Claude Sonnet 4.6 in vision mode, the model
                 reads the rendered form and returns structured JSON: ticker,
                 asset description, owner, transaction type, transaction date,
@@ -311,16 +311,14 @@ export default async function AboutPage() {
                 house.gov · senate.gov subdomains
               </p>
               <p className="mt-1">
-                Official press releases from member office websites. Each
-                member&apos;s site is probed for one of six standard RSS feed
-                paths (`/rss.xml`, `/feed/`, `/news/rss.xml`, etc.) and parsed
-                with a small inline XML reader, no third-party dependencies.
-                Used to power the press-release timeline and keyword analytics.
+                Press-release collection was retired on August 31, 2026.
+                The historical records remain stored. Current statements
+                coverage lives at the companion project,{' '}
+                <a href="https://capitolreleases.com" className="underline">Capitol Releases</a>.
               </p>
               <p className="mt-1 text-xs text-neutral-400">
-                Coverage: {stats.pressReleases.toLocaleString()} releases from
-                members whose offices publish a feed. Members without an
-                accessible feed are silently skipped.
+                Historical archive: {stats.pressReleases.toLocaleString()} records.
+                This is not current collection coverage.
               </p>
             </div>
           </div>
@@ -468,18 +466,18 @@ function AboutProcessDetails({
             </li>
             <li>
               <strong className="text-neutral-900">Validate disclosure infrastructure.</strong>{" "}
-              House PTR PDFs are downloaded from the Clerk, hashed, and parsed
-              with Claude Sonnet 4.6 in vision mode. Senate PTRs come from the
-              eFD HTML tables and are parsed deterministically. Both pipelines
-              upsert into shared disclosure tables and run incrementally;
+              House PTR PDF parsing with Claude Sonnet 4.6 has been paused
+              since August 31, 2026 because oversized filings aborted the queue.
+              Historical parsed records remain available. Senate PTRs come from the
+              eFD HTML tables and are parsed deterministically. The active Senate pipeline
+              upserts into shared disclosure tables and runs incrementally;
               already-seen hashes are skipped. Reader-facing coverage remains
               labeled as a coming feature until the audits are complete.
             </li>
             <li>
-              <strong className="text-neutral-900">Ingest press releases.</strong>{" "}
-              Each member office&apos;s website is probed for an RSS feed. New
-              items since the last sync are stored with title, link, pub date,
-              and description for the activity timeline.
+              <strong className="text-neutral-900">Retain the press-release archive.</strong>{" "}
+              Collection stopped August 31, 2026. Historical rows remain stored;
+              current statements coverage belongs to Capitol Releases.
             </li>
             <li>
               <strong className="text-neutral-900">Log everything.</strong>{" "}
@@ -554,9 +552,8 @@ function AboutProcessDetails({
               independent verification.
             </li>
             <li>
-              Press release coverage depends on each member office publishing
-              an RSS feed at a discoverable path. Offices without a feed are
-              not represented in the timeline.
+              The retired press-release archive is incomplete and no longer
+              updated. It cannot establish a member&apos;s current statements.
             </li>
             <li>
               Bill and vote coverage is limited to{" "}
@@ -596,9 +593,10 @@ function AboutProcessDetails({
             </li>
             <li>
               Official and campaign biography text is the subject&apos;s own
-              description. Publication means a reviewer confirmed the source
-              and quote; it does not turn that statement into an independent
-              biographical finding.
+              description. Automated extraction checks that each quoted passage
+              occurs in its captured source. These passages are not routinely
+              reviewed by a person before display and are not independently
+              verified biographical findings. Rejected records are withheld.
             </li>
           </ul>
         </section>
@@ -617,12 +615,14 @@ function AboutProcessDetails({
             grammar compilation within the request deadline. Both providers
             send arguments through server-side type, range and scope
             validation before any query runs. A terminal answer tool is required, and a factual answer is
-            rejected unless at least one record lookup was completed.
+            rejected unless it includes a server-issued citation to a retrieved record.
+            Unknown citation references also reject the answer. These checks do
+            not establish that every claim correctly interprets its source.
           </p>
           <p className="mt-2">
             Exact SQL retrieval is used instead of embedding search for votes,
             bills, finance, committees, terms and races because those are
-            structured records where identifiers and dates must match. Each
+            structured records where identifiers and dates must match.
             Race answers dual-read state-authority candidacies where a verified
             adapter exists and FEC filings elsewhere, preserving the coverage
             label in the model context. Each answer shows the record categories checked. Stock disclosures are
@@ -644,9 +644,8 @@ function AboutProcessDetails({
             The log records the model&apos;s own status for each reply —
             answered, no matching record, out of scope, or declined — plus the
             records checked, the provider used, latency, and what share of the
-            answer&apos;s sentences carry a validated citation. That makes any
-            answer the assistant ever served reproducible and correctable, and
-            the{" "}
+            answer&apos;s sentences carry a validated citation. This supports investigation and corrections; it does not preserve
+            every retrieved payload or guarantee an identical rerun. The{" "}
             <Link href="/health" className="text-neutral-900 underline decoration-neutral-300 underline-offset-2 hover:decoration-neutral-500">
               health page
             </Link>{" "}
@@ -656,8 +655,9 @@ function AboutProcessDetails({
             corrections.
           </p>
           <p className="mt-2">
-            Two ingestion pipelines use models. House PTR PDFs are parsed with
-            Anthropic Claude Sonnet 4.6 in vision mode. The model reads the
+            AI also supports extraction. House PTR parsing with
+            Anthropic Claude Sonnet 4.6 in vision mode has been paused since
+            August 31, 2026; the following describes historical parsed records. The model reads the
             rendered disclosure form and returns structured JSON, ticker,
             asset description, owner, transaction type, transaction date,
             amount band, plus a per-row confidence score (0–100). Every row is
@@ -674,8 +674,10 @@ function AboutProcessDetails({
             crawlers select only approved same-domain research pages, then
             supply their text directly. The model cannot browse or choose new
             URLs. Application code drops any output whose quote is not present
-            in the cited snapshot, and a reviewer name and timestamp are stored
-            before any fact can be published or supplied to Ask.
+            in the cited snapshot. Non-rejected source quotes can then appear
+            on pages and in Ask without individual human approval. A person
+            can reject a record using the review tools. A quote-presence check
+            establishes what a source said, not whether the statement is true.
           </p>
           <p className="mt-2">
             All other data — bills, sponsorships, votes, finance, committees

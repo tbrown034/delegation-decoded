@@ -35,7 +35,7 @@ export async function GET() {
 > the FEC, the @unitedstates project, Senate financial disclosures, and state
 > election authorities. Every number on the site traces to an official record.
 > The built-in assistant (/ask) answers only from this database — never the
-> open web — and cites the records behind every claim.
+> open web — and requires a retrieved-record citation for factual answers.
 
 Currently tracking ${row.members} sitting members across all 50 states, DC,
 and the territories: ${row.bills} bills, ${row.vote_positions} individual
