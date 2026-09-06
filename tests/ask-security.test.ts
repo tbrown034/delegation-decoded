@@ -157,3 +157,17 @@ test("safety identifiers are stable, keyed, and do not reveal the IP", () => {
   assert.equal(first.length, 32);
   assert.equal(first.includes("203.0.113.42"), false);
 });
+
+test("race questions phrased as FEC filings or ballot access still route to the race tool", () => {
+  const stateScope: AskScope = { type: "state", stateCode: "IN", district: 7 };
+  for (const question of [
+    "Who has filed with the FEC for Indiana's 7th District?",
+    "Who is on the ballot against her?",
+    "Does the senator have an opponent yet?",
+  ]) {
+    assert.ok(
+      getAskToolsForQuestion(stateScope, question).some((tool) => tool.name === "get_race_candidates"),
+      question
+    );
+  }
+});

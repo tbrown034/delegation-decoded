@@ -260,7 +260,10 @@ export function getAskToolsForQuestion(scope: AskScope, question: string) {
     [/\b(committee|committees|subcommittee|assignment)\b/, "get_member_committees"],
     [/\b(term|terms|tenure|served|service|seat up|reelection|re-election)\b/, "get_member_terms"],
     [/\b(bio|biography|background|career|education|occupation|who is)\b/, "get_member_biography"],
-    [/\b(race|candidate|candidates|challenger|running|primary|election)\b/, "get_race_candidates"],
+    // "filed with the FEC" and "on the ballot" are how readers ask about a
+    // race without saying "race"; without the tool offered, the model can
+    // only report that the records are missing.
+    [/\b(race|candidate|candidates|challenger|challengers|opponent|opponents|nominee|running|primary|election|ballot|fec|filed|filer|filers)\b/, "get_race_candidates"],
   ];
   for (const [pattern, name] of routes) {
     if (pattern.test(routingText)) selected.add(name);
