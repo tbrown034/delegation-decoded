@@ -596,9 +596,9 @@ function AboutProcessDetails({
             </li>
             <li>
               Official and campaign biography text is the subject&apos;s own
-              description. Publication means a reviewer confirmed the source
-              and quote; it does not turn that statement into an independent
-              biographical finding.
+              description. Publication means the exact quote was found in a
+              captured copy of the cited page; it does not turn that
+              statement into an independent biographical finding.
             </li>
           </ul>
         </section>
@@ -674,8 +674,12 @@ function AboutProcessDetails({
             crawlers select only approved same-domain research pages, then
             supply their text directly. The model cannot browse or choose new
             URLs. Application code drops any output whose quote is not present
-            in the cited snapshot, and a reviewer name and timestamp are stored
-            before any fact can be published or supplied to Ask.
+            in the cited snapshot, and only the verbatim quote is published or
+            supplied to Ask, never the model&apos;s paraphrase. Publication is
+            automatic once that check passes. Human review is a spot-check and
+            rejection path (a rejected quote leaves the site and Ask), not a
+            gate: as of September 2026 no quote has needed rejection, and none
+            carries a reviewer name.
           </p>
           <p className="mt-2">
             All other data — bills, sponsorships, votes, finance, committees

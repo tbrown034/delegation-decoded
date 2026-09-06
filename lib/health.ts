@@ -57,17 +57,19 @@ export type HealthReport = {
     verifiedSites: number;
     blockedSites: number;
     crawlErrors: number;
-    pendingClaims: number;
-    verifiedClaims: number;
-    pendingService: number;
-    verifiedService: number;
+    publishedClaims: number;
+    reviewedClaims: number;
+    rejectedClaims: number;
+    publishedService: number;
+    reviewedService: number;
   };
   memberBiographies: {
     verifiedSites: number;
     crawlErrors: number;
-    membersWithVerifiedFacts: number;
-    pendingFacts: number;
-    verifiedFacts: number;
+    membersPublished: number;
+    publishedFacts: number;
+    reviewedFacts: number;
+    rejectedFacts: number;
   };
   // The FEC finance-committee crawl cannot cover the roster in one run, so
   // "did the run succeed" says nothing about coverage. Track the backlog.
@@ -436,7 +438,7 @@ export async function buildHealthReport(): Promise<HealthReport> {
       id: "candidate-crawl-errors",
       level: "warn",
       title: `${candidateResearch.crawlErrors} verified campaign site${candidateResearch.crawlErrors === 1 ? " has" : "s have"} crawl errors`,
-      detail: "The site link remains visible, but no extracted claim is published unless its evidence passes human review.",
+      detail: "The site link remains visible. Nothing was extracted from these sites, so no claim can be published for them.",
     });
   }
 
@@ -478,7 +480,7 @@ export async function buildHealthReport(): Promise<HealthReport> {
       id: "member-biography-crawl-errors",
       level: "warn",
       title: `${memberBiographies.crawlErrors} official member site${memberBiographies.crawlErrors === 1 ? " has" : "s have"} biography crawl errors`,
-      detail: "No biography fact is published or supplied to Ask unless its official-site quote passes human review.",
+      detail: "Nothing was extracted from these official sites, so no biography fact can be published or supplied to Ask for them.",
     });
   }
 

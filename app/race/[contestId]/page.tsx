@@ -349,10 +349,13 @@ function CandidateList({
                   <ul className="mt-1.5 space-y-1.5">
                     {candidateResearch.priorService.map((service) => (
                       <li key={service.serviceId}>
-                        <span className="text-neutral-800">
-                          {service.officeTitle}{service.jurisdiction ? `, ${service.jurisdiction}` : ""}
-                        </span>
-                        <span className="ml-1.5 text-neutral-400">
+                        {service.officeInQuote && (
+                          <span className="text-neutral-800">
+                            {service.officeTitle}
+                            {service.jurisdictionInQuote ? `, ${service.jurisdiction}` : ""}
+                          </span>
+                        )}
+                        <span className={service.officeInQuote ? "ml-1.5 text-neutral-400" : "text-neutral-400"}>
                           &ldquo;{service.sourceQuote}&rdquo;
                         </span>{" "}
                         <a href={service.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-neutral-500 underline decoration-neutral-300 underline-offset-2">

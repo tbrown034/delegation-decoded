@@ -7,7 +7,7 @@ import {
 } from "./registry";
 import { houseContestId, parseContestId, senateContestId } from "./ids";
 import { deriveIndexMatchupStatus } from "./matchup";
-import { dedupeByQuote } from "../quote-dedupe";
+import { dedupeByQuote, wordsAppearIn } from "../quote-dedupe";
 import {
   regularSenateClassForElectionYear,
   type MemberSeat,
@@ -464,8 +464,14 @@ export type PublishedCandidateResearch = {
     endedOn: string | null;
     sourceUrl: string;
     sourceQuote: string;
+    // The office title and jurisdiction are the model's reading of the
+    // quote. They are labelled as such and displayed only when their words
+    // appear in the quote; otherwise the quote publishes alone.
+    officeInQuote: boolean;
+    jurisdictionInQuote: boolean;
   }>;
 };
+
 
 // Identity is the verbatim source span, not the model's sentence. Pages
 // publish the quote itself, so two crawls of an unchanged page produce the
@@ -605,14 +611,20 @@ export async function getPublishedCampaignResearch(contestId: string) {
       ) {
         continue;
       }
+      const sourceQuote = row.source_quote as string;
+      if (!sourceQuote?.trim()) continue;
+      const jurisdiction = row.jurisdiction as string | null;
       const entry = {
         serviceId: row.service_id as string,
         officeTitle,
-        jurisdiction: row.jurisdiction as string | null,
+        jurisdiction,
         startedOn: row.started_on as string | null,
         endedOn: row.ended_on as string | null,
         sourceUrl: row.source_url as string,
-        sourceQuote: row.source_quote as string,
+        sourceQuote,
+        officeInQuote: wordsAppearIn(officeTitle, sourceQuote),
+        jurisdictionInQuote:
+          jurisdiction != null && wordsAppearIn(jurisdiction, sourceQuote),
       };
       // One office restated across runs. Rows sharing office and jurisdiction
       // collapse unless both carry distinct start dates (separate terms).
@@ -1070,20 +1082,23 @@ export async function getCandidateResearchHealth() {
         (SELECT COUNT(*)::int FROM candidate_campaign_sites WHERE verification_status = 'verified') AS verified_sites,
         (SELECT COUNT(*)::int FROM candidate_campaign_sites WHERE verification_status = 'blocked') AS blocked_sites,
         (SELECT COUNT(*)::int FROM candidate_campaign_sites WHERE verification_status = 'verified' AND crawl_error IS NOT NULL) AS crawl_errors,
-        (SELECT COUNT(*)::int FROM candidate_site_claims WHERE review_status = 'needs_review') AS pending_claims,
-        (SELECT COUNT(*)::int FROM candidate_site_claims WHERE review_status = 'verified') AS verified_claims,
-        (SELECT COUNT(*)::int FROM candidate_prior_service WHERE verification_status = 'needs_review') AS pending_service,
-        (SELECT COUNT(*)::int FROM candidate_prior_service WHERE verification_status = 'verified') AS verified_service
+        (SELECT COUNT(*)::int FROM candidate_site_claims
+           WHERE review_status <> 'rejected' AND source_quote IS NOT NULL AND BTRIM(source_quote) <> '') AS published_claims,
+        (SELECT COUNT(*)::int FROM candidate_site_claims WHERE review_status = 'verified') AS reviewed_claims,
+        (SELECT COUNT(*)::int FROM candidate_site_claims WHERE review_status = 'rejected') AS rejected_claims,
+        (SELECT COUNT(*)::int FROM candidate_prior_service WHERE verification_status <> 'rejected') AS published_service,
+        (SELECT COUNT(*)::int FROM candidate_prior_service WHERE verification_status = 'verified') AS reviewed_service
     `);
     const row = result.rows[0] as Record<string, unknown> | undefined;
     return {
       verifiedSites: Number(row?.verified_sites ?? 0),
       blockedSites: Number(row?.blocked_sites ?? 0),
       crawlErrors: Number(row?.crawl_errors ?? 0),
-      pendingClaims: Number(row?.pending_claims ?? 0),
-      verifiedClaims: Number(row?.verified_claims ?? 0),
-      pendingService: Number(row?.pending_service ?? 0),
-      verifiedService: Number(row?.verified_service ?? 0),
+      publishedClaims: Number(row?.published_claims ?? 0),
+      reviewedClaims: Number(row?.reviewed_claims ?? 0),
+      rejectedClaims: Number(row?.rejected_claims ?? 0),
+      publishedService: Number(row?.published_service ?? 0),
+      reviewedService: Number(row?.reviewed_service ?? 0),
     };
   } catch (error) {
     if (!isMissingElectionSchema(error)) throw error;
@@ -1091,10 +1106,11 @@ export async function getCandidateResearchHealth() {
       verifiedSites: 0,
       blockedSites: 0,
       crawlErrors: 0,
-      pendingClaims: 0,
-      verifiedClaims: 0,
-      pendingService: 0,
-      verifiedService: 0,
+      publishedClaims: 0,
+      reviewedClaims: 0,
+      rejectedClaims: 0,
+      publishedService: 0,
+      reviewedService: 0,
     };
   }
 }

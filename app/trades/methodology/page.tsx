@@ -172,8 +172,9 @@ export default async function TradesMethodologyPage() {
             <span className="font-medium">Validation.</span> Each row is
             checked against the canonical list of STOCK Act amount ranges and
             transaction types. Rows that fail validation or score below 0.8
-            confidence are held for human review and not surfaced until
-            cleared.
+            confidence are published with a visible review badge rather than
+            hidden, so a reader can see exactly which rows the parser was
+            unsure about. Nothing is silently dropped or silently trusted.
           </li>
           <li>
             <span className="font-medium">Late-filing math.</span> A
@@ -223,8 +224,10 @@ export default async function TradesMethodologyPage() {
           </li>
           <li>
             <span className="font-medium">PDF parsing is automated.</span>{" "}
-            Confidence below 0.8 holds a row in a review queue. A regression
-            test set of hand-verified filings catches drift.
+            Confidence below 0.8 flags a row for review and the flag is
+            rendered. House PDF parsing is paused as of Aug 31, 2026, while it
+            is rebuilt to chunk oversized filings; rows already parsed remain
+            published with their flags.
           </li>
           <li>
             <span className="font-medium">No options, no derivatives.</span>{" "}

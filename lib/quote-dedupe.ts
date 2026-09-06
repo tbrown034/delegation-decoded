@@ -85,3 +85,13 @@ export function dedupeByQuote<T>(
   // Restore the caller's original ordering so display stays stable.
   return items.filter((_, index) => keptIndexes.has(index));
 }
+
+// Loose containment: case-insensitive, punctuation and whitespace folded.
+// "Public servant" is found in "As a public servant, ..."; "Made in America
+// Office (MIAO)" is not found in "serving in government".
+export function wordsAppearIn(needle: string, haystack: string) {
+  const fold = (value: string) =>
+    ` ${value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()} `;
+  const n = fold(needle);
+  return n.trim().length > 0 && fold(haystack).includes(n);
+}

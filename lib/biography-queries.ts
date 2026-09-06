@@ -33,9 +33,13 @@ export type PublishedMemberBiography = {
 export type MemberBiographyHealth = {
   verifiedSites: number;
   crawlErrors: number;
-  membersWithVerifiedFacts: number;
-  pendingFacts: number;
-  verifiedFacts: number;
+  // Publication is automatic: any fact whose verbatim quote survived the
+  // snapshot check and was not rejected is live. Human review is a spot-check
+  // and rejection path, not a gate, so these counters report both truths.
+  membersPublished: number;
+  publishedFacts: number;
+  reviewedFacts: number;
+  rejectedFacts: number;
 };
 
 export async function getPublishedMemberBiography(
@@ -102,26 +106,31 @@ export async function getMemberBiographyHealth(): Promise<MemberBiographyHealth>
       SELECT
         (SELECT COUNT(*)::int FROM member_official_sites WHERE verification_status = 'verified') AS verified_sites,
         (SELECT COUNT(*)::int FROM member_official_sites WHERE crawl_error IS NOT NULL) AS crawl_errors,
-        (SELECT COUNT(DISTINCT bioguide_id)::int FROM member_biography_claims WHERE review_status = 'verified') AS members_with_verified_facts,
-        (SELECT COUNT(*)::int FROM member_biography_claims WHERE review_status = 'needs_review') AS pending_facts,
-        (SELECT COUNT(*)::int FROM member_biography_claims WHERE review_status = 'verified') AS verified_facts
+        (SELECT COUNT(DISTINCT bioguide_id)::int FROM member_biography_claims
+           WHERE review_status <> 'rejected' AND source_quote IS NOT NULL AND BTRIM(source_quote) <> '') AS members_published,
+        (SELECT COUNT(*)::int FROM member_biography_claims
+           WHERE review_status <> 'rejected' AND source_quote IS NOT NULL AND BTRIM(source_quote) <> '') AS published_facts,
+        (SELECT COUNT(*)::int FROM member_biography_claims WHERE review_status = 'verified') AS reviewed_facts,
+        (SELECT COUNT(*)::int FROM member_biography_claims WHERE review_status = 'rejected') AS rejected_facts
     `);
     const row = result.rows[0] as Record<string, unknown> | undefined;
     return {
       verifiedSites: Number(row?.verified_sites ?? 0),
       crawlErrors: Number(row?.crawl_errors ?? 0),
-      membersWithVerifiedFacts: Number(row?.members_with_verified_facts ?? 0),
-      pendingFacts: Number(row?.pending_facts ?? 0),
-      verifiedFacts: Number(row?.verified_facts ?? 0),
+      membersPublished: Number(row?.members_published ?? 0),
+      publishedFacts: Number(row?.published_facts ?? 0),
+      reviewedFacts: Number(row?.reviewed_facts ?? 0),
+      rejectedFacts: Number(row?.rejected_facts ?? 0),
     };
   } catch (error) {
     if (!isMissingBiographySchema(error)) throw error;
     return {
       verifiedSites: 0,
       crawlErrors: 0,
-      membersWithVerifiedFacts: 0,
-      pendingFacts: 0,
-      verifiedFacts: 0,
+      membersPublished: 0,
+      publishedFacts: 0,
+      reviewedFacts: 0,
+      rejectedFacts: 0,
     };
   }
 }

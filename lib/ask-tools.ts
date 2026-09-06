@@ -23,6 +23,14 @@ import {
 import type { RaceCandidateResult } from "./elections/types";
 import type { PublishedCandidateResearch } from "./elections/queries";
 
+// A start or end date is the extractor's reading unless its year is in the
+// quoted text.
+function yearInQuote(date: string | null, quote: string): string | null {
+  if (!date) return null;
+  const year = date.slice(0, 4);
+  return /^\d{4}$/.test(year) && quote.includes(year) ? date : null;
+}
+
 export type AskScope =
   | { type: "state"; stateCode: string; district: number | null }
   | {
@@ -471,12 +479,15 @@ function raceToolPayload(
               quote: claim.sourceQuote,
               source_url: claim.sourceUrl,
             })) ?? [],
+        // Structured fields are the extractor's reading of the quote and are
+        // supplied only when their words appear in it; the quote is the
+        // record.
         prior_service_stated_by_campaign:
           profile?.priorService.map((service) => ({
-            office: service.officeTitle,
-            jurisdiction: service.jurisdiction,
-            started_on: service.startedOn,
-            ended_on: service.endedOn,
+            office: service.officeInQuote ? service.officeTitle : null,
+            jurisdiction: service.jurisdictionInQuote ? service.jurisdiction : null,
+            started_on: yearInQuote(service.startedOn, service.sourceQuote),
+            ended_on: yearInQuote(service.endedOn, service.sourceQuote),
             quote: service.sourceQuote,
             source_url: service.sourceUrl,
           })) ?? [],

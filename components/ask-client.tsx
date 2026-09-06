@@ -1261,7 +1261,7 @@ export default function AskClient({
       {!budgetExhausted && (
         <p className="mt-4 text-xs text-neutral-400">
           Answers come only from retrieved records — votes, bills, campaign
-          money, committees and reviewed official-site biographies. Follow-ups can build on your last two answers;
+          money, committees and quoted official-site biographies. Follow-ups can build on your last two answers;
           every fact is re-checked against the records.
         </p>
       )}

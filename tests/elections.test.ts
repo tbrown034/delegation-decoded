@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { wordsAppearIn } from "../lib/quote-dedupe";
 import {
   candidateNamesLikelySame,
   candidateIdentity,
@@ -960,4 +961,12 @@ test("official biography extraction publishes only facts with captured quotes", 
   assert.deepEqual(output.facts.map((fact) => fact.claimText), [
     "Jordan Lee graduated from State University.",
   ]);
+});
+
+test("prior-service structured fields publish only when their words are in the quote", () => {
+  assert.equal(wordsAppearIn("Public servant", "As a public servant, Abdul secured free glasses"), true);
+  assert.equal(wordsAppearIn("Rhode Island's First Congressional District", "elected to serve Rhode Island’s First Congressional District in 2023"), true);
+  assert.equal(wordsAppearIn("Made in America Office (MIAO), Office of Management and Budget", "In 2020, Don jumped into his next mission, serving in government"), false);
+  assert.equal(wordsAppearIn("Senator", "In the Senate, he continues to serve Nebraskans"), false);
+  assert.equal(wordsAppearIn("", "anything"), false);
 });

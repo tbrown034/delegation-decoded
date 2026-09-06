@@ -104,14 +104,15 @@ export default async function HealthPage() {
           Official member biographies
         </h2>
         <p className="mt-1 text-sm text-neutral-600">
-          Sources must be official House or Senate sites. Extracted facts stay unpublished and unavailable to Ask until a human verifies the source and exact quote.
+          Sources must be official House or Senate sites. Only verbatim quotes that the code found in the captured page are stored; the model&apos;s paraphrase is never shown. Publication is automatic. Human review is a spot-check and rejection path, and a rejected quote leaves the page and Ask.
         </p>
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <Stat label="Verified sites" value={report.memberBiographies.verifiedSites} />
           <Stat label="Crawl errors" value={report.memberBiographies.crawlErrors} tone={report.memberBiographies.crawlErrors > 0 ? "warn" : "ok"} />
-          <Stat label="Members published" value={report.memberBiographies.membersWithVerifiedFacts} />
-          <Stat label="Facts queued" value={report.memberBiographies.pendingFacts} tone={report.memberBiographies.pendingFacts > 0 ? "warn" : "ok"} />
-          <Stat label="Facts verified" value={report.memberBiographies.verifiedFacts} />
+          <Stat label="Members published" value={report.memberBiographies.membersPublished} />
+          <Stat label="Facts published" value={report.memberBiographies.publishedFacts} />
+          <Stat label="Human-reviewed" value={report.memberBiographies.reviewedFacts} />
+          <Stat label="Rejected" value={report.memberBiographies.rejectedFacts} />
         </div>
       </section>
 
@@ -120,16 +121,16 @@ export default async function HealthPage() {
           Candidate-site research
         </h2>
         <p className="mt-1 text-sm text-neutral-600">
-          Sites are linked through FEC committee filings. Model-extracted claims stay unpublished until a human verifies the source and quote.
+          Sites are linked through FEC committee filings. Only verbatim quotes found in the captured page are stored, and they publish automatically with a link to the source. Human review is a spot-check and rejection path; a rejected claim leaves the race page and Ask.
         </p>
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
           <Stat label="Verified sites" value={report.candidateResearch.verifiedSites} />
           <Stat label="No FEC site" value={report.candidateResearch.blockedSites} tone={report.candidateResearch.blockedSites > 0 ? "warn" : "ok"} />
           <Stat label="Crawl errors" value={report.candidateResearch.crawlErrors} tone={report.candidateResearch.crawlErrors > 0 ? "warn" : "ok"} />
-          <Stat label="Claims queued" value={report.candidateResearch.pendingClaims} tone={report.candidateResearch.pendingClaims > 0 ? "warn" : "ok"} />
-          <Stat label="Claims verified" value={report.candidateResearch.verifiedClaims} />
-          <Stat label="Service queued" value={report.candidateResearch.pendingService} tone={report.candidateResearch.pendingService > 0 ? "warn" : "ok"} />
-          <Stat label="Service verified" value={report.candidateResearch.verifiedService} />
+          <Stat label="Claims published" value={report.candidateResearch.publishedClaims} />
+          <Stat label="Claims reviewed" value={report.candidateResearch.reviewedClaims} />
+          <Stat label="Claims rejected" value={report.candidateResearch.rejectedClaims} />
+          <Stat label="Service published" value={report.candidateResearch.publishedService} />
         </div>
       </section>
 
