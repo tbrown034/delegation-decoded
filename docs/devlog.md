@@ -542,6 +542,27 @@ Picked up a timed-out external agent's react-doctor refactor pass, verified it, 
 - Deferred, on record: House PTR chunked parsing (4 oversized filings still fail daily, suppressed from the crit gate), /trades server-side aggregation, elections.ts per-state split paired with fecMatchesFor* consolidation (~205 lines to ~30), ALLOWED_HOSTS rename (two different allowlists share the name), party vocabulary unification on party-mark.tsx, trade-timeline Date.now() hydration warning, ASK_ADMIN_KEY missing from .env.example.
 
 ---
+## 2026-09-05 — Pre-interview hardening: red-team fixes, Michigan verified ballot, docs truth
+
+**Session Summary:**
+- Ran a read-only Codex red-team over /ask, the extraction pipelines, the proxy, the exports and the public copy (16 findings), plus an internal AI-layer map and a Grok mock-panel review of the interview walkthrough. Eleven commits on main, each behind tests, lint, typecheck and a clean build; not pushed pending merge with the parallel `interview-safeguards-isolated` worktree.
+- Michigan: the Bureau of Elections republished its general list as "Official Candidate Listing" after the Aug 4 primary and the parser had failed closed for five nights. The parser now reports the label, rejects an ambiguous page, and the ingest promotes the official list to `general_ballot` with ballot lines, moves contests to `verified_ballot`, retires primary-only candidacies as `not_on_state_general_list` and retires rows the state no longer lists. Live run: 68 verified general candidates across 14 contests; second run idempotent.
+- Health staleness now measures hours since the last *successful* run, so a source failing nightly cannot look fresh; the retired press-release source no longer counts as an unrecovered incident.
+- Docs truth: /about, /health and the trade methodology promised a reviewer name and timestamp before any extracted fact publishes. The code has published every non-rejected verbatim quote automatically since July (8,662 biography facts, 2,465 campaign claims, 279 prior-service rows, none ever reviewed). Copy now states the real safeguard (quote must be in the captured page; paraphrase never shown; review is a spot-check and rejection path) and /health counts published / human-reviewed / rejected.
+- Prior-service office titles, jurisdictions and dates were the extractor's reading of the quote (112 of 279 titles absent from their quote); race pages and the Ask tool now show them only when their words are in the quote.
+- Extraction validators count what the verbatim guard refused; both crawler ingests print the tally per site and per run.
+- Crawler: RFC 9309 robots matching (wildcards, `$`), redirect targets re-checked, fetch attempts capped independently of pages kept.
+- Exports: six keyset CSV routes moved to a shared pull-driven `keysetCsvStream`, cancel- and abort-aware, byte-identical to production including the 37-batch votes file; CDN cache raised to 1h + 1d stale-while-revalidate.
+- /ask: district scope validated against the at-large convention (0 only in one-seat states); nightly cleanup expires `ask_log` at 90 days itself; the topic router now offers the race tool for "filed with the FEC" / "on the ballot" questions after the eval caught a not-in-data answer. Eval: 22/22 Anthropic, 21/22 OpenAI with the miss fixed and re-run green.
+- /admin paths answer 404 from the proxy (constant-time key compare) instead of streaming a 200 with the page title. README and workflow failure templates point at delegationdecoded.org. PTR parser names `max_tokens` truncation and refusals explicitly.
+- Closed issues #2-#4 (all the press-release weekly timeout, retired Aug 31); Sep 6 is the first weekly run without that step.
+
+**Notable Changes:**
+- Deferred, on record from the red-team: engine deadline excludes moderation calls; exhausted provider still consumes a global slot; Anthropic `max_tokens` not explicitly rejected; content pages embedding the ask bar run the static CSP by design; no per-question dollar cap or runtime kill switch; no cache purge for a bad answer; `eval-ask.ts` exit code and press-release copy on /about are on the worktree branch.
+- Interview walkthrough: second-brain-v2/docs/houston-r4-delegation-decoded-walkthrough-2026-09-05.md.
+- Known-good gates at session end: 88/88 tests, lint, typecheck, build clean; local health-check WARN with 0 crit and no Michigan failure.
+
+---
 ## 2026-08-31 — Full-site health audit: Neon burn fixed, CI green, backlog cleared
 
 **Session Summary:**
