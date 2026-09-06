@@ -52,6 +52,10 @@ type ExtractionResult = {
 };
 
 const DRY_RUN = process.argv.includes("--dry-run");
+// Run-level tally of model output the validator refused. A run that dropped
+// everything for missing quotes looks the same as a page with nothing to say
+// unless this is printed.
+const dropTotals = { quoteNotInSource: 0, malformed: 0 };
 const RETRY_ERRORS = process.argv.includes("--retry-errors");
 const FORCE_REEXTRACT =
   process.argv.includes("--force") ||
@@ -427,8 +431,12 @@ async function processMember(
       updatedAt: new Date(),
     })
     .where(eq(memberOfficialSites.bioguideId, member.bioguide_id));
+  const { quoteNotInSource, malformed } = extraction.output.dropped;
+  dropTotals.quoteNotInSource += quoteNotInSource;
+  dropTotals.malformed += malformed;
   console.log(
-    `${member.full_name}: ${extraction.output.facts.length} biography facts queued for review via ${extraction.provider}/${extraction.model}.`
+    `${member.full_name}: ${extraction.output.facts.length} biography facts published via ${extraction.provider}/${extraction.model}; ` +
+      `dropped ${quoteNotInSource} whose quote was not in the captured page and ${malformed} malformed.`
   );
   return extraction.output.facts.length;
 }
@@ -493,7 +501,9 @@ async function main() {
     .where(eq(syncLog.id, run.id));
   if (failed) throw new Error("Every due member biography extraction failed; inspect sync_log");
   console.log(
-    `Member biography ingest complete: ${successes}/${members.length} members, ${records} review-queued facts, ${budget.calls} provider calls, ${budget.tokens} tokens.`
+    `Member biography ingest complete: ${successes}/${members.length} members, ${records} facts published, ` +
+      `${dropTotals.quoteNotInSource} model items dropped for quotes not in the captured page, ${dropTotals.malformed} malformed, ` +
+      `${budget.calls} provider calls, ${budget.tokens} tokens.`
   );
 }
 

@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
 import {
   normalizeEvidenceText,
+  quoteInPage,
   type CampaignResearchPage,
+  type ExtractionDrops,
 } from "./elections/campaign-research";
 
 export type BiographyFact = {
@@ -13,6 +15,7 @@ export type BiographyFact = {
 
 export type BiographyResearchOutput = {
   facts: BiographyFact[];
+  dropped: ExtractionDrops;
 };
 
 export const BIOGRAPHY_RESEARCH_SCHEMA = {
@@ -58,8 +61,12 @@ export function validateBiographyResearch(
   const pageById = new Map(pages.map((page) => [page.pageId, page]));
   const facts: BiographyFact[] = [];
   const seen = new Set<string>();
+  const dropped: ExtractionDrops = { quoteNotInSource: 0, malformed: 0 };
   for (const item of value.facts.slice(0, 12)) {
-    if (!isRecord(item)) continue;
+    if (!isRecord(item)) {
+      dropped.malformed += 1;
+      continue;
+    }
     const claimText = boundedString(item.claimText, 600);
     const pageId = boundedString(item.pageId, 40);
     const sourceQuote = boundedString(item.sourceQuote, 700);
@@ -71,11 +78,13 @@ export function validateBiographyResearch(
       !sourceQuote ||
       !Number.isInteger(confidence) ||
       Number(confidence) < 0 ||
-      Number(confidence) > 100 ||
-      !normalizeEvidenceText(page.text).includes(
-        normalizeEvidenceText(sourceQuote)
-      )
+      Number(confidence) > 100
     ) {
+      dropped.malformed += 1;
+      continue;
+    }
+    if (!quoteInPage(page, sourceQuote)) {
+      dropped.quoteNotInSource += 1;
       continue;
     }
     const key = normalizeEvidenceText(claimText).toLowerCase();
@@ -88,7 +97,7 @@ export function validateBiographyResearch(
       confidence: Number(confidence),
     });
   }
-  return { facts };
+  return { facts, dropped };
 }
 
 export function stableBiographyId(prefix: string, ...parts: string[]) {

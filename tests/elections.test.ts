@@ -953,6 +953,9 @@ test("extraction drops claims whose quote is not present in the captured page", 
   );
   assert.equal(output.claims.length, 1);
   assert.equal(output.claims[0].claimText, "Supports public records access.");
+  // The refusal is counted, so a run can report how often the verbatim
+  // guard actually fired.
+  assert.deepEqual(output.dropped, { quoteNotInSource: 1, malformed: 0 });
 });
 
 test("official biography extraction publishes only facts with captured quotes", () => {
@@ -986,6 +989,7 @@ test("official biography extraction publishes only facts with captured quotes", 
   assert.deepEqual(output.facts.map((fact) => fact.claimText), [
     "Jordan Lee graduated from State University.",
   ]);
+  assert.deepEqual(output.dropped, { quoteNotInSource: 1, malformed: 0 });
 });
 
 test("prior-service structured fields publish only when their words are in the quote", () => {

@@ -24,10 +24,30 @@ export type ExtractedPriorService = {
   sourceQuote: string;
 };
 
+// Items the validator refused. `quoteNotInSource` is the count that proves
+// the verbatim guard is doing work: model output whose quoted words were not
+// in the captured page. `malformed` covers shape, page-id and range failures.
+export type ExtractionDrops = {
+  quoteNotInSource: number;
+  malformed: number;
+};
+
 export type CampaignResearchOutput = {
   claims: ExtractedCampaignClaim[];
   priorService: ExtractedPriorService[];
+  dropped: ExtractionDrops;
 };
+
+export function quoteInPage(
+  page: CampaignResearchPage | null | undefined,
+  quote: string | null
+) {
+  return (
+    !!page &&
+    !!quote &&
+    normalizeEvidenceText(page.text).includes(normalizeEvidenceText(quote))
+  );
+}
 
 // Display grouping for extracted claims. Biography is rendered separately, so
 // it is absent here; the rest are ordered from what a campaign promises to who
@@ -139,9 +159,13 @@ export function validateCampaignResearch(
   const pageById = new Map(pages.map((page) => [page.pageId, page]));
   const claims: ExtractedCampaignClaim[] = [];
   const priorService: ExtractedPriorService[] = [];
+  const dropped: ExtractionDrops = { quoteNotInSource: 0, malformed: 0 };
 
   for (const item of value.claims.slice(0, 20)) {
-    if (!isRecord(item)) continue;
+    if (!isRecord(item)) {
+      dropped.malformed += 1;
+      continue;
+    }
     const pageId = boundedString(item.pageId, 40);
     const quote = boundedString(item.sourceQuote, 700);
     const claimText = boundedString(item.claimText, 600);
@@ -157,9 +181,13 @@ export function validateCampaignResearch(
       ) ||
       !Number.isInteger(confidence) ||
       Number(confidence) < 0 ||
-      Number(confidence) > 100 ||
-      !normalizeEvidenceText(page.text).includes(normalizeEvidenceText(quote))
+      Number(confidence) > 100
     ) {
+      dropped.malformed += 1;
+      continue;
+    }
+    if (!quoteInPage(page, quote)) {
+      dropped.quoteNotInSource += 1;
       continue;
     }
     claims.push({
@@ -172,7 +200,10 @@ export function validateCampaignResearch(
   }
 
   for (const item of value.priorService.slice(0, 10)) {
-    if (!isRecord(item)) continue;
+    if (!isRecord(item)) {
+      dropped.malformed += 1;
+      continue;
+    }
     const pageId = boundedString(item.pageId, 40);
     const quote = boundedString(item.sourceQuote, 700);
     const officeTitle = boundedString(item.officeTitle, 240);
@@ -186,9 +217,13 @@ export function validateCampaignResearch(
       !officeTitle ||
       jurisdiction === undefined ||
       startedOn === undefined ||
-      endedOn === undefined ||
-      !normalizeEvidenceText(page.text).includes(normalizeEvidenceText(quote))
+      endedOn === undefined
     ) {
+      dropped.malformed += 1;
+      continue;
+    }
+    if (!quoteInPage(page, quote)) {
+      dropped.quoteNotInSource += 1;
       continue;
     }
     priorService.push({
@@ -201,7 +236,7 @@ export function validateCampaignResearch(
     });
   }
 
-  return { claims, priorService };
+  return { claims, priorService, dropped };
 }
 
 export function stableResearchId(prefix: string, ...parts: string[]) {

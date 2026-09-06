@@ -90,6 +90,10 @@ function emptyRunBudget(): RunBudget {
 }
 
 const DRY_RUN = process.argv.includes("--dry-run");
+// Run-level tally of model output the validator refused. A run that dropped
+// everything for missing quotes looks the same as a page with nothing to say
+// unless this is printed.
+const dropTotals = { quoteNotInSource: 0, malformed: 0 };
 const FORCE_REEXTRACT =
   process.argv.includes("--force") ||
   ["1", "true"].includes((process.env.CANDIDATE_EXTRACT_FORCE ?? "").toLowerCase());
@@ -537,8 +541,12 @@ async function processCandidate(
     })
     .where(eq(candidateCampaignSites.candidacyId, candidate.candidacy_id));
   const records = extraction.output.claims.length + extraction.output.priorService.length;
+  const { quoteNotInSource, malformed } = extraction.output.dropped;
+  dropTotals.quoteNotInSource += quoteNotInSource;
+  dropTotals.malformed += malformed;
   console.log(
-    `${candidate.display_name}: ${crawled.length} pages, ${records} review-queued records via ${extraction.provider}/${extraction.model}.`
+    `${candidate.display_name}: ${crawled.length} pages, ${records} records published via ${extraction.provider}/${extraction.model}; ` +
+      `dropped ${quoteNotInSource} whose quote was not in the captured page and ${malformed} malformed.`
   );
   return records;
 }
@@ -607,8 +615,9 @@ async function main() {
     })
     .join("; ");
   console.log(
-    `Candidate-site ingest complete: ${successes}/${candidates.length} candidates, ${records} review-queued records, ${budget.calls} provider calls, ${budget.tokens} tokens ` +
-      `(${usageSummary}).`
+    `Candidate-site ingest complete: ${successes}/${candidates.length} candidates, ${records} records published, ` +
+      `${dropTotals.quoteNotInSource} model items dropped for quotes not in the captured page, ${dropTotals.malformed} malformed, ` +
+      `${budget.calls} provider calls, ${budget.tokens} tokens (${usageSummary}).`
   );
 }
 
