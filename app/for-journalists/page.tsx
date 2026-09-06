@@ -175,6 +175,31 @@ export default async function ForJournalistsPage() {
 
       <section className="mb-10 space-y-3 text-sm leading-relaxed text-neutral-800">
         <h2 className="font-serif text-xl font-semibold tracking-tight">
+          Where AI touched the data
+        </h2>
+        <p>
+          The roster, votes, bills, sponsorships, campaign finance, committees
+          and Senate disclosure rows come straight from official records with
+          no model in the loop, and so do the member, candidate, finance, race
+          and vote exports. In the preview trade and filing exports, House rows
+          were read from
+          PDF scans by a vision model; each row carries a{" "}
+          <code className="font-mono text-xs">confidence</code> score and a{" "}
+          <code className="font-mono text-xs">needs_review</code> flag, and
+          rows below 80% confidence are published with the flag rather than
+          hidden. Biography and campaign quotes on member and race pages are
+          verbatim passages a model selected and code confirmed were present
+          in a captured copy of the source page; they are the office&apos;s own
+          words, not independent findings. The{" "}
+          <Link href="/about#ai-transparency" className="underline hover:text-neutral-900">
+            AI transparency section
+          </Link>{" "}
+          on the About page names every model call.
+        </p>
+      </section>
+
+      <section className="mb-10 space-y-3 text-sm leading-relaxed text-neutral-800">
+        <h2 className="font-serif text-xl font-semibold tracking-tight">
           What to cite
         </h2>
         <p>

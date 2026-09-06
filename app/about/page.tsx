@@ -610,7 +610,7 @@ function AboutProcessDetails({
         </section>
 
         {/* AI transparency */}
-        <section>
+        <section id="ai-transparency">
           <h2 className="mb-4 font-serif text-lg font-semibold text-neutral-900">
             AI transparency
           </h2>
