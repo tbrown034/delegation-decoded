@@ -314,7 +314,9 @@ function CandidateList({
               <p className="mt-0.5 text-xs text-neutral-500">
                 {candidate.party
                   ? `${candidate.party}${partyIsPreference ? " preference" : ""}`
-                  : "No party listed"} · {candidate.status.replaceAll("_", " ")}
+                  : "No party listed"} · {candidate.status === "sitting_member_no_2026_fec_filing"
+                  ? "sitting member, no 2026 FEC filing"
+                  : candidate.status.replaceAll("_", " ")}
               </p>
               {candidate.ballotLines.length > 1 && (
                 <p className="mt-1 text-xs text-neutral-500">Ballot lines: {candidate.ballotLines.join(", ")}</p>
