@@ -205,7 +205,7 @@ jobs:
               `Run: ${run}`,
               `Triggered: \`${context.eventName}\``,
               ``,
-              `Check the run logs and the [/health page](https://delegation-decoded.vercel.app/health) for details.`,
+              `Check the run logs and the [/health page](https://delegationdecoded.org/health) for details.`,
             ].join('\n');
             if (existing) {
               await github.rest.issues.createComment({

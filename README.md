@@ -2,7 +2,7 @@
 
 Congressional accountability tracking, organized by state delegation.
 
-Live at [delegation-decoded.vercel.app](https://delegation-decoded.vercel.app).
+Live at [delegationdecoded.org](https://delegationdecoded.org).
 
 Delegation Decoded turns official congressional records into state-level dashboards for reporters, researchers, and civic-minded voters. It tracks members, votes, legislation, committees, campaign finance, stock trades, and 2026 races, and answers plain-language questions about all of it with an assistant that cites the records it read.
 

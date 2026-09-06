@@ -22,9 +22,38 @@ function compact(policy: string): string {
   return policy.replace(/\s{2,}/g, " ").trim();
 }
 
-export function proxy(request: NextRequest) {
+// /admin pages authorize inside the page, but the root layout streams, so
+// the 200 status line and the page title were already on the wire before the
+// page's notFound() ran. The proxy answers 404 up front instead: with no key
+// configured, or a key that does not match, an admin path does not exist.
+async function adminKeyMatches(candidate: string | null) {
+  const expected = process.env.ASK_ADMIN_KEY;
+  if (!expected || !candidate) return false;
+  const encoder = new TextEncoder();
+  const [a, b] = await Promise.all([
+    crypto.subtle.digest("SHA-256", encoder.encode(candidate)),
+    crypto.subtle.digest("SHA-256", encoder.encode(expected)),
+  ]);
+  const left = new Uint8Array(a);
+  const right = new Uint8Array(b);
+  let diff = 0;
+  for (let i = 0; i < left.length; i += 1) diff |= left[i] ^ right[i];
+  return diff === 0;
+}
+
+export async function proxy(request: NextRequest) {
   const isDev = process.env.NODE_ENV === "development";
   const { pathname } = request.nextUrl;
+
+  if (pathname === "/admin" || pathname.startsWith("/admin/")) {
+    if (!(await adminKeyMatches(request.nextUrl.searchParams.get("key")))) {
+      return new NextResponse("Not found", {
+        status: 404,
+        headers: { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" },
+      });
+    }
+  }
+
   const wantsNonce = NONCE_ROUTE_PREFIXES.some(
     (p) => pathname === p || pathname.startsWith(`${p}/`)
   );
