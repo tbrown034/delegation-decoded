@@ -4,7 +4,7 @@ A chronological record of development sessions and significant changes.
 
 ---
 
-## 2026-09-05 - Interview safeguards and truthful review disclosure
+## 2026-09-05 - Ask citation gate and truthful review disclosure
 
 **Session Summary:**
 - Hardened Ask answer validation: factual answers require a retrieved citation; invented refs reject the response; oversized tool results preserve whole records and commit only references actually sent.
@@ -17,7 +17,7 @@ A chronological record of development sessions and significant changes.
 **Verification at this milestone:**
 - 99/99 deterministic tests, ESLint, typecheck and production build pass. Five local production routes returned 200; visible About, Health and trade methodology disclosures were checked.
 - Verified nonzero evaluation exits for an empty case selection and unavailable providers without paid model calls for those checks.
-- Paid model evaluations found a missing FEC-filer routing term and a stock-boundary status error. Both have targeted fixes; evaluation and independent review results are recorded in docs/interview-showcase/hardening-report.md.
+- Paid model evaluations found a missing FEC-filer routing term and a stock-boundary status error. Both have targeted fixes; evaluation and independent review results are kept outside the repository.
 - No source-data edits, deployment, merge or external sharing. Paid evals read the existing database and call the configured model providers.
 
 ---
@@ -560,10 +560,10 @@ Picked up a timed-out external agent's react-doctor refactor pass, verified it, 
 - Deferred, on record: House PTR chunked parsing (4 oversized filings still fail daily, suppressed from the crit gate), /trades server-side aggregation, elections.ts per-state split paired with fecMatchesFor* consolidation (~205 lines to ~30), ALLOWED_HOSTS rename (two different allowlists share the name), party vocabulary unification on party-mark.tsx, trade-timeline Date.now() hydration warning, ASK_ADMIN_KEY missing from .env.example.
 
 ---
-## 2026-09-05 — Pre-interview hardening: red-team fixes, Michigan verified ballot, docs truth
+## 2026-09-05 — Red-team hardening: Michigan verified ballot, docs truth, citation gate
 
 **Session Summary:**
-- Ran a read-only Codex red-team over /ask, the extraction pipelines, the proxy, the exports and the public copy (16 findings), plus an internal AI-layer map and a Grok mock-panel review of the interview walkthrough. Eleven commits on main, each behind tests, lint, typecheck and a clean build; not pushed pending merge with the parallel `interview-safeguards-isolated` worktree.
+- Ran a read-only Codex red-team over /ask, the extraction pipelines, the proxy, the exports and the public copy (16 findings). Eleven commits on main, each behind tests, lint, typecheck and a clean build; not pushed pending merge with the parallel `interview-safeguards-isolated` worktree.
 - Michigan: the Bureau of Elections republished its general list as "Official Candidate Listing" after the Aug 4 primary and the parser had failed closed for five nights. The parser now reports the label, rejects an ambiguous page, and the ingest promotes the official list to `general_ballot` with ballot lines, moves contests to `verified_ballot`, retires primary-only candidacies as `not_on_state_general_list` and retires rows the state no longer lists. Live run: 68 verified general candidates across 14 contests; second run idempotent.
 - Health staleness now measures hours since the last *successful* run, so a source failing nightly cannot look fresh; the retired press-release source no longer counts as an unrecovered incident.
 - Docs truth: /about, /health and the trade methodology promised a reviewer name and timestamp before any extracted fact publishes. The code has published every non-rejected verbatim quote automatically since July (8,662 biography facts, 2,465 campaign claims, 279 prior-service rows, none ever reviewed). Copy now states the real safeguard (quote must be in the captured page; paraphrase never shown; review is a spot-check and rejection path) and /health counts published / human-reviewed / rejected.
@@ -574,7 +574,7 @@ Picked up a timed-out external agent's react-doctor refactor pass, verified it, 
 - /ask: district scope validated against the at-large convention (0 only in one-seat states); nightly cleanup expires `ask_log` at 90 days itself; the topic router now offers the race tool for "filed with the FEC" / "on the ballot" questions after the eval caught a not-in-data answer. Eval: 22/22 Anthropic, 21/22 OpenAI with the miss fixed and re-run green.
 - /admin paths answer 404 from the proxy (constant-time key compare) instead of streaming a 200 with the page title. README and workflow failure templates point at delegationdecoded.org. PTR parser names `max_tokens` truncation and refusals explicitly.
 - Closed issues #2-#4 (all the press-release weekly timeout, retired Aug 31); Sep 6 is the first weekly run without that step.
-- Later the same night: merged the parallel Codex worktree branch `interview-safeguards-isolated` (citation hard gate via `finalizeAskAnswer`, prompt v8, eval exit code, /about press-release and PTR copy) with conflicts resolved toward the truer wording; /health counts published rows the way the page queries define them (verified site, non-rejected, non-empty quote). A Grok mock-panel review of the walkthrough caught the model-facing "human-reviewed" tool description, the candidate page printing inferred office titles, a stale Michigan paragraph on /about and "queue for review" workflow step names; all fixed. Anthropic `max_tokens` now raises provider-unavailable; provider budget is checked before the global counter. Both external reviews archived under docs/reviews/. 104 tests.
+- Later the same night: merged the parallel Codex worktree branch `interview-safeguards-isolated` (citation hard gate via `finalizeAskAnswer`, prompt v8, eval exit code, /about press-release and PTR copy) with conflicts resolved toward the truer wording; /health counts published rows the way the page queries define them (verified site, non-rejected, non-empty quote). A second-model review caught the model-facing "human-reviewed" tool description, the candidate page printing inferred office titles, a stale Michigan paragraph on /about and "queue for review" workflow step names; all fixed. Anthropic `max_tokens` now raises provider-unavailable; provider budget is checked before the global counter. The Codex review is archived under docs/reviews/. 104 tests.
 - Overnight (Sep 6 ET, after the push): a Grok cold-read of the live Texas pages found the FEC-only race pages omitting sitting members with no Form 2 (TX-09 had 13 filers and no Al Green); the FEC fallback now adds the officeholder as a labeled reference row, the race-page ask blurb says "FEC filings" on those contests, committee chips use the roster surname (De La Cruz was "Cruz", Weber was "Sr."), FEC names re-normalized so suffixes trail the surname (2,498 rows re-ingested, answer cache flushed), duplicate FEC IDs listed once. Biography classifier ignores a leading title ("Congressman Al Green co-founded ... law firm" is career, not public service); 8,662 facts reclassified deterministically. The ask audit row is now written through Next's after(): a live 422 probe had been lost when the function froze before the fire-and-forget insert landed; re-probed after deploy and the row is there. /for-journalists gained an AI disclosure. Delegation briefs regenerated (Texas read "Generated Aug 23"). Live demo path tested: TX-22 committees question (8 citations), the vote-for-whom refusal, "who is running against Al Green", the Chronicle's own address through /find (TX-7). Sweep 56/56; depth eval 23/23 on both providers; 108 tests. Green's 1973/1974 J.D. contradiction on his own site is queued as the first named rejection for Trevor on Monday.
 
 **Notable Changes:**

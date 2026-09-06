@@ -1,3 +1,0 @@
-
-> delegation-decoded@0.1.0 lint /Users/home/Desktop/dev/active/delegation-decoded-interview
-> eslint
