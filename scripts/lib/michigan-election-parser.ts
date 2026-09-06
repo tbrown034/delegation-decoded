@@ -7,6 +7,12 @@ type HtmlRoot = HtmlNode | DefaultTreeAdapterMap["document"];
 
 export type MichiganCandidateStage = "primary" | "general";
 
+// The Bureau of Elections publishes the general-election list as "Unofficial"
+// until the primary is canvassed, then republishes the same report as
+// "Official". The label is the only signal that general-ballot access has
+// been verified, so the parser reports it instead of guessing.
+export type MichiganReportKind = "official" | "unofficial";
+
 export type MichiganCandidate = {
   name: string;
   normalizedName: string;
@@ -145,20 +151,24 @@ function isoDate(value: string) {
 
 function candidateStatus(
   rawStatus: string,
-  stage: MichiganCandidateStage
+  reportKind: MichiganReportKind
 ): MichiganCandidate["status"] {
-  if (rawStatus === "") return stage === "primary" ? "qualified" : "filed_unofficial";
+  if (rawStatus === "") {
+    return reportKind === "official" ? "qualified" : "filed_unofficial";
+  }
   if (rawStatus === "WITHD") return "withdrawn";
   if (rawStatus === "DISQ") return "disqualified";
   throw new Error("Michigan federal candidate status changed");
 }
 
-function validatePageIdentity(text: string, stage: MichiganCandidateStage) {
+function validatePageIdentity(
+  text: string,
+  stage: MichiganCandidateStage
+): MichiganReportKind {
   const expected =
     stage === "primary"
       ? [
           "Michigan Department of State",
-          "Official Candidate Listing",
           "All State and Judicial Offices",
           "Primary Election",
           "Tuesday, August 4, 2026",
@@ -166,7 +176,6 @@ function validatePageIdentity(text: string, stage: MichiganCandidateStage) {
         ]
       : [
           "Michigan Department of State",
-          "Unofficial Candidate Listing",
           "All State and Judicial Offices",
           "General Election",
           "Tuesday, November 3, 2026",
@@ -175,15 +184,27 @@ function validatePageIdentity(text: string, stage: MichiganCandidateStage) {
   if (expected.some((value) => !text.includes(value))) {
     throw new Error(`Michigan ${stage} candidate report identity changed`);
   }
+  const official = text.includes("Official Candidate Listing");
+  const unofficial = text.includes("Unofficial Candidate Listing");
+  // "Unofficial Candidate Listing" contains the substring "official Candidate
+  // Listing" but not the capitalized "Official", so the two labels are
+  // distinguishable; a page carrying both or neither is a changed report.
+  if (official === unofficial) {
+    throw new Error(`Michigan ${stage} candidate report identity changed`);
+  }
+  if (stage === "primary" && !official) {
+    throw new Error("Michigan primary candidate report is no longer official");
+  }
+  return official ? "official" : "unofficial";
 }
 
-export function parseMichiganCandidateReportHtml(
+export function parseMichiganCandidateReport(
   html: string,
   stage: MichiganCandidateStage
-) {
+): { reportKind: MichiganReportKind; candidates: MichiganCandidate[] } {
   const document = parse(html);
   const pageText = normalizeSpace(document.childNodes.map(textContent).join(" "));
-  validatePageIdentity(pageText, stage);
+  const reportKind = validatePageIdentity(pageText, stage);
 
   const rows = descendants(document, (element) => element.tagName === "tr");
   const candidates = new Map<string, MichiganCandidate>();
@@ -250,7 +271,7 @@ export function parseMichiganCandidateReportHtml(
       office: currentSeat.office,
       district: currentSeat.district,
       stage,
-      status: candidateStatus(rawStatus, stage),
+      status: candidateStatus(rawStatus, reportKind),
       filedOn: isoDate(values[dateIndex]),
       filingMethod: rawMethod,
     };
@@ -277,5 +298,12 @@ export function parseMichiganCandidateReportHtml(
   } else if (!contests.has("S|statewide") || parsed.length < 5) {
     throw new Error("Michigan general filing report lost expected federal coverage");
   }
-  return parsed;
+  return { reportKind, candidates: parsed };
+}
+
+export function parseMichiganCandidateReportHtml(
+  html: string,
+  stage: MichiganCandidateStage
+) {
+  return parseMichiganCandidateReport(html, stage).candidates;
 }

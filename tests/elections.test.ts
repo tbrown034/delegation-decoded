@@ -24,7 +24,10 @@ import {
   parseNebraskaCurrentCandidateRows,
   parseNebraskaPrimaryResultPages,
 } from "../scripts/lib/nebraska-election-parser";
-import { parseMichiganCandidateReportHtml } from "../scripts/lib/michigan-election-parser";
+import {
+  parseMichiganCandidateReport,
+  parseMichiganCandidateReportHtml,
+} from "../scripts/lib/michigan-election-parser";
 import { parseWashingtonPrimaryCandidateHtml } from "../scripts/lib/washington-election-parser";
 import { parseXlsxRows } from "../scripts/lib/xlsx-rows";
 import { isBlockedAddress } from "../scripts/lib/safe-fetch";
@@ -582,7 +585,8 @@ function michiganCandidateRow({
 
 function michiganReportFixture(
   stage: "primary" | "general",
-  firstStatus = ""
+  firstStatus = "",
+  generalLabel: "Official" | "Unofficial" = "Unofficial"
 ) {
   const isPrimary = stage === "primary";
   const sections = isPrimary
@@ -602,7 +606,7 @@ function michiganReportFixture(
       ];
   return `<html><body>
     <p>Michigan Department of State</p>
-    <p>${isPrimary ? "Official" : "Unofficial"} Candidate Listing</p>
+    <p>${isPrimary ? "Official" : generalLabel} Candidate Listing</p>
     <p>All State and Judicial Offices</p>
     <p>${isPrimary ? "Primary" : "General"} Election</p>
     <p>Tuesday, ${isPrimary ? "August 4" : "November 3"}, 2026</p>
@@ -653,6 +657,41 @@ test("Michigan general report preserves its unofficial qualification boundary", 
   assert.equal(parsed[0].party, "Green");
   assert.equal(parsed[0].status, "filed_unofficial");
   assert.equal(parsed[0].filingMethod, "Convention");
+});
+
+test("Michigan official general report verifies November ballot access", () => {
+  const parsed = parseMichiganCandidateReport(
+    michiganReportFixture("general", "", "Official"),
+    "general"
+  );
+  assert.equal(parsed.reportKind, "official");
+  assert.equal(parsed.candidates.length, 5);
+  assert.equal(parsed.candidates[0].stage, "general");
+  assert.equal(parsed.candidates[0].status, "qualified");
+  assert.equal(
+    parseMichiganCandidateReport(michiganReportFixture("general"), "general")
+      .reportKind,
+    "unofficial"
+  );
+});
+
+test("Michigan reports fail closed when the official label is ambiguous", () => {
+  const both = michiganReportFixture("general", "", "Official").replace(
+    "<p>Official Candidate Listing</p>",
+    "<p>Official Candidate Listing</p><p>Unofficial Candidate Listing</p>"
+  );
+  assert.throws(
+    () => parseMichiganCandidateReport(both, "general"),
+    /identity changed/
+  );
+  assert.throws(
+    () =>
+      parseMichiganCandidateReport(
+        michiganReportFixture("primary").replace("Official Candidate", "Unofficial Candidate"),
+        "primary"
+      ),
+    /no longer official/
+  );
 });
 
 test("Michigan federal records fail closed on an unknown candidate status", () => {

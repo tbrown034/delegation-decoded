@@ -2,7 +2,7 @@ import "../lib/env";
 
 import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
-import { and, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, eq, inArray, lt, lte, sql } from "drizzle-orm";
 import {
   candidateIdentifiers,
   candidatePeople,
@@ -65,6 +65,7 @@ import {
   type NebraskaParty,
 } from "../lib/nebraska-election-parser";
 import {
+  parseMichiganCandidateReport,
   parseMichiganCandidateReportHtml,
   type MichiganCandidate,
 } from "../lib/michigan-election-parser";
@@ -358,6 +359,10 @@ async function fetchMichiganSources() {
       maxBytes: 2_000_000,
     }),
   ]);
+  const parsedGeneral = parseMichiganCandidateReport(
+    general.body.toString("utf8"),
+    "general"
+  );
   return {
     primary,
     general,
@@ -365,10 +370,11 @@ async function fetchMichiganSources() {
       primary.body.toString("utf8"),
       "primary"
     ),
-    generalCandidates: parseMichiganCandidateReportHtml(
-      general.body.toString("utf8"),
-      "general"
-    ),
+    // "unofficial" until the primary is canvassed, then "official": the
+    // state's own label decides whether general rows are verified ballot
+    // access or provisional filing evidence.
+    generalReportKind: parsedGeneral.reportKind,
+    generalCandidates: parsedGeneral.candidates,
   };
 }
 
@@ -2198,7 +2204,9 @@ async function ingestNebraska(db: Database) {
 }
 
 function michiganCandidateStatus(candidate: MichiganCandidate) {
-  if (candidate.status === "qualified") return "state_primary_ballot";
+  if (candidate.status === "qualified") {
+    return candidate.stage === "general" ? "general_ballot" : "state_primary_ballot";
+  }
   if (candidate.status === "filed_unofficial") {
     return "state_general_filing_unofficial";
   }
@@ -2210,11 +2218,16 @@ async function ingestMichigan(db: Database) {
   const activePrimary = fetched.primaryCandidates.filter(
     (candidate) => candidate.status === "qualified"
   ).length;
-  const activeGeneralFilings = fetched.generalCandidates.filter(
-    (candidate) => candidate.status === "filed_unofficial"
+  const generalIsOfficial = fetched.generalReportKind === "official";
+  const activeGeneral = fetched.generalCandidates.filter((candidate) =>
+    generalIsOfficial
+      ? candidate.status === "qualified"
+      : candidate.status === "filed_unofficial"
   ).length;
   console.log(
-    `Michigan: ${fetched.primaryCandidates.length} official primary records (${activePrimary} active ballot candidates); ${fetched.generalCandidates.length} unofficial general filing records (${activeGeneralFilings} active provisional filings).`
+    generalIsOfficial
+      ? `Michigan: ${fetched.primaryCandidates.length} official primary records (${activePrimary} primary ballot candidates); ${fetched.generalCandidates.length} official general records (${activeGeneral} verified general ballot candidates).`
+      : `Michigan: ${fetched.primaryCandidates.length} official primary records (${activePrimary} active ballot candidates); ${fetched.generalCandidates.length} unofficial general filing records (${activeGeneral} active provisional filings).`
   );
 
   if (DRY_RUN) {
@@ -2228,6 +2241,13 @@ async function ingestMichigan(db: Database) {
   ]);
   const observedAt = new Date();
   const tx = db;
+  // The official general listing is the state's verified November ballot;
+  // the unofficial one is filing evidence only, so contests stay pending.
+  const michiganContestStage = generalIsOfficial ? "general" : "primary";
+  const michiganCoverage = generalIsOfficial
+    ? ("verified_ballot" as const)
+    : ("verification_pending" as const);
+  const michiganNextEvent = generalIsOfficial ? "2026-11-03" : "2026-08-04";
 
   for (const snapshot of [primarySnapshot, generalSnapshot]) {
     await tx
@@ -2273,10 +2293,10 @@ async function ingestMichigan(db: Database) {
         district: contest.district,
         senateClass: contest.senateClass,
         title: contest.title,
-        currentStage: "primary",
-        coverageStatus: "verification_pending",
+        currentStage: michiganContestStage,
+        coverageStatus: michiganCoverage,
         certifiedThrough: null,
-        nextExpectedEvent: "2026-08-04",
+        nextExpectedEvent: michiganNextEvent,
         primarySourceId: MICHIGAN_SOURCE_ID,
         updatedAt: observedAt,
       })
@@ -2284,10 +2304,10 @@ async function ingestMichigan(db: Database) {
         target: electionContests.contestId,
         set: {
           title: contest.title,
-          currentStage: "primary",
-          coverageStatus: "verification_pending",
+          currentStage: michiganContestStage,
+          coverageStatus: michiganCoverage,
           certifiedThrough: null,
-          nextExpectedEvent: "2026-08-04",
+          nextExpectedEvent: michiganNextEvent,
           primarySourceId: MICHIGAN_SOURCE_ID,
           updatedAt: observedAt,
         },
@@ -2371,10 +2391,21 @@ async function ingestMichigan(db: Database) {
       );
       const currentRecord = pair.general ?? pair.primary;
       if (!currentRecord) continue;
-      const currentStatus = michiganCandidateStatus(currentRecord);
+      // Once the state publishes the official general list, a primary-only
+      // candidacy is no longer on the November ballot. The adapter does not
+      // ingest Michigan primary results, so it records absence from the
+      // official list rather than asserting a defeat.
+      const droppedFromGeneral =
+        generalIsOfficial &&
+        pair.general == null &&
+        pair.primary?.status === "qualified";
+      const currentStatus = droppedFromGeneral
+        ? "not_on_state_general_list"
+        : michiganCandidateStatus(currentRecord);
       const isActive =
-        currentRecord.status === "qualified" ||
-        currentRecord.status === "filed_unofficial";
+        !droppedFromGeneral &&
+        (currentRecord.status === "qualified" ||
+          currentRecord.status === "filed_unofficial");
 
       await tx
         .insert(candidatePeople)
@@ -2473,6 +2504,30 @@ async function ingestMichigan(db: Database) {
 
       if (pair.general) {
         const status = michiganCandidateStatus(pair.general);
+        if (generalIsOfficial && pair.general.status === "qualified") {
+          const ballotLineId = stableElectionId(
+            "ballot",
+            candidacyId,
+            generalStageId,
+            pair.general.party
+          );
+          await tx
+            .insert(candidacyBallotLines)
+            .values({
+              ballotLineId,
+              candidacyId,
+              stageId: generalStageId,
+              partyLabel: pair.general.party,
+              sourceId: MICHIGAN_SOURCE_ID,
+            })
+            .onConflictDoUpdate({
+              target: candidacyBallotLines.ballotLineId,
+              set: {
+                partyLabel: pair.general.party,
+                sourceId: MICHIGAN_SOURCE_ID,
+              },
+            });
+        }
         await tx
           .insert(candidateStatusEvents)
           .values({
@@ -2492,8 +2547,10 @@ async function ingestMichigan(db: Database) {
             details: {
               filed_on: pair.general.filedOn,
               filing_method: pair.general.filingMethod,
-              source_report: "Unofficial Candidate Listing",
-              ballot_access_verified: false,
+              source_report: generalIsOfficial
+                ? "Official Candidate Listing"
+                : "Unofficial Candidate Listing",
+              ballot_access_verified: generalIsOfficial,
             },
           })
           .onConflictDoNothing();
@@ -2501,13 +2558,74 @@ async function ingestMichigan(db: Database) {
     }
   }
 
+  if (generalIsOfficial) {
+    // A candidacy the state no longer lists (a name that changed spelling
+    // between reports, or a filer removed outright) is not on the November
+    // ballot. Rows untouched by this run are retired with an event instead
+    // of lingering as active provisional filings.
+    const stale = await tx
+      .select({
+        candidacyId: candidacies.candidacyId,
+        contestId: candidacies.contestId,
+      })
+      .from(candidacies)
+      .where(
+        and(
+          inArray(
+            candidacies.contestId,
+            contests.map((contest) => contest.contestId)
+          ),
+          eq(candidacies.isActive, true),
+          lt(candidacies.updatedAt, observedAt)
+        )
+      );
+    for (const row of stale) {
+      await tx
+        .update(candidacies)
+        .set({
+          currentStatus: "not_on_state_general_list",
+          isActive: false,
+          updatedAt: observedAt,
+        })
+        .where(eq(candidacies.candidacyId, row.candidacyId));
+      const generalStageId = `${row.contestId}-general`;
+      await tx
+        .insert(candidateStatusEvents)
+        .values({
+          eventId: stableElectionId(
+            "event",
+            row.candidacyId,
+            generalStageId,
+            "not_on_state_general_list"
+          ),
+          candidacyId: row.candidacyId,
+          electionStageId: generalStageId,
+          status: "not_on_state_general_list",
+          effectiveDate: null,
+          observedAt,
+          sourceId: MICHIGAN_SOURCE_ID,
+          snapshotSha256: generalSnapshot.sha256,
+          details: {
+            source_report: "Official Candidate Listing",
+            reason: "absent from the official general candidate listing",
+          },
+        })
+        .onConflictDoNothing();
+    }
+    if (stale.length > 0) {
+      console.log(
+        `Michigan: retired ${stale.length} candidacies absent from the official general listing.`
+      );
+    }
+  }
+
   await tx
     .update(electionSources)
     .set({
-      coverageStatus: "verification_pending",
+      coverageStatus: michiganCoverage,
       lastCheckedAt: observedAt,
       lastSuccessAt: observedAt,
-      nextExpectedEvent: "2026-08-04",
+      nextExpectedEvent: michiganNextEvent,
       nextCheckAt: new Date(observedAt.getTime() + 24 * 60 * 60 * 1000),
       updatedAt: observedAt,
     })
