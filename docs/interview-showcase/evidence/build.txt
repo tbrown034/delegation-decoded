@@ -1,0 +1,69 @@
+
+> delegation-decoded@0.1.0 build /Users/home/Desktop/dev/active/delegation-decoded-interview
+> next build
+
+▲ Next.js 16.2.11 (Turbopack)
+- Environments: .env.local
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 2.3s
+  Running TypeScript ...
+  Finished TypeScript in 3.1s ...
+  Collecting page data using 11 workers ...
+  Generating static pages using 11 workers (0/17) ...
+  Generating static pages using 11 workers (4/17)
+  Generating static pages using 11 workers (8/17)
+  Generating static pages using 11 workers (12/17)
+✓ Generating static pages using 11 workers (17/17) in 305ms
+  Finalizing page optimization ...
+
+Route (app)                              Revalidate  Expire
+┌ ○ /                                            1h      1y
+├ ○ /_not-found                                  1h      1y
+├ ○ /about                                       1h      1y
+├ ƒ /admin/ask-log
+├ ƒ /api/ask
+├ ƒ /api/ask/locate
+├ ƒ /api/data/candidates.csv
+├ ƒ /api/data/filings.csv
+├ ƒ /api/data/finance.csv
+├ ƒ /api/data/members.csv
+├ ƒ /api/data/races.csv
+├ ƒ /api/data/trades.csv
+├ ƒ /api/data/votes.csv
+├ ƒ /api/photo/[bioguideId]
+├ ƒ /api/search
+├ ○ /apple-icon
+├ ƒ /ask
+├ ● /bill/[billId]
+├ ● /candidate/[contestPersonId]
+├ ● /committee/[committeeId]
+├ ƒ /compare
+├ ƒ /feed.xml
+├ ƒ /find
+├ ○ /for-journalists                             1h      1y
+├ ƒ /health
+├ ○ /icon
+├ ○ /llms-full.txt                               1d      1y
+├ ○ /llms.txt                                    1d      1y
+├ ● /member/[bioguideId]
+├ ƒ /member/-/opengraph-image
+├ ○ /opengraph-image
+├ ● /race/[contestId]
+├ ƒ /races
+├ ○ /robots.txt
+├ ○ /sitemap.xml                                 1h      1y
+├ ● /state/[code]
+├ ƒ /state/-/opengraph-image
+├ ○ /trades                                      1h      1y
+├ ● /trades/[bioguideId]
+├ ● /trades/companies/[ticker]
+├ ƒ /trades/companies/-/opengraph-image
+└ ○ /trades/methodology                          1h      1y
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+●  (SSG)      prerendered as static HTML (uses generateStaticParams)
+ƒ  (Dynamic)  server-rendered on demand

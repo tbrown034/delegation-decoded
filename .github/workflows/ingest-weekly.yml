@@ -71,7 +71,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           CONGRESS_API_KEY: ${{ secrets.CONGRESS_API_KEY }}
 
-      - name: Crawl verified campaign sites and queue extracted claims for review
+      - name: Crawl verified campaign sites and publish quote-checked claims
         if: ${{ !cancelled() && inputs.mode != 'members' }}
         run: npx tsx scripts/ingest/candidate-sites.ts
         env:
@@ -91,7 +91,7 @@ jobs:
           CANDIDATE_EXTRACT_STATE: ${{ inputs.candidate_state }}
           CANDIDATE_EXTRACT_FORCE: ${{ inputs.force_reextract }}
 
-      - name: Crawl official member biographies and queue facts for review
+      - name: Crawl official member biographies and publish quote-checked facts
         if: ${{ !cancelled() && inputs.mode != 'candidates' }}
         run: npx tsx scripts/ingest/member-biographies.ts
         env:

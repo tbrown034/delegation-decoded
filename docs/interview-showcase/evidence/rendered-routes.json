@@ -1,0 +1,32 @@
+[
+  {
+    "path": "/about",
+    "status": 200,
+    "bytes": 91610,
+    "title": "About &amp; Methodology | Delegation Decoded"
+  },
+  {
+    "path": "/health",
+    "status": 200,
+    "bytes": 155251,
+    "title": "Pipeline Health | Delegation Decoded"
+  },
+  {
+    "path": "/ask",
+    "status": 200,
+    "bytes": 31422,
+    "title": "Ask about your delegation | Delegation Decoded"
+  },
+  {
+    "path": "/state/IN",
+    "status": 200,
+    "bytes": 152848,
+    "title": "Indiana Delegation | Delegation Decoded"
+  },
+  {
+    "path": "/trades/methodology",
+    "status": 200,
+    "bytes": 45003,
+    "title": "Stock disclosure preview methodology | Delegation Decoded"
+  }
+]

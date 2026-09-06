@@ -103,13 +103,21 @@ export async function getPublishedMemberBiography(
 export async function getMemberBiographyHealth(): Promise<MemberBiographyHealth> {
   try {
     const result = await db.execute(sql`
+      WITH eligible AS (
+        SELECT claim.bioguide_id
+        FROM member_biography_claims claim
+        JOIN member_official_sites site ON site.bioguide_id = claim.bioguide_id
+        WHERE site.verification_status = 'verified'
+          AND claim.review_status <> 'rejected'
+          AND BTRIM(claim.source_quote) <> ''
+      )
       SELECT
+        -- "Published" means what the member page query would actually show:
+        -- a non-rejected quote on a verified official site.
+        (SELECT COUNT(DISTINCT bioguide_id)::int FROM eligible) AS members_published,
+        (SELECT COUNT(*)::int FROM eligible) AS published_facts,
         (SELECT COUNT(*)::int FROM member_official_sites WHERE verification_status = 'verified') AS verified_sites,
         (SELECT COUNT(*)::int FROM member_official_sites WHERE crawl_error IS NOT NULL) AS crawl_errors,
-        (SELECT COUNT(DISTINCT bioguide_id)::int FROM member_biography_claims
-           WHERE review_status <> 'rejected' AND source_quote IS NOT NULL AND BTRIM(source_quote) <> '') AS members_published,
-        (SELECT COUNT(*)::int FROM member_biography_claims
-           WHERE review_status <> 'rejected' AND source_quote IS NOT NULL AND BTRIM(source_quote) <> '') AS published_facts,
         (SELECT COUNT(*)::int FROM member_biography_claims WHERE review_status = 'verified') AS reviewed_facts,
         (SELECT COUNT(*)::int FROM member_biography_claims WHERE review_status = 'rejected') AS rejected_facts
     `);

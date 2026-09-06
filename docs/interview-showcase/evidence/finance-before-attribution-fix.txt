@@ -1,0 +1,31 @@
+
+> delegation-decoded@0.1.0 eval:ask /Users/home/Desktop/dev/active/delegation-decoded-interview
+> NODE_OPTIONS='--conditions=react-server' tsx scripts/eval-ask.ts
+
+◇ injected env (21) from .env.local // tip: ⌘ override existing { override: true }
+signature self-check: PASS
+
+=== anthropic:claude-sonnet-5 ===
+FAIL  finance            9139ms  in=6533 cached=3888 write=0 out=604  (missing: fec)
+      For the 2026 cycle, [Todd Young](/member/Y000064)'s principal campaign committee, Friends of Todd Young, Inc., has raised $4,401,018 in total receipts, with about $1,197,282 from individual donors, $677,510 from PACs, and $19,484 in small-dollar contributions [1][2]. He also has a leadership PAC, All Hands Political Action Committee, which has raised $132,201 in the 2026 cycle — that money belongs to the PAC, not the campaign [3]. Young additionally is linked to several joint fundraising committees (Save Our Senate Committee, The Founders Committee, Veterans for Defending the Majority, and the 2016 Brooks and Young Hoosier Republican Victory Committee), though 2026-cycle totals for these are not available in the data [4][5][6][7].  Top individual contributors by employer for recent cycles include Andreessen Horowitz ($19,800, 2024 cycle), and for the 2026 cycle: Skyhawk ($19,000), Barnes & Thornburg ($17,250), BlackRock ($16,000), Allen Control Systems ($16,000), SBV RE Investments ($14,000), KPS Capital Partners ($14,000), E&A Industries ($14,000), Webb Creek Management Group ($14,000), and Smoker Craft Inc. ($13,500) [8][9][10][11][12][13][14][15][16][17].
+      trace=[{"tool":"get_member_finance","input":{"bioguide_id":"Y000064","cycle":-1}}]
+PASS  finance-cycle      4658ms  in=5832 cached=3888 write=0 out=190
+      According to FEC campaign-finance filings, [Todd Young](/member/Y000064)'s campaign committee raised $10,976,446 in total receipts during the 2022 election cycle. [1]
+      trace=[{"tool":"get_member_finance","input":{"bioguide_id":"Y000064","cycle":2022}}]
+PASS  finance-spending   4592ms  in=5844 cached=3888 write=0 out=199
+      According to FEC filings, [Todd Young](/member/Y000064)'s campaign committee, Friends of Todd Young, Inc., reported total disbursements of $9,618,043 during the 2022 election cycle [1].
+      trace=[{"tool":"get_member_finance","input":{"bioguide_id":"Y000064","cycle":2022}}]
+-- 2/3 passed · avg 6130ms · tokens in=18209 cached=11664 write=0 out=993
+
+=== openai:gpt-5.6-terra ===
+PASS  finance            4166ms  in=4766 cached=3670 write=852 out=242
+      [Todd Young](/member/Y000064)’s principal campaign committee, Friends of Todd Young, Inc., reported $4,401,018 in receipts for the 2026 cycle in FEC filings. Of that, $1,197,282 came from individuals, $677,510 from PACs, and $19,484 in small-dollar receipts. [1] [2]  Among donor employers listed in FEC Schedule A aggregations for the 2026 cycle, the largest shown are Skyhawk ($19,000), Barnes & Thornburg ($17,250), BlackRock ($16,000), and Allen Control Systems ($16,000). [3] [4] [5] [6] Young’s leadership PAC, All Hands Political Action Committee, separately reported $132,201 in 2026-cycle receipts; that money belongs to the PAC, not his campaign. [7]
+      trace=[{"tool":"get_member_finance","input":{"bioguide_id":"Y000064","cycle":null}}]
+PASS  finance-cycle      2406ms  in=4354 cached=3676 write=434 out=103
+      [Todd Young](/member/Y000064) raised $10,976,446 in the 2022 election cycle, according to FEC campaign-finance filings. [1]
+      trace=[{"tool":"get_member_finance","input":{"bioguide_id":"Y000064","cycle":2022}}]
+PASS  finance-spending   2440ms  in=4362 cached=3404 write=714 out=105
+      [Todd Young](/member/Y000064) reported $9,618,043 in total disbursements during the 2022 election cycle, according to FEC campaign-finance filings. [1]
+      trace=[{"tool":"get_member_finance","input":{"bioguide_id":"Y000064","cycle":2022}}]
+-- 3/3 passed · avg 3004ms · tokens in=13482 cached=10750 write=2000 out=450
+ ELIFECYCLE  Command failed with exit code 1.

@@ -121,16 +121,25 @@ function PersonProfile({ profile }: { profile: CandidateProfile }) {
           <ul className="mt-3 space-y-2 text-sm text-neutral-700">
             {profile.priorService.map((service) => (
               <li key={service.serviceId}>
-                <span className="font-medium text-neutral-900">
-                  {service.officeTitle}
-                  {service.jurisdiction ? `, ${service.jurisdiction}` : ""}
-                </span>
-                {(service.startedOn || service.endedOn) && (
-                  <span className="text-neutral-500">
-                    {" "}
-                    · {service.startedOn ?? "?"}–{service.endedOn ?? "present"}
+                {/* The title, jurisdiction and dates are the extractor's
+                    reading of the quote; only words present in the quote
+                    are shown. The quote itself is the record. */}
+                {service.officeInQuote && (
+                  <span className="font-medium text-neutral-900">
+                    {service.officeTitle}
+                    {service.jurisdictionInQuote ? `, ${service.jurisdiction}` : ""}
                   </span>
                 )}
+                {service.officeInQuote &&
+                  (service.startedOn || service.endedOn) &&
+                  [service.startedOn, service.endedOn].every(
+                    (d) => !d || service.sourceQuote.includes(d.slice(0, 4))
+                  ) && (
+                    <span className="text-neutral-500">
+                      {" "}
+                      · {service.startedOn ?? "?"}–{service.endedOn ?? "present"}
+                    </span>
+                  )}
                 <blockquote className="mt-1 border-l-2 border-neutral-200 pl-3 text-xs italic text-neutral-600">
                   &ldquo;{service.sourceQuote}&rdquo;{" "}
                   <a href={service.sourceUrl} target="_blank" rel="noopener noreferrer" className="not-italic underline decoration-neutral-300 underline-offset-2">

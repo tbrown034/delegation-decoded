@@ -168,7 +168,7 @@ const tools: AskToolDefinition[] = [
   {
     name: "get_member_biography",
     description:
-      "Get human-reviewed biography facts extracted from a scoped lawmaker's official House or Senate website. These are statements from the lawmaker's official biography, not independent verification.",
+      "Get source-quoted biography passages extracted from a scoped lawmaker's official House or Senate website. These are statements from the lawmaker's official biography, not independent verification.",
     inputSchema: objectSchema({ bioguide_id: { type: "string" } }),
   },
   {
@@ -255,11 +255,11 @@ export function getAskToolsForQuestion(scope: AskScope, question: string) {
   const selected = new Set<string>(["submit_answer"]);
   const routes: Array<[RegExp, string]> = [
     [/\b(vote|voted|voting|roll[ -]?call)\b/, "get_member_votes"],
-    [/\b(bill|bills|legislation|legislative|sponsor|cosponsor)\b/, "get_member_bills"],
-    [/\b(finance|fundrais(?:e|es|ing)|rais(?:e|es|ed)|money|cash|donor|contributor|pac)\b/, "get_member_finance"],
+    [/\b(bill|bills|legislation|legislative|sponsor|cosponsor|amendment|measure)\b/, "get_member_bills"],
+    [/\b(finance|fundrais(?:e|es|ing)|rais(?:e|es|ed)|money|cash|donor|contributor|pac|spent|spend|spending|expenditure|expenditures)\b/, "get_member_finance"],
     [/\b(committee|committees|subcommittee|assignment)\b/, "get_member_committees"],
     [/\b(term|terms|tenure|served|service|seat up|reelection|re-election)\b/, "get_member_terms"],
-    [/\b(bio|biography|background|career|education|occupation|who is)\b/, "get_member_biography"],
+    [/\b(bio|biography|background|career|education|occupation|veteran|college|who is)\b/, "get_member_biography"],
     // "filed with the FEC" and "on the ballot" are how readers ask about a
     // race without saying "race"; without the tool offered, the model can
     // only report that the records are missing.
@@ -268,10 +268,19 @@ export function getAskToolsForQuestion(scope: AskScope, question: string) {
   for (const [pattern, name] of routes) {
     if (pattern.test(routingText)) selected.add(name);
   }
+  // Keep plain roster questions cheap without treating other unknown topics
+  // as roster questions (which would conceal missing retrieval capability).
+  if (scope.type !== "member" && selected.size === 1 &&
+      /^\s*(who|list|show|name)\b/.test(normalized) &&
+      /\b(senators?|representatives?|delegation|roster)\b/.test(normalized)) {
+    selected.add("get_delegation");
+  }
   const hasRetrieval = [...selected].some((name) => name !== "submit_answer");
+  // An unrecognized phrase must not silently narrow the search to a roster.
+  if (!hasRetrieval) return getAskTools(scope);
   if (
     scope.type === "state" &&
-    (!hasRetrieval || /\b(who|senator|representative|delegation|roster|member|district)\b/.test(normalized))
+    /\b(who|senator|representative|delegation|roster|member|district)\b/.test(normalized)
   ) {
     selected.add("get_delegation");
   }
@@ -281,18 +290,6 @@ export function getAskToolsForQuestion(scope: AskScope, question: string) {
   if (scope.type === "national") {
     selected.add("find_members");
     selected.add("get_delegation");
-  }
-  if (!hasRetrieval && scope.type === "member" && /\b(record|work|done|about|overview)\b/.test(normalized)) {
-    for (const name of [
-      "get_member_votes",
-      "get_member_bills",
-      "get_member_finance",
-      "get_member_committees",
-      "get_member_terms",
-      "get_member_biography",
-    ]) {
-      selected.add(name);
-    }
   }
   return getAskTools(scope).filter((tool) => selected.has(tool.name));
 }
@@ -713,6 +710,7 @@ export async function executeAskTool(
       };
       return {
         source: "FEC campaign-finance filings",
+        finance_note: "Receipts are money raised; disbursements are money spent. Do not substitute one for the other. A null field means unavailable, not zero.",
         cycles_on_file: finance.length,
         ...(finance.length > shown.length
           ? {
@@ -722,6 +720,7 @@ export async function executeAskTool(
         by_cycle: shown.map((row) => ({
           cycle: row.electionCycle,
           total_receipts: row.totalReceipts,
+          total_disbursements: row.totalDisbursements,
           individual: row.totalIndividual,
           pac: row.totalPac,
           small_dollar: row.smallIndividual,

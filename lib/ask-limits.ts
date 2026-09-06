@@ -218,6 +218,24 @@ export async function getCachedAnswer(
       AND state_code = ${scope.stateCode}
       AND district = ${cacheDistrict(scope)}
       AND created_at > now() - interval '${sql.raw(String(CACHE_TTL_HOURS))} hours'
+      -- Completed ingests and explicit review decisions invalidate older
+      -- answers. Prompt-version changes also change cacheIdentity.
+      AND NOT EXISTS (
+        SELECT 1 FROM sync_log
+        WHERE status = 'success' AND completed_at > ask_cache.created_at
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM member_biography_claims
+        WHERE reviewed_at > ask_cache.created_at
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM candidate_site_claims
+        WHERE reviewed_at > ask_cache.created_at
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM candidate_prior_service
+        WHERE reviewed_at > ask_cache.created_at
+      )
     LIMIT 1
   `)) as unknown as { rows: { answer: string; trace: unknown }[] };
   const row = rows.rows?.[0];

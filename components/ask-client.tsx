@@ -1232,7 +1232,7 @@ export default function AskClient({
                     ))}
                   </>
                 ) : (
-                  "Answered from the delegation roster. "
+                  "No record lookup was completed. "
                 )}
                 Answers are AI-written from official records in this site&apos;s
                 database, are not reviewed by a person before display, and can
@@ -1261,8 +1261,8 @@ export default function AskClient({
       {!budgetExhausted && (
         <p className="mt-4 text-xs text-neutral-400">
           Answers come only from retrieved records — votes, bills, campaign
-          money, committees and quoted official-site biographies. Follow-ups can build on your last two answers;
-          every fact is re-checked against the records.
+          money, committees and source-quoted official-site biographies. Follow-ups can build on your last two answers;
+          each factual answer requires a fresh lookup and a valid record citation. A citation does not guarantee the interpretation is correct.
         </p>
       )}
     </div>

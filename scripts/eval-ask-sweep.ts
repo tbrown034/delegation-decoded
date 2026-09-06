@@ -2,8 +2,8 @@
  * Paid synthetic sweep for /ask: one roster question per delegation (50
  * states + DC + territories), generated and graded from the database itself.
  *
- * The breadth tier of the eval stack. eval-ask.ts is the depth tier (18
- * hand-curated capability cases); this sweep asks the same shallow question
+ * The breadth tier of the eval stack. eval-ask.ts is the depth tier (curated
+ * capability cases); this sweep asks the same shallow question
  * 56 ways to flush out data-corner bugs — territories, at-large districts,
  * DC — that a single-state fixture never touches. Questions run in national
  * scope so the model must retrieve the roster with tools rather than read it

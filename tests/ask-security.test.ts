@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ASK_SYSTEM_PROMPT, sanitizeAnswerLinks } from "../lib/ask-engine";
+import { ASK_SYSTEM_PROMPT, sanitizeAnswerLinks, finalizeAskAnswer, parseTerminalAnswer } from "../lib/ask-engine";
 import {
   executeAskTool,
   getAskTools,
@@ -10,6 +10,8 @@ import {
 } from "../lib/ask-tools";
 import { createSafetyIdentifier } from "../lib/ask-limits";
 import { toAnthropicStrictSchema } from "../lib/anthropic-schema";
+
+import { EvidenceRegistry, annotateToolResult } from "../lib/ask-citations";
 
 const stateScope: AskScope = {
   type: "state",
@@ -170,4 +172,101 @@ test("race questions phrased as FEC filings or ballot access still route to the 
       question
     );
   }
+});
+
+test("failed and empty lookups cannot support an answered response", () => {
+  for (const payload of [{ error: "lookup failed" }, { records: [] }]) {
+    const registry = new EvidenceRegistry();
+    annotateToolResult("get_member_votes", {}, payload, registry);
+    // The old attempt-count check passed this exact sequence.
+    const terminal = parseTerminalAnswer({ status: "answered", answer: "She voted yea." }, 1);
+    assert.throws(() => finalizeAskAnswer(terminal.answer, terminal.status, JSON.stringify(payload), registry), /did not cite/);
+  }
+});
+
+test("a valid citation cannot conceal an invented citation", () => {
+  const registry = new EvidenceRegistry();
+  registry.register("v", "get_member_votes", "Roll call 210", null);
+  assert.throws(() => finalizeAskAnswer("Voted yea. [v1] Also another vote. [v99]", "answered", "", registry), /did not retrieve/);
+});
+
+test("retrieved records still require an explicit citation for factual answers", () => {
+  const registry = new EvidenceRegistry();
+  registry.register("v", "get_member_votes", "Roll call 210", null);
+  assert.throws(() => finalizeAskAnswer("Voted yea.", "answered", "", registry), /did not cite/);
+  assert.equal(finalizeAskAnswer("Voted yea. [v1]", "answered", "", registry).citations.length, 1);
+});
+
+test("record-free boundary responses remain available", () => {
+  for (const status of ["not_found", "out_of_scope", "declined"] as const) {
+    assert.equal(finalizeAskAnswer("I cannot answer that from these records.", status, "", new EvidenceRegistry()).citations.length, 0);
+  }
+});
+
+
+test("official domains alone do not authorize invented evidence links", () => {
+  assert.equal(sanitizeAnswerLinks("[Source](https://www.congress.gov/bill/invented)", ""), "Source");
+  assert.equal(sanitizeAnswerLinks("[FEC](https://www.fec.gov/invented)", ""), "FEC");
+  assert.equal(sanitizeAnswerLinks("[Source](https://www.congress.gov/bill/example)", "https://www.congress.gov/bill/example-other"), "Source");
+  assert.match(sanitizeAnswerLinks("[Source](https://www.congress.gov/bill/example)", "https://www.congress.gov/bill/example"), /https:/);
+  assert.equal(sanitizeAnswerLinks("[Voting information](https://vote.gov)", ""), "[Voting information](https://vote.gov)");
+});
+
+test("unrecognized member questions retain retrieval capability", () => {
+  const scope: AskScope = { type: "member", stateCode: "IN", bioguideId: "B001299", seat: { office: "S", senateClass: 1 } };
+  for (const question of ["Was he a veteran?", "Where did he attend college?", "What has he accomplished?"]) {
+    assert.ok(getAskToolsForQuestion(scope, question).some(tool => !tool.terminal));
+  }
+  assert.ok(getAskToolsForQuestion(scope, "How much has he spent?").some(tool => tool.name === "get_member_finance"));
+  assert.ok(getAskToolsForQuestion(scope, "Which amendment did he sponsor?").some(tool => tool.name === "get_member_bills"));
+});
+
+
+test("model-authored numeric footnotes cannot bypass citation validation", () => {
+  const registry = new EvidenceRegistry();
+  registry.register("v", "get_member_votes", "Roll call 210", null);
+  for (const fake of ["99", "v1234"]) {
+    assert.throws(() => finalizeAskAnswer(`Real. [v1] Unsupported. [${fake}]`, "answered", "", registry), /did not retrieve/);
+  }
+});
+
+
+test("FEC filer questions expose candidate retrieval to the fallback provider", () => {
+  assert.ok(getAskToolsForQuestion(stateScope, "Who has filed with the FEC for Indiana's 7th District?").some(tool => tool.name === "get_race_candidates"));
+});
+
+
+test("unrecognized state and national questions retain substantive retrieval", () => {
+  for (const scope of [stateScope, { type: "national" } as const]) {
+    const tools = getAskToolsForQuestion(scope, "What has Todd Young said about Ukraine?");
+    assert.ok(tools.some(tool => tool.name === "get_member_biography"));
+    assert.ok(tools.some(tool => tool.name === "get_member_bills"));
+  }
+});
+
+test("grouped invented references reject the whole answer", () => {
+  const registry = new EvidenceRegistry();
+  registry.register("v", "get_member_votes", "Vote", null);
+  for (const group of ["f7, f8", "ref v9", "v1-v3", "source: invented"]) {
+    assert.throws(() => finalizeAskAnswer(`Real. [v1] False. [${group}]`, "answered", "", registry), /did not retrieve/);
+  }
+});
+
+
+test("plain roster questions keep the fallback schema set small", () => {
+  assert.deepEqual(getAskToolsForQuestion(stateScope, "Who are Indiana's two senators and the representative for its 9th District?").map(t => t.name), ["get_delegation", "submit_answer"]);
+});
+
+
+test("terminal answer wrappers are not displayed as reader text", () => {
+  assert.deepEqual(parseTerminalAnswer({ status: "not_found", answer: "<answer>No matching records.</answer>" }, 1), { status: "not_found", answer: "No matching records." });
+});
+
+
+test("cited finance answers retain agency attribution when copied from the UI", () => {
+  const registry = new EvidenceRegistry();
+  registry.register("f", "get_member_finance", "2022 FEC totals", null);
+  const result = finalizeAskAnswer("The campaign raised $10 million. [f1]", "answered", "", registry);
+  assert.match(result.answer, /Source: FEC campaign-finance filings\. \[1\]/);
+  assert.equal(finalizeAskAnswer("FEC reports $10 million. [f1]", "answered", "", registry).answer, "FEC reports $10 million. [1]");
 });

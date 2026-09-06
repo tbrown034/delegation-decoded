@@ -1,0 +1,3 @@
+
+> delegation-decoded@0.1.0 typecheck /Users/home/Desktop/dev/active/delegation-decoded-interview
+> tsc --noEmit

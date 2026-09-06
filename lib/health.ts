@@ -438,7 +438,7 @@ export async function buildHealthReport(): Promise<HealthReport> {
       id: "candidate-crawl-errors",
       level: "warn",
       title: `${candidateResearch.crawlErrors} verified campaign site${candidateResearch.crawlErrors === 1 ? " has" : "s have"} crawl errors`,
-      detail: "The site link remains visible. Nothing was extracted from these sites, so no claim can be published for them.",
+      detail: "The site link and previously captured non-rejected quotes may remain visible. New extraction requires a successful crawl and a quote-presence check; individual human approval is not required.",
     });
   }
 
@@ -480,7 +480,7 @@ export async function buildHealthReport(): Promise<HealthReport> {
       id: "member-biography-crawl-errors",
       level: "warn",
       title: `${memberBiographies.crawlErrors} official member site${memberBiographies.crawlErrors === 1 ? " has" : "s have"} biography crawl errors`,
-      detail: "Nothing was extracted from these official sites, so no biography fact can be published or supplied to Ask for them.",
+      detail: "Previously captured non-rejected quotes may remain visible and available to Ask. New extraction requires a successful crawl and a quote-presence check; individual human approval is not required.",
     });
   }
 

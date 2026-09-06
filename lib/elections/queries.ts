@@ -597,6 +597,7 @@ export async function getPublishedCampaignResearch(contestId: string) {
     for (const row of service.rows as Array<Record<string, unknown>>) {
       const research = byCandidacy.get(row.candidacy_id as string);
       if (!research) continue;
+      if (!(row.source_quote as string | null)?.trim()) continue;
       const officeTitle = row.office_title as string;
       // A campaign listing the seat this person currently holds, or a caucus
       // membership, is not prior service.
@@ -1079,14 +1080,29 @@ export async function getCandidateResearchHealth() {
   try {
     const result = await db.execute(sql`
       SELECT
+        (SELECT COUNT(*)::int FROM candidate_site_claims claim
+         WHERE claim.review_status <> 'rejected' AND BTRIM(claim.source_quote) <> ''
+           AND EXISTS (
+             SELECT 1 FROM candidate_campaign_sites site
+             JOIN candidacies ca ON ca.candidacy_id = site.candidacy_id
+             WHERE site.candidacy_id = claim.candidacy_id
+               AND site.verification_status = 'verified'
+               AND site.site_url IS NOT NULL AND site.verified_source_url IS NOT NULL
+           )) AS published_claims,
+        (SELECT COUNT(*)::int FROM candidate_prior_service service
+         WHERE service.verification_status <> 'rejected' AND BTRIM(service.source_quote) <> ''
+           AND EXISTS (
+             SELECT 1 FROM candidacies ca
+             JOIN candidate_campaign_sites site ON site.candidacy_id = ca.candidacy_id
+             WHERE ca.person_id = service.person_id
+               AND site.verification_status = 'verified'
+               AND site.site_url IS NOT NULL AND site.verified_source_url IS NOT NULL
+           )) AS published_service,
         (SELECT COUNT(*)::int FROM candidate_campaign_sites WHERE verification_status = 'verified') AS verified_sites,
         (SELECT COUNT(*)::int FROM candidate_campaign_sites WHERE verification_status = 'blocked') AS blocked_sites,
         (SELECT COUNT(*)::int FROM candidate_campaign_sites WHERE verification_status = 'verified' AND crawl_error IS NOT NULL) AS crawl_errors,
-        (SELECT COUNT(*)::int FROM candidate_site_claims
-           WHERE review_status <> 'rejected' AND source_quote IS NOT NULL AND BTRIM(source_quote) <> '') AS published_claims,
         (SELECT COUNT(*)::int FROM candidate_site_claims WHERE review_status = 'verified') AS reviewed_claims,
         (SELECT COUNT(*)::int FROM candidate_site_claims WHERE review_status = 'rejected') AS rejected_claims,
-        (SELECT COUNT(*)::int FROM candidate_prior_service WHERE verification_status <> 'rejected') AS published_service,
         (SELECT COUNT(*)::int FROM candidate_prior_service WHERE verification_status = 'verified') AS reviewed_service
     `);
     const row = result.rows[0] as Record<string, unknown> | undefined;

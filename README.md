@@ -14,7 +14,7 @@ This project treats each state delegation as the primary unit of analysis.
 
 ## What It Does
 
-- **Ask**, a grounded question-answering tool on the homepage, `/ask`, and every state, member, and race page. It runs a tool-calling loop over this site's own database — never the open web — and every claim in an answer carries a citation that links to the record behind it.
+- **Ask**, a grounded question-answering tool on the homepage, `/ask`, and every state, member, and race page. It runs a tool-calling loop over this site's own database — never the open web — and factual answers require a citation to a retrieved record. Citation checks establish a source connection, not the accuracy of every interpretation.
 - State dashboards for all 50 states, DC, and the territories, with party composition, recent activity, and data freshness.
 - Member profiles with votes, sponsored legislation, committee seats, campaign finance, top contributors by donor employer, and verbatim quotes from official biographies.
 - STOCK Act trade tracking: a cross-member index at `/trades`, per-member and per-ticker views, and a methodology page comparing the pipeline against CapitolTrades.

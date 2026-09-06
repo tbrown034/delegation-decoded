@@ -104,14 +104,14 @@ export default async function HealthPage() {
           Official member biographies
         </h2>
         <p className="mt-1 text-sm text-neutral-600">
-          Sources must be official House or Senate sites. Only verbatim quotes that the code found in the captured page are stored; the model&apos;s paraphrase is never shown. Publication is automatic. Human review is a spot-check and rejection path, and a rejected quote leaves the page and Ask.
+          Sources must be official House or Senate sites. Only verbatim quotes the code found in the captured page are stored; the model&apos;s paraphrase is never shown. Non-rejected quotes appear without individual human approval and remain the office&apos;s own claims. &ldquo;Needs review&rdquo; is a stored label, not a publication hold; a rejected quote leaves the page and Ask.
         </p>
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <Stat label="Verified sites" value={report.memberBiographies.verifiedSites} />
           <Stat label="Crawl errors" value={report.memberBiographies.crawlErrors} tone={report.memberBiographies.crawlErrors > 0 ? "warn" : "ok"} />
           <Stat label="Members published" value={report.memberBiographies.membersPublished} />
-          <Stat label="Facts published" value={report.memberBiographies.publishedFacts} />
-          <Stat label="Human-reviewed" value={report.memberBiographies.reviewedFacts} />
+          <Stat label="Quotes published" value={report.memberBiographies.publishedFacts} />
+          <Stat label="Human-approved" value={report.memberBiographies.reviewedFacts} />
           <Stat label="Rejected" value={report.memberBiographies.rejectedFacts} />
         </div>
       </section>
@@ -121,15 +121,15 @@ export default async function HealthPage() {
           Candidate-site research
         </h2>
         <p className="mt-1 text-sm text-neutral-600">
-          Sites are linked through FEC committee filings. Only verbatim quotes found in the captured page are stored, and they publish automatically with a link to the source. Human review is a spot-check and rejection path; a rejected claim leaves the race page and Ask.
+          Sites are linked through FEC committee filings. Only verbatim quotes found in the captured page are stored; they appear on race pages and in Ask without individual human approval and remain campaign claims. Published counts are stored rows before display deduplication. &ldquo;Needs review&rdquo; does not block publication; a rejected claim leaves the race page and Ask.
         </p>
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
           <Stat label="Verified sites" value={report.candidateResearch.verifiedSites} />
           <Stat label="No FEC site" value={report.candidateResearch.blockedSites} tone={report.candidateResearch.blockedSites > 0 ? "warn" : "ok"} />
           <Stat label="Crawl errors" value={report.candidateResearch.crawlErrors} tone={report.candidateResearch.crawlErrors > 0 ? "warn" : "ok"} />
           <Stat label="Claims published" value={report.candidateResearch.publishedClaims} />
-          <Stat label="Claims reviewed" value={report.candidateResearch.reviewedClaims} />
-          <Stat label="Claims rejected" value={report.candidateResearch.rejectedClaims} />
+          <Stat label="Human-approved" value={report.candidateResearch.reviewedClaims} />
+          <Stat label="Rejected" value={report.candidateResearch.rejectedClaims} />
           <Stat label="Service published" value={report.candidateResearch.publishedService} />
         </div>
       </section>

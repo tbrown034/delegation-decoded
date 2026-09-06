@@ -171,10 +171,11 @@ export default async function TradesMethodologyPage() {
           <li>
             <span className="font-medium">Validation.</span> Each row is
             checked against the canonical list of STOCK Act amount ranges and
-            transaction types. Rows that fail validation or score below 0.8
-            confidence are published with a visible review badge rather than
-            hidden, so a reader can see exactly which rows the parser was
-            unsure about. Nothing is silently dropped or silently trusted.
+            transaction types. Parsed rows below 80% confidence are flagged
+            for review and remain visible with a warning badge rather than
+            hidden, so a reader can see which rows the parser was unsure
+            about. A warning is not a publication hold or evidence of human
+            approval; check the original filing before citing a transaction.
           </li>
           <li>
             <span className="font-medium">Late-filing math.</span> A
