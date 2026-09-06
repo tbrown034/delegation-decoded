@@ -548,6 +548,20 @@ test("Nebraska result pages derive one winner per party from official totals", (
   assert.equal(parsed.find((candidate) => candidate.name === "Higher Total")?.totalVotes, 2000);
 });
 
+test("Nebraska admits the convention-nominated parties that joined the list in September", () => {
+  const parsed = parseNebraskaCurrentCandidateRows([
+    NEBRASKA_HEADERS,
+    { A: "For United States Senator", C: "6", D: "1", E: "Nebraska Working People", F: "Robin Richards", G: "Ralston", H: "Nonincumbent" },
+    { A: "For Representative in Congress", B: "District 01 ", C: "2", D: "1", E: "America First", F: "Dan Hartong", G: "Lincoln", H: "Nonincumbent" },
+    { A: "For Representative in Congress", B: "District 02 ", C: "2", D: "1", E: "Republican", F: "Brinker Harding", G: "Omaha", H: "Nonincumbent" },
+    { A: "For Representative in Congress", B: "District 03 ", C: "2", D: "1", E: "Republican", F: "Adrian Smith", G: "Gering", H: "Incumbent" },
+  ]);
+  assert.deepEqual(parsed.slice(0, 2).map((c) => [c.party, c.office, c.district]), [
+    ["Nebraska Working People", "S", null],
+    ["America First", "H", 1],
+  ]);
+});
+
 test("Nebraska federal records fail closed on an unknown current-list party", () => {
   assert.throws(
     () =>

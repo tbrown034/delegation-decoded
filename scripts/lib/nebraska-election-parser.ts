@@ -26,11 +26,17 @@ const PARTY_BY_RESULT_CODE = {
   LMN: "Legal Marijuana NOW",
 } as const;
 
+// "Nebraska Working People" and "America First" appeared on the state's
+// current filing list on Sep 6, 2026. Nebraska lets a newly recognized party
+// nominate by convention rather than in the May primary, so these parties
+// have no primary result to reconcile against.
 export type NebraskaParty =
   | "Republican"
   | "Democratic"
   | "Libertarian"
   | "Legal Marijuana NOW"
+  | "Nebraska Working People"
+  | "America First"
   | "By Petition";
 
 export type NebraskaCurrentCandidate = {
@@ -117,6 +123,8 @@ function parseParty(value: string | undefined): NebraskaParty | null {
     value === "Democratic" ||
     value === "Libertarian" ||
     value === "Legal Marijuana NOW" ||
+    value === "Nebraska Working People" ||
+    value === "America First" ||
     value === "By Petition"
   ) {
     return value;

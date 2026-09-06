@@ -23,6 +23,7 @@ import {
   FLORIDA_2026_SOURCES,
   INDIANA_2026_SOURCES,
   MICHIGAN_2026_SOURCES,
+  NEBRASKA_2026_PETITION_CERTIFICATIONS,
   NEBRASKA_2026_SOURCES,
   RHODE_ISLAND_2026_SOURCES,
   WASHINGTON_2026_SOURCES,
@@ -238,7 +239,7 @@ async function fetchNebraskaSources() {
     certification,
     statewideResults,
     congressionalResults,
-    petitionCertification,
+    ...petitionCertificationPages
   ] = await Promise.all([
     safeFetchBuffer(NEBRASKA_2026_SOURCES.electionLanding, {
       allowedHosts: sosHosts,
@@ -272,12 +273,21 @@ async function fetchNebraskaSources() {
       allowedContentTypes: ["text/html"],
       maxBytes: 500_000,
     }),
-    safeFetchBuffer(NEBRASKA_2026_SOURCES.petitionCertification, {
-      allowedHosts: sosHosts,
-      allowedContentTypes: ["text/html"],
-      maxBytes: 250_000,
-    }),
+    ...NEBRASKA_2026_PETITION_CERTIFICATIONS.map((certification) =>
+      safeFetchBuffer(certification.url, {
+        allowedHosts: sosHosts,
+        allowedContentTypes: ["text/html"],
+        maxBytes: 250_000,
+      })
+    ),
   ]);
+  const petitionCertifications = NEBRASKA_2026_PETITION_CERTIFICATIONS.map(
+    (certification, index) => ({
+      ...certification,
+      normalizedName: normalizeCandidateName(certification.candidateName),
+      page: petitionCertificationPages[index],
+    })
+  );
 
   validateNebraskaSourcePage(landing.body.toString("utf8"), "2026 Elections", [
     "Where can I find the official certified 2026 Primary election results?",
@@ -289,11 +299,13 @@ async function fetchNebraskaSources() {
     "Board of State Canvassers reviews and certifies the 2026 primary election results",
     ["June 8, 2026"]
   );
-  validateNebraskaSourcePage(
-    petitionCertification.body.toString("utf8"),
-    "Secretary of State certifies Dan Osborn’s U.S. Senate candidate petition",
-    ["July 16, 2026"]
-  );
+  for (const certification of petitionCertifications) {
+    validateNebraskaSourcePage(
+      certification.page.body.toString("utf8"),
+      certification.pageTitle,
+      [certification.dateText]
+    );
+  }
   validateNebraskaCanvassPdf(canvass.body);
   const [currentCandidates, primaryCandidates] = await Promise.all([
     parseNebraskaCurrentCandidateWorkbook(workbook.body),
@@ -307,17 +319,28 @@ async function fetchNebraskaSources() {
 
   for (const candidate of currentCandidates) {
     if (candidate.party === "By Petition") {
-      if (
-        candidate.office !== "S" ||
-        candidate.district !== null ||
-        candidate.normalizedName !== normalizeCandidateName("Dan Osborn")
-      ) {
+      const certified = petitionCertifications.some(
+        (certification) =>
+          certification.office === candidate.office &&
+          certification.district === candidate.district &&
+          certification.normalizedName === candidate.normalizedName
+      );
+      if (!certified) {
         throw new Error(
           "Nebraska current list contains a petition candidate without an adapter certification source"
         );
       }
       continue;
     }
+    // A party with no primary result records anywhere in the state nominated
+    // by convention, so its current-list candidates cannot be reconciled
+    // against a primary and are admitted on the state's list alone (their
+    // status says so). A party that did hold a primary must still match a
+    // certified winner.
+    const partyHeldPrimary = primaryCandidates.some(
+      (primary) => primary.party === candidate.party
+    );
+    if (!partyHeldPrimary) continue;
     const result = primaryCandidates.find(
       (primary) =>
         primary.office === candidate.office &&
@@ -339,7 +362,7 @@ async function fetchNebraskaSources() {
     certification,
     statewideResults,
     congressionalResults,
-    petitionCertification,
+    petitionCertifications,
     currentCandidates,
     primaryCandidates,
   };
@@ -1796,6 +1819,8 @@ function nebraskaPrimaryPartyCode(party: Exclude<NebraskaParty, "By Petition">) 
   if (party === "Republican") return "R";
   if (party === "Democratic") return "D";
   if (party === "Libertarian") return "L";
+  if (party === "Nebraska Working People") return "NWP";
+  if (party === "America First") return "AF";
   return "LMN";
 }
 
@@ -1825,7 +1850,6 @@ async function ingestNebraska(db: Database) {
     certificationSnapshot,
     statewideResultSnapshot,
     congressionalResultSnapshot,
-    petitionCertificationSnapshot,
     fecMatches,
   ] = await Promise.all([
     storeElectionSnapshot(NEBRASKA_SOURCE_ID, fetched.landing),
@@ -1834,9 +1858,14 @@ async function ingestNebraska(db: Database) {
     storeElectionSnapshot(NEBRASKA_SOURCE_ID, fetched.certification),
     storeElectionSnapshot(NEBRASKA_SOURCE_ID, fetched.statewideResults),
     storeElectionSnapshot(NEBRASKA_SOURCE_ID, fetched.congressionalResults),
-    storeElectionSnapshot(NEBRASKA_SOURCE_ID, fetched.petitionCertification),
     fecMatchesForNebraska(db),
   ]);
+  const petitionSnapshots = await Promise.all(
+    fetched.petitionCertifications.map(async (certification) => ({
+      ...certification,
+      snapshot: await storeElectionSnapshot(NEBRASKA_SOURCE_ID, certification.page),
+    }))
+  );
   const observedAt = new Date();
   const certifiedAt = new Date("2026-06-08T12:00:00Z");
   const tx = db;
@@ -1848,7 +1877,7 @@ async function ingestNebraska(db: Database) {
     certificationSnapshot,
     statewideResultSnapshot,
     congressionalResultSnapshot,
-    petitionCertificationSnapshot,
+    ...petitionSnapshots.map((entry) => entry.snapshot),
   ]) {
     await tx
       .insert(electionSourceSnapshots)
@@ -2002,10 +2031,15 @@ async function ingestNebraska(db: Database) {
         partyCode(candidate.party),
         fecCandidateId
       );
+      const partyHeldPrimary = fetched.primaryCandidates.some(
+        (primary) => primary.party === pair.current?.party
+      );
       const currentStatus = pair.current
         ? pair.current.party === "By Petition"
           ? "state_general_qualified"
-          : "general_ballot"
+          : partyHeldPrimary
+            ? "general_ballot"
+            : "state_general_list"
         : pair.primary?.isWinner
           ? "certified_primary_winner_not_on_current_list"
           : "primary_defeated";
@@ -2155,9 +2189,18 @@ async function ingestNebraska(db: Database) {
           });
 
         const isPetition = pair.current.party === "By Petition";
-        const eventSnapshot = isPetition
-          ? petitionCertificationSnapshot
-          : workbookSnapshot;
+        const petition = isPetition
+          ? petitionSnapshots.find(
+              (entry) =>
+                entry.office === pair.current?.office &&
+                entry.district === pair.current?.district &&
+                entry.normalizedName === pair.current?.normalizedName
+            )
+          : undefined;
+        if (isPetition && !petition) {
+          throw new Error("Nebraska petition candidate lost its certification source");
+        }
+        const eventSnapshot = petition ? petition.snapshot : workbookSnapshot;
         await tx
           .insert(candidateStatusEvents)
           .values({
@@ -2170,14 +2213,16 @@ async function ingestNebraska(db: Database) {
             candidacyId,
             electionStageId: generalStageId,
             status: currentStatus,
-            effectiveDate: isPetition ? "2026-07-16" : "2026-06-08",
+            effectiveDate: petition ? petition.effectiveDate : "2026-06-08",
             observedAt,
             sourceId: NEBRASKA_SOURCE_ID,
             snapshotSha256: eventSnapshot.sha256,
             details: {
               qualification_basis: isPetition
                 ? "state_certified_candidate_petition"
-                : "certified_primary_nominee_on_current_state_list",
+                : partyHeldPrimary
+                  ? "certified_primary_nominee_on_current_state_list"
+                  : "current_state_filing_list_party_without_primary",
               incumbency_status: pair.current.isIncumbent
                 ? "incumbent"
                 : "nonincumbent",

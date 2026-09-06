@@ -245,9 +245,32 @@ export const NEBRASKA_2026_SOURCES = {
     "https://electionresults.nebraska.gov/resultsSW.aspx?type=SW&map=CTY",
   primaryCongressionalResults:
     "https://electionresults.nebraska.gov/resultsSW.aspx?type=CG&map=DIST",
-  petitionCertification:
-    "https://sos.nebraska.gov/secretary-state-certifies-dan-osborns-us-senate-candidate-petition",
 } as const;
+
+// Nebraska admits a "By Petition" candidate only when the Secretary of State
+// has published a certification of that petition. One entry per certified
+// candidate; a petition candidate on the current list with no entry here
+// fails the ingest closed until a person adds the state's own page.
+export const NEBRASKA_2026_PETITION_CERTIFICATIONS = [
+  {
+    candidateName: "Dan Osborn",
+    office: "S" as const,
+    district: null,
+    url: "https://sos.nebraska.gov/secretary-state-certifies-dan-osborns-us-senate-candidate-petition",
+    pageTitle: "Secretary of State certifies Dan Osborn\u2019s U.S. Senate candidate petition",
+    dateText: "July 16, 2026",
+    effectiveDate: "2026-07-16",
+  },
+  {
+    candidateName: "Mark Cohen",
+    office: "H" as const,
+    district: 3,
+    url: "https://sos.nebraska.gov/secretary-state-certifies-mark-cohens-us-house-representatives-petition",
+    pageTitle: "Secretary of State certifies Mark Cohen\u2019s U.S. House of Representatives petition",
+    dateText: "August 12, 2026",
+    effectiveDate: "2026-08-12",
+  },
+] as const;
 
 export const MICHIGAN_2026_SOURCES = {
   electionLanding: "https://www.michigan.gov/sos/elections",
