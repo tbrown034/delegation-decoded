@@ -89,11 +89,16 @@ async function parseScope(raw: Record<string, unknown>): Promise<AskScope | null
   if (!state) return null;
   let district: number | null = null;
   if (requested.district != null) {
+    // Districts are numbered 1..n; an at-large seat is district 0 and is the
+    // only district in a one-seat state. Anything else is not a real scope
+    // and must not get its own cached answer.
+    const atLarge = state.numDistricts === 1;
     if (
       typeof requested.district !== "number" ||
       !Number.isInteger(requested.district) ||
-      requested.district < 0 ||
-      requested.district > state.numDistricts
+      (atLarge
+        ? requested.district !== 0
+        : requested.district < 1 || requested.district > state.numDistricts)
     ) {
       return null;
     }
