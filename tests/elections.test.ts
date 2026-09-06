@@ -881,6 +881,31 @@ test("campaign crawler obeys the most specific robots rule", () => {
   assert.equal(robotsAllows(groups, "/private/public/record"), true);
 });
 
+test("campaign crawler honors robots wildcards and end anchors", () => {
+  const wildcard = parseRobots(`
+    User-agent: *
+    Disallow: /*
+    Allow: /about
+  `);
+  assert.equal(robotsAllows(wildcard, "/issues"), false);
+  assert.equal(robotsAllows(wildcard, "/about"), true);
+  const anchored = parseRobots(`
+    User-agent: *
+    Disallow: /about$
+    Disallow: /*.pdf$
+  `);
+  assert.equal(robotsAllows(anchored, "/about"), false);
+  assert.equal(robotsAllows(anchored, "/about/team"), true);
+  assert.equal(robotsAllows(anchored, "/files/plan.pdf"), false);
+  assert.equal(robotsAllows(anchored, "/files/plan.pdf/view"), true);
+  const tie = parseRobots(`
+    User-agent: *
+    Disallow: /news
+    Allow: /news
+  `);
+  assert.equal(robotsAllows(tie, "/news/2026"), true);
+});
+
 test("official biography sources require an actual House or Senate government host", () => {
   assert.equal(isOfficialCongressionalSite("https://banks.house.gov/about"), true);
   assert.equal(isOfficialCongressionalSite("https://www.young.senate.gov/about"), true);

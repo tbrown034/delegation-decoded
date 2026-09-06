@@ -133,11 +133,29 @@ export function robotsAllows(
   const applicable = exact.length > 0
     ? exact
     : groups.filter((group) => group.agents.includes("*"));
+  // RFC 9309 matching: "*" matches any run of characters and a trailing "$"
+  // anchors the end of the path. The most specific (longest) matching rule
+  // wins; on a tie, allow wins. Plain startsWith let "Disallow: /*" and
+  // "Disallow: /about$" through.
   const matches = applicable
     .flatMap((group) => group.rules)
-    .filter((rule) => rule.path && pathname.startsWith(rule.path))
-    .sort((a, b) => b.path.length - a.path.length);
+    .filter((rule) => rule.path && robotsPatternMatches(rule.path, pathname))
+    .sort((a, b) =>
+      b.path.length !== a.path.length
+        ? b.path.length - a.path.length
+        : a.kind === "allow" ? -1 : b.kind === "allow" ? 1 : 0
+    );
   return matches[0]?.kind !== "disallow";
+}
+
+export function robotsPatternMatches(pattern: string, pathname: string) {
+  const anchored = pattern.endsWith("$");
+  const body = anchored ? pattern.slice(0, -1) : pattern;
+  const source = body
+    .split("*")
+    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join(".*");
+  return new RegExp(`^${source}${anchored ? "$" : ""}`).test(pathname);
 }
 
 export function normalizeCampaignSiteUrl(raw: string) {
@@ -296,13 +314,19 @@ export async function crawlResearchSite(
   const seen = new Set<string>();
   const pages: CrawledCampaignPage[] = [];
   let triedFallbacks = false;
+  // Fetch attempts are capped separately from retained pages: a chain of
+  // distinct meta-refresh stubs or thin pages never grows `pages`, so the
+  // page cap alone did not bound the number of requests.
+  const maxFetches = maxPages * 4 + 4;
+  let fetches = 0;
 
-  while (queue.length > 0 && pages.length < maxPages) {
+  while (queue.length > 0 && pages.length < maxPages && fetches < maxFetches) {
     const next = queue.shift();
     if (!next || seen.has(next)) continue;
     seen.add(next);
     const url = new URL(next);
     if (!robotsAllows(robots, url.pathname, options.robotsAgent)) continue;
+    fetches += 1;
     let result: SafeFetchResult;
     try {
       result = await safeFetchBuffer(url.toString(), {
@@ -334,6 +358,13 @@ export async function crawlResearchSite(
     // and were both stored, burning one of the few page slots on a duplicate.
     if (seen.has(result.finalUrl) && result.finalUrl !== next) continue;
     seen.add(result.finalUrl);
+    // A redirect lands on a path robots was never asked about.
+    if (
+      result.finalUrl !== next &&
+      !robotsAllows(robots, new URL(result.finalUrl).pathname, options.robotsAgent)
+    ) {
+      continue;
+    }
     const parsed = parseCampaignHtml(html, result.finalUrl);
     if (parsed.text.length < 40) continue;
     pages.push({ url: result.finalUrl, result, text: parsed.text });
