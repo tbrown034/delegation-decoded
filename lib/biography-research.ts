@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   normalizeEvidenceText,
-  quoteInPage,
+  locateQuoteInPage,
   type CampaignResearchPage,
   type ExtractionDrops,
 } from "./elections/campaign-research";
@@ -83,7 +83,8 @@ export function validateBiographyResearch(
       dropped.malformed += 1;
       continue;
     }
-    if (!quoteInPage(page, sourceQuote)) {
+    const span = locateQuoteInPage(page, sourceQuote);
+    if (!span) {
       dropped.quoteNotInSource += 1;
       continue;
     }
@@ -93,7 +94,7 @@ export function validateBiographyResearch(
     facts.push({
       claimText,
       pageId: page.pageId,
-      sourceQuote,
+      sourceQuote: span,
       confidence: Number(confidence),
     });
   }

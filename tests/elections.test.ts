@@ -972,6 +972,43 @@ test("extraction drops claims whose quote is not present in the captured page", 
   assert.deepEqual(output.dropped, { quoteNotInSource: 1, malformed: 0 });
 });
 
+test("the guard publishes the page's own span, not the model's framing of it", () => {
+  const pages: CampaignResearchPage[] = [
+    {
+      pageId: "p1",
+      snapshotId: "site-1",
+      url: "https://candidate.example/priorities",
+      text: "She\u2019s running to keep healthcare premiums down. Fight to codify the right to contraception. Pass a long-term Farm Bill.",
+    },
+  ];
+  const claim = (sourceQuote: string) => ({
+    claimType: "campaign_priority",
+    claimText: "x",
+    pageId: "p1",
+    sourceQuote,
+    confidence: 90,
+  });
+  const output = validateCampaignResearch(
+    {
+      claims: [
+        // Wrapped in the model's own curly quotation marks.
+        claim("\u201cFight to codify the right to contraception\u201d"),
+        // Straight apostrophe where the page has a curly one.
+        claim("She's running to keep healthcare premiums down."),
+        // An ellipsis splice of two passages is not on the page.
+        claim("Fight to codify... Farm Bill"),
+      ],
+      priorService: [],
+    },
+    pages
+  );
+  assert.deepEqual(output.claims.map((c) => c.sourceQuote), [
+    "Fight to codify the right to contraception",
+    "She\u2019s running to keep healthcare premiums down.",
+  ]);
+  assert.deepEqual(output.dropped, { quoteNotInSource: 1, malformed: 0 });
+});
+
 test("official biography extraction publishes only facts with captured quotes", () => {
   const pages: CampaignResearchPage[] = [
     {

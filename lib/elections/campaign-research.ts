@@ -38,15 +38,48 @@ export type CampaignResearchOutput = {
   dropped: ExtractionDrops;
 };
 
+// Typographic folding for the comparison only: a site's curly apostrophe
+// and the model's straight one are the same word. Every replacement is one
+// character for one character, so an index into the folded text is an index
+// into the original.
+function foldTypography(value: string) {
+  return value
+    .replace(/[\u2018\u2019\u201a\u201b\u2032]/g, "'")
+    .replace(/[\u201c\u201d\u201e\u201f\u2033]/g, '"')
+    .replace(/[\u2013\u2014\u2012\u2015]/g, "-")
+    .replace(/\u00a0/g, " ");
+}
+
+// The model wraps what it quotes in quotation marks; those marks are its own
+// framing, not the page's words.
+function stripWrappingQuotes(value: string) {
+  return value.replace(/^[\s"'\u2018\u2019\u201c\u201d\u00ab\u00bb]+|[\s"'\u2018\u2019\u201c\u201d\u00ab\u00bb]+$/g, "");
+}
+
+// Returns the page's own exact span for a model-supplied quote, or null when
+// the words are not on the cited page. What publishes is the span, so the
+// stored quote is the source's text character for character (a model's
+// straight apostrophe is replaced by the page's curly one, never the other
+// way round). An ellipsis splice of two passages is not on the page and
+// stays rejected.
+export function locateQuoteInPage(
+  page: CampaignResearchPage | null | undefined,
+  quote: string | null
+): string | null {
+  if (!page || !quote) return null;
+  const needle = normalizeEvidenceText(stripWrappingQuotes(quote));
+  if (!needle) return null;
+  const haystack = normalizeEvidenceText(page.text);
+  const index = foldTypography(haystack).indexOf(foldTypography(needle));
+  if (index === -1) return null;
+  return haystack.slice(index, index + needle.length);
+}
+
 export function quoteInPage(
   page: CampaignResearchPage | null | undefined,
   quote: string | null
 ) {
-  return (
-    !!page &&
-    !!quote &&
-    normalizeEvidenceText(page.text).includes(normalizeEvidenceText(quote))
-  );
+  return locateQuoteInPage(page, quote) !== null;
 }
 
 // Display grouping for extracted claims. Biography is rendered separately, so
@@ -186,15 +219,19 @@ export function validateCampaignResearch(
       dropped.malformed += 1;
       continue;
     }
-    if (!quoteInPage(page, quote)) {
+    const span = locateQuoteInPage(page, quote);
+    if (!span) {
       dropped.quoteNotInSource += 1;
+      if (process.env.RESEARCH_DEBUG_DROPS) {
+        console.log(`  dropped claim quote: ${JSON.stringify(quote.slice(0, 160))}`);
+      }
       continue;
     }
     claims.push({
       claimType: claimType as ExtractedCampaignClaim["claimType"],
       claimText,
       pageId: page.pageId,
-      sourceQuote: quote,
+      sourceQuote: span,
       confidence: Number(confidence),
     });
   }
@@ -222,7 +259,8 @@ export function validateCampaignResearch(
       dropped.malformed += 1;
       continue;
     }
-    if (!quoteInPage(page, quote)) {
+    const span = locateQuoteInPage(page, quote);
+    if (!span) {
       dropped.quoteNotInSource += 1;
       continue;
     }
@@ -232,7 +270,7 @@ export function validateCampaignResearch(
       startedOn,
       endedOn,
       pageId: page.pageId,
-      sourceQuote: quote,
+      sourceQuote: span,
     });
   }
 
