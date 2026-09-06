@@ -238,6 +238,41 @@ export async function buildHealthReport(): Promise<HealthReport> {
     })
   );
 
+  // Age since the last *successful* run per (source, entity_type). The latest
+  // row alone cannot measure staleness: a source that fails every night has a
+  // fresh latest row forever. Michigan's adapter failed five consecutive
+  // nights in September 2026 and never left "warn" because of exactly that.
+  const successAgeResult = await db.execute(sql`
+    WITH last_success AS (
+      SELECT source, entity_type, MAX(started_at) AS succeeded_at
+      FROM sync_log
+      WHERE status = 'success'
+      GROUP BY source, entity_type
+    )
+    SELECT
+      l.source, l.entity_type,
+      EXTRACT(EPOCH FROM (now() - ls.succeeded_at)) / 3600.0 AS success_age_hours,
+      COUNT(*) FILTER (
+        WHERE l.status = 'failed'
+          AND l.started_at > COALESCE(ls.succeeded_at, '-infinity'::timestamptz)
+      )::int AS failures_since_success
+    FROM sync_log l
+    LEFT JOIN last_success ls
+      ON ls.source = l.source AND ls.entity_type = l.entity_type
+    GROUP BY l.source, l.entity_type, ls.succeeded_at
+  `);
+  const successAge = new Map<
+    string,
+    { successAgeHours: number | null; failuresSinceSuccess: number }
+  >();
+  for (const r of successAgeResult.rows as Array<Record<string, unknown>>) {
+    successAge.set(`${r.source}|${r.entity_type}`, {
+      successAgeHours:
+        r.success_age_hours == null ? null : Number(r.success_age_hours),
+      failuresSinceSuccess: Number(r.failures_since_success ?? 0),
+    });
+  }
+
   const failuresResult = await db.execute(sql`
     SELECT
       failed.source, failed.entity_type, failed.status, failed.started_at,
@@ -486,19 +521,29 @@ export async function buildHealthReport(): Promise<HealthReport> {
   for (const r of latestRuns) {
     const t = STALENESS[r.entityType];
     if (!t) continue;
-    if (r.ageHours > t.crit) {
+    const history = successAge.get(`${r.source}|${r.entityType}`);
+    // A source with no successful run on record is as stale as it gets.
+    const ageHours = history?.successAgeHours ?? Number.POSITIVE_INFINITY;
+    const failing = history?.failuresSinceSuccess ?? 0;
+    const failureNote =
+      failing > 0
+        ? ` ${failing} failed run${failing === 1 ? "" : "s"} since the last success; latest: ${r.status}.`
+        : ` Last status: ${r.status}.`;
+    if (ageHours > t.crit) {
       checks.push({
         id: `stale-${r.source}-${r.entityType}`,
         level: "crit",
-        title: `${r.source}/${r.entityType} hasn't run in ${r.ageHours.toFixed(0)}h`,
-        detail: `Threshold ${t.crit}h. Last status: ${r.status}.`,
+        title: Number.isFinite(ageHours)
+          ? `${r.source}/${r.entityType} hasn't succeeded in ${ageHours.toFixed(0)}h`
+          : `${r.source}/${r.entityType} has never succeeded`,
+        detail: `Threshold ${t.crit}h.${failureNote}`,
       });
-    } else if (r.ageHours > t.warn) {
+    } else if (ageHours > t.warn) {
       checks.push({
         id: `stale-${r.source}-${r.entityType}`,
         level: "warn",
         title: `${r.source}/${r.entityType} stale`,
-        detail: `Last run ${r.ageHours.toFixed(0)}h ago (warn at ${t.warn}h).`,
+        detail: `Last success ${ageHours.toFixed(0)}h ago (warn at ${t.warn}h).${failureNote}`,
       });
     }
   }
@@ -539,7 +584,10 @@ export async function buildHealthReport(): Promise<HealthReport> {
   // Paused sources: surface the pause itself, and keep their old failures
   // out of the alarms below — a deliberate pause is not an incident.
   const activeFailures = recentFailures.filter(
-    (r) => !(r.source in PAUSED_SOURCES)
+    // Paused entries are keyed by sync_log.source for the House PTR key and by
+    // entity_type for press releases (whose source column reads "rss"), so a
+    // retired source's stuck-run cleanup stops counting as an incident.
+    (r) => !(r.source in PAUSED_SOURCES) && !(r.entityType in PAUSED_SOURCES)
   );
   for (const [src, note] of Object.entries(PAUSED_SOURCES)) {
     checks.push({
