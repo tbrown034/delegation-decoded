@@ -401,6 +401,15 @@ async function runAnthropic(
       usage.cacheWriteInputTokens += cacheWrite;
       usage.outputTokens += response.usage.output_tokens;
 
+      // A response cut off at max_tokens can still carry a usable-looking
+      // submit_answer; it would be served and cached as complete. Treat
+      // truncation as a provider failure so the fallback can answer.
+      if (response.stop_reason === "max_tokens") {
+        throw new AskProviderUnavailableError(
+          "anthropic",
+          new Error("Anthropic response truncated at max_tokens")
+        );
+      }
       if (response.stop_reason === "refusal") {
         // stop_details is informational and can be absent; read defensively.
         const details = (response as { stop_details?: { category?: string | null } })

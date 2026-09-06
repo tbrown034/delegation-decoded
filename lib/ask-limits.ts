@@ -124,10 +124,18 @@ export async function checkIpLimit(
 export async function countProviderAttempt(
   provider: AskProvider
 ): Promise<RateDecision> {
-  const [globalCount, providerCount] = await Promise.all([
-    bumpCounter("global-provider-attempts", "day"),
-    bumpCounter(`provider:${provider}`, "day"),
-  ]);
+  // Check the provider's own budget first so an exhausted provider does not
+  // keep consuming global slots on every request that then falls back.
+  const providerCount = await bumpCounter(`provider:${provider}`, "day");
+  if (providerCount > PROVIDER_DAILY_ATTEMPT_LIMIT) {
+    return {
+      allowed: false,
+      reason: `${provider} has reached its daily attempt limit.`,
+      retryAfterSeconds: secondsToUtcMidnight(),
+      budgetScope: "provider",
+    };
+  }
+  const globalCount = await bumpCounter("global-provider-attempts", "day");
   if (globalCount > GLOBAL_DAILY_PROVIDER_ATTEMPT_LIMIT) {
     return {
       allowed: false,
@@ -135,14 +143,6 @@ export async function countProviderAttempt(
         "The assistant has hit its daily provider budget. It resets at midnight UTC; every records page remains available.",
       retryAfterSeconds: secondsToUtcMidnight(),
       budgetScope: "global",
-    };
-  }
-  if (providerCount > PROVIDER_DAILY_ATTEMPT_LIMIT) {
-    return {
-      allowed: false,
-      reason: `${provider} has reached its daily attempt limit.`,
-      retryAfterSeconds: secondsToUtcMidnight(),
-      budgetScope: "provider",
     };
   }
   return { allowed: true };
