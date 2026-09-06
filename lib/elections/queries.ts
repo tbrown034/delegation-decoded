@@ -172,7 +172,8 @@ async function getStateAuthorityRace(
              SELECT bl.party_label
              FROM candidacy_ballot_lines bl
              WHERE bl.candidacy_id = ca.candidacy_id
-             ORDER BY bl.ballot_order NULLS LAST, bl.party_label
+             GROUP BY bl.party_label
+             ORDER BY MIN(bl.ballot_order) NULLS LAST, bl.party_label
            ) AS ballot_lines,
            primary_result.total_votes, primary_result.is_winner,
            primary_result.result_status,
