@@ -1,0 +1,12 @@
+
+> delegation-decoded@0.1.0 eval:ask-sweep /Users/home/Desktop/dev/active/delegation-decoded-interview
+> NODE_OPTIONS='--conditions=react-server' tsx scripts/eval-ask-sweep.ts
+
+◇ injected env (21) from .env.local // tip: ⌘ suppress logs { quiet: true }
+Sweeping 4 delegations in national scope against the default provider order
+PASS  DC  3042ms  out=70
+PASS  IN  3809ms  out=311
+PASS  PR  3483ms  out=73
+PASS  TX  5297ms  out=486
+
+-- 4/4 passed · avg 3908ms · tokens in=17855 out=940

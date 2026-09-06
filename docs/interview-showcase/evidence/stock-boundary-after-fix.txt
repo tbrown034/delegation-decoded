@@ -1,0 +1,14 @@
+
+> delegation-decoded@0.1.0 eval:ask /Users/home/Desktop/dev/active/delegation-decoded-interview
+> NODE_OPTIONS='--conditions=react-server' tsx scripts/eval-ask.ts
+
+◇ injected env (21) from .env.local // tip: ◈ encrypted .env [www.dotenvx.com]
+signature self-check: PASS
+
+=== anthropic:claude-sonnet-5 ===
+PASS  stock-boundary     4528ms  in=5706 cached=1925 write=1925 out=149
+-- 1/1 passed · avg 4528ms · tokens in=5706 cached=1925 write=1925 out=149
+
+=== openai:gpt-5.6-terra ===
+PASS  stock-boundary     3040ms  in=4371 cached=1833 write=2294 out=107
+-- 1/1 passed · avg 3040ms · tokens in=4371 cached=1833 write=2294 out=107

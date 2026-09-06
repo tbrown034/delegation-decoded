@@ -4,6 +4,24 @@ A chronological record of development sessions and significant changes.
 
 ---
 
+## 2026-09-05 - Interview safeguards and truthful review disclosure
+
+**Session Summary:**
+- Hardened Ask answer validation: factual answers require a retrieved citation; invented refs reject the response; oversized tool results preserve whole records and commit only references actually sent.
+- Corrected human-review claims in About, Health, Ask and trade methodology. Added eligible stored-quote counts while retaining separate human-approval counts. Updated retired and paused source descriptions.
+- Added deterministic FEC attribution when finance prose omits it, a disbursements field, and grouped-reference validation.
+- Expanded fallback routing for FEC filers and unfamiliar questions; constrained official URLs to retrieved evidence; invalidated cached answers after successful ingests and explicit research-review decisions.
+- Made failed and empty-selection evaluations exit nonzero. Added complete-answer output for manual evaluation review.
+- Used an independent read-only Claude CLI review, then requested a second review of fixes. Moved owned changes to an isolated worktree after another session began editing Michigan election ingestion in the original checkout; preserved its changes and restored the original checkout to main.
+
+**Verification at this milestone:**
+- 99/99 deterministic tests, ESLint, typecheck and production build pass. Five local production routes returned 200; visible About, Health and trade methodology disclosures were checked.
+- Verified nonzero evaluation exits for an empty case selection and unavailable providers without paid model calls for those checks.
+- Paid model evaluations found a missing FEC-filer routing term and a stock-boundary status error. Both have targeted fixes; evaluation and independent review results are recorded in docs/interview-showcase/hardening-report.md.
+- No source-data edits, deployment, merge or external sharing. Paid evals read the existing database and call the configured model providers.
+
+---
+
 ## 2026-07-22/23 — Washington verified ballot, campaign evidence, and scoped Ask QA
 
 **Session summary:**
