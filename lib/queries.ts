@@ -233,6 +233,9 @@ export async function getStateCommitteeCoverage(stateCode: string) {
       committeeName: committees.name,
       committeeChamber: committees.chamber,
       memberName: members.fullName,
+      // The roster's own surname, so "Monica De La Cruz" is not shown as
+      // "Cruz" and "Randy K. Weber, Sr." is not shown as "Sr."
+      memberLastName: members.lastName,
       memberParty: members.party,
       bioguideId: members.bioguideId,
       role: committeeAssignments.role,

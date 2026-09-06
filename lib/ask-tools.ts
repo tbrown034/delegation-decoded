@@ -459,7 +459,7 @@ function raceToolPayload(
                 : "challenger",
         total_raised: candidate.total_receipts,
         first_filed: candidate.first_file_date,
-        fec_candidate_id: candidate.candidate_id,
+        fec_candidate_id: candidate.candidate_id || null,
         primary_votes: candidate.primaryVotes,
         primary_result_status: candidate.resultStatus,
         campaign_site: profile?.siteUrl ?? null,

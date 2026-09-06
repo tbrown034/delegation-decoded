@@ -86,7 +86,9 @@ export default async function RacePage({ params }: Props) {
         <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h2 className="font-serif text-lg font-semibold">Ask about this race</h2>
           <p className="text-sm text-neutral-500">
-            Answers come from official {stateName} records and cite what was checked.
+            {race.coverage === "fec_only"
+              ? `Answers come from FEC filings and this site's ${stateName} records, and cite what was checked.`
+              : `Answers come from official ${stateName} records and cite what was checked.`}
           </p>
         </div>
         <AskClient

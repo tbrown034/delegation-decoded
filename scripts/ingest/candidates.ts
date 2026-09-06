@@ -5,6 +5,7 @@ import { drizzle } from "drizzle-orm/neon-http";
 import { electionCandidates, syncLog } from "../../lib/schema";
 import { sql } from "drizzle-orm";
 import { fetchCandidates, fetchCandidateTotals } from "../lib/fec-api";
+import { normalizeCandidateName } from "../lib/fec-names";
 
 // 2026 election candidates from FEC statements of candidacy (Form 2).
 // Statutory candidates only (candidate_status=C, has_raised_funds=true) —
@@ -29,43 +30,7 @@ function parseDistrict(office: string, district: string | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-// FEC names arrive as "ANDREWS, ANNIE" / "SMITH, JOHN A JR". Flip around the
-// first comma and title-case for display, preserving Mc/Mac/O' prefixes,
-// hyphenated names, and suffixes. The FEC candidate_id always links back to
-// the raw source record.
-const KEEP_UPPER = new Set(["II", "III", "IV", "JR", "SR", "MD", "DDS"]);
 
-function titleWord(w: string): string {
-  if (KEEP_UPPER.has(w.toUpperCase())) {
-    const u = w.toUpperCase();
-    return u === "JR" ? "Jr." : u === "SR" ? "Sr." : u;
-  }
-  return w
-    .toLowerCase()
-    .split(/([-'])/)
-    .map((part) =>
-      part === "-" || part === "'"
-        ? part
-        : part.charAt(0).toUpperCase() + part.slice(1)
-    )
-    .join("")
-    .replace(/^Mc(\w)/, (_, c: string) => `Mc${c.toUpperCase()}`);
-}
-
-const DROP_TITLES = new Set(["DR", "MR", "MRS", "MS", "REV", "HON", "MISS"]);
-
-function normalizeCandidateName(raw: string): string {
-  const commaAt = raw.indexOf(",");
-  const flipped =
-    commaAt === -1
-      ? raw
-      : `${raw.slice(commaAt + 1).trim()} ${raw.slice(0, commaAt).trim()}`;
-  return flipped
-    .split(/\s+/)
-    .filter((w) => !DROP_TITLES.has(w.toUpperCase().replace(/\./g, "")))
-    .map(titleWord)
-    .join(" ");
-}
 
 async function main() {
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");

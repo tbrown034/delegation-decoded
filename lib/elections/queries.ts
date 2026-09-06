@@ -14,6 +14,7 @@ import {
 } from "./member-seat";
 import {
   stateAuthorityCoverageNote,
+  type RaceCandidate,
   type RaceCandidateResult,
   type StateRaceCoverage,
 } from "./types";
@@ -273,7 +274,7 @@ async function getFecRace(
         electionType,
         electionYear
       );
-  const candidates = exactFecAttributionAvailable
+  const candidates: RaceCandidate[] = exactFecAttributionAvailable
     ? (rows.rows as Array<Record<string, unknown>>).map((row) => ({
     candidacyId: `fec-${row.candidate_id as string}`,
     personId: null,
@@ -310,6 +311,62 @@ async function getFecRace(
       }))
     : [];
   const resolvedSenateClass = office === "S" ? senateClass : null;
+
+  // A sitting member who has not filed a 2026 Form 2 is still the
+  // officeholder. An FEC-only race page that omitted them read as if the seat
+  // were open (TX-09 listed thirteen filers and not Al Green). They are added
+  // as a labeled reference row, never as an FEC filer, and only when no filer
+  // already resolved to the seat's incumbent.
+  if (
+    exactFecAttributionAvailable &&
+    electionType === "regular" &&
+    !candidates.some((candidate) => candidate.isIncumbent)
+  ) {
+    const holders = await db.execute(
+      office === "H"
+        ? sql`
+            SELECT m.bioguide_id, m.full_name, m.party
+            FROM members m
+            WHERE m.in_office AND m.chamber = 'house'
+              AND m.state_code = ${stateCode}
+              AND COALESCE(m.district, 0) = ${district ?? 0}
+            ORDER BY m.full_name
+          `
+        : sql`
+            SELECT m.bioguide_id, m.full_name, m.party
+            FROM members m
+            JOIN terms t ON t.bioguide_id = m.bioguide_id AND t.is_current
+            WHERE m.in_office AND m.chamber = 'senate'
+              AND m.state_code = ${stateCode}
+              AND t.chamber = 'senate'
+              AND EXTRACT(YEAR FROM t.end_date) = ${electionYear + 1}
+            ORDER BY m.full_name
+          `
+    );
+    for (const row of holders.rows as Array<Record<string, unknown>>) {
+      candidates.push({
+        candidacyId: `member-${row.bioguide_id as string}`,
+        personId: null,
+        name: row.full_name as string,
+        party: (row.party as string | null) ?? null,
+        status: "sitting_member_no_2026_fec_filing",
+        isActive: true,
+        ballotLines: [],
+        fecCandidateId: null,
+        totalReceipts: null,
+        resultStatus: null,
+        primaryVotes: null,
+        primaryWinner: null,
+        bioguideId: row.bioguide_id as string,
+        isIncumbent: true,
+        candidate_id: "",
+        incumbent_challenge: "I",
+        total_receipts: null,
+        first_file_date: null,
+        last_file_date: null,
+      });
+    }
+  }
   return {
     contestId,
     title:
@@ -722,8 +779,14 @@ export async function getRaceIndex(): Promise<RaceIndexItem[]> {
   `);
   const fecCounts = new Map<string, number>();
   const fecNames = new Map<string, string[]>();
+  // One person can hold two FEC candidate IDs for the same seat (a re-filed
+  // Form 2 keeps the old ID). Count and list each name once per race.
+  const seenFecNames = new Set<string>();
   for (const row of fecResult.rows as Array<{ state_code: string; office: string; district: number | null; name: string }>) {
     const key = `${row.state_code}|${row.office}|${row.district ?? ""}`;
+    const nameKey = `${key}|${row.name.trim().toLowerCase()}`;
+    if (seenFecNames.has(nameKey)) continue;
+    seenFecNames.add(nameKey);
     fecCounts.set(key, (fecCounts.get(key) ?? 0) + 1);
     const names = fecNames.get(key) ?? [];
     names.push(row.name);

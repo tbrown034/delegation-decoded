@@ -484,7 +484,7 @@ function StateSidebar({
                             <span
                               className={`mr-0.5 inline-block h-1 w-1 rounded-full ${PARTY_DOT[cm.memberParty] || "bg-neutral-400"}`}
                             />
-                            {cm.memberName.split(" ").pop()}
+                            {cm.memberLastName || cm.memberName}
                             {cm.role !== "member" && (
                               <span className="ml-0.5 text-neutral-300">
                                 ({cm.role?.replace("_", " ")})
