@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import {
   AskError,
   AskProviderUnavailableError,
@@ -18,7 +18,7 @@ import {
   setCachedAnswer,
   type CachedAnswer,
 } from "@/lib/ask-limits";
-import { classifyAskError, logAsk } from "@/lib/ask-log";
+import { classifyAskError, logAsk, type AskLogEntry } from "@/lib/ask-log";
 import { matchesAttackSignature, moderateText } from "@/lib/ask-moderation";
 import type { AskScope } from "@/lib/ask-tools";
 import { getMemberByBioguideId, getMemberTerms } from "@/lib/queries";
@@ -33,6 +33,12 @@ import { STATE_BY_CODE } from "@/lib/states";
 export const maxDuration = 60;
 
 const NO_STORE = { "Cache-Control": "no-store" };
+
+// The audit row must outlive the response. A plain fire-and-forget insert on
+// a fast exit (a 422 signature block, a 429) could be frozen with the
+// function before it reached Postgres; after() keeps the function alive
+// until the write settles without delaying the reader.
+const audit = (entry: AskLogEntry) => after(() => logAsk(entry));
 // Raised from 2,048 when follow-up history (up to two truncated prior
 // exchanges) joined the request body.
 const MAX_BODY_BYTES = 8_192;
@@ -197,7 +203,7 @@ export async function POST(request: NextRequest) {
     promptVersion: ASK_PROMPT_VERSION,
   };
   const logSuccess = (result: AskResult) =>
-    logAsk({
+    audit({
       ...logBase,
       outcome: result.status,
       provider: result.provider,
@@ -211,7 +217,7 @@ export async function POST(request: NextRequest) {
       latencyMs: Date.now() - startedAt,
     });
   const logCached = (cached: CachedAnswer) =>
-    logAsk({
+    audit({
       ...logBase,
       outcome: cached.status ?? "answered",
       cacheHit: true,
@@ -224,7 +230,7 @@ export async function POST(request: NextRequest) {
       latencyMs: Date.now() - startedAt,
     });
   const logFailure = (status: number, refusalCategory?: string) =>
-    logAsk({
+    audit({
       ...logBase,
       outcome: "error",
       errorClass: classifyAskError(status),
@@ -246,7 +252,7 @@ export async function POST(request: NextRequest) {
   // the audit log.
   const signature = matchesAttackSignature(question);
   if (signature) {
-    logAsk({
+    audit({
       ...logBase,
       outcome: "error",
       errorClass: "flagged_input",
@@ -267,7 +273,7 @@ export async function POST(request: NextRequest) {
   if (!cached) {
     const moderation = await moderateText(question);
     if (moderation.flagged) {
-      logAsk({
+      audit({
         ...logBase,
         outcome: "error",
         errorClass: "flagged_input",
@@ -314,7 +320,7 @@ export async function POST(request: NextRequest) {
   const screenResult = async (result: AskResult): Promise<boolean> => {
     const moderation = await moderateText(result.answer);
     if (!moderation.flagged) return true;
-    logAsk({
+    audit({
       ...logBase,
       outcome: "error",
       errorClass: "flagged_output",

@@ -127,14 +127,14 @@ export async function recentAskLog(limit = 100): Promise<AskLogRow[]> {
   }));
 }
 
-export function logAsk(entry: AskLogEntry): void {
+export function logAsk(entry: AskLogEntry): Promise<void> {
   const scope = entry.scope;
   const stateCode = scope.type === "national" ? null : scope.stateCode;
   const district =
     scope.type === "state" ? scope.district : scope.type === "member" ? null : null;
   const bioguideId = scope.type === "member" ? scope.bioguideId : null;
 
-  db.execute(sql`
+  return db.execute(sql`
     INSERT INTO ask_log (
       ip_hash, question, scope_type, state_code, district, bioguide_id,
       history_turns, outcome, error_class, http_status, cache_hit,
@@ -157,7 +157,10 @@ export function logAsk(entry: AskLogEntry): void {
       ${entry.citationCount ?? null}, ${entry.citationCoverage ?? null},
       ${entry.answer ?? null}, ${entry.promptVersion ?? null}
     )
-  `).catch((error) => {
-    console.error("ask_log write failed", error);
-  });
+  `).then(
+    () => undefined,
+    (error) => {
+      console.error("ask_log write failed", error);
+    }
+  );
 }
