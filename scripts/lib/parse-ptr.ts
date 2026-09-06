@@ -115,6 +115,18 @@ export async function parsePtr(
     ],
   });
 
+  // A filing that outruns the output cap comes back cut mid-array. Name the
+  // cause instead of letting JSON.parse report a generic syntax error; this
+  // is the failure that paused the House pipeline and it needs chunking, not
+  // a retry.
+  if (response.stop_reason === "max_tokens") {
+    throw new Error(
+      `Filing exceeds the parser's ${16000}-token output cap (stop_reason=max_tokens); split the PDF before reparsing`
+    );
+  }
+  if (response.stop_reason === "refusal") {
+    throw new Error("Claude declined to parse this filing (stop_reason=refusal)");
+  }
   const textBlock = response.content.find(
     (b: { type: string }) => b.type === "text"
   );
