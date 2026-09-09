@@ -4,6 +4,16 @@ A chronological record of development sessions and significant changes.
 
 ---
 
+## 2026-09-08 - Production deployment verified
+
+**Session Summary:**
+
+- Delegation Decoded deployed to https://delegationdecoded.org. App code: `8638d06`. Deployment: `dpl_AEH3pZzx9a4px5vykVpMJoFA2CYT`.
+- Six regression tests, focused lint and the production build passed. Public WA-H1, FL-H1 and MI-H1 no longer show expired next-event dates; DE-H0 retains September 15. No nominee outcome was inferred from the calendar.
+- Full findings and residual limits: Second Brain `docs/site-verification-2026-09-08-codex.md` and linked appendices. No email, paid generation, database write or Git push.
+
+---
+
 ## 2026-09-08 - Expired election schedule labels
 
 **Session Summary:**
