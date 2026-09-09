@@ -4,6 +4,20 @@ A chronological record of development sessions and significant changes.
 
 ---
 
+## 2026-09-08 - Expired election schedule labels
+
+**Session Summary:**
+- Confirmed stale live race-page copy: WA-H1 described the Aug. 4 primary as upcoming; FL-H1 and MI-H1 showed past primary dates as their next event.
+- `lib/elections/matchup.ts` now compares schedule dates with the render date before displaying an upcoming primary or runoff. A past date produces an unknown matchup when nominee records are absent; it never establishes winners or certification. Dates remain pending through the entire election day in Hawaii. Existing page revalidation can delay a boundary change by up to a day.
+- The registry's historical `primaryHeld` flags and relative `triageNote` text remain untouched. Notes have no UI consumers; the live schedule consumer now guards against stale flags.
+
+**Verification:**
+- Six focused regression tests passed, covering all 15 flagged states, the election-day boundary, Florida's partial field, state-list/certified evidence, runoff dates, and FEC-only records. Focused ESLint and `pnpm build` passed.
+- Local production HTTP rendering returned 200 for WA-H1, FL-H1, MI-H1 and DE-H0. Past August next-event dates disappeared, Washington says nominee records are unknown, and Delaware retains its future Sept. 15 event.
+- This entry records a local candidate only. No commit, deployment, ingestion, database writes or paid model calls were performed for this fix.
+
+---
+
 ## 2026-09-06 — Overnight Texas-page fixes, Sunday runs, verbatim guard repair
 
 **Session Summary:**

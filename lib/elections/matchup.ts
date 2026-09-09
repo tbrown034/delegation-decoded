@@ -125,15 +125,26 @@ function partyLabelFor(candidate: MatchupCandidate) {
 export function deriveMatchup(
   stateCode: string,
   coverage: "verified_ballot" | "verification_pending" | "fec_only",
-  candidates: MatchupCandidate[]
+  candidates: MatchupCandidate[],
+  asOf: Date = new Date()
 ): Matchup {
   const triage = STATE_ELECTION_TRIAGE[stateCode.toUpperCase()];
+  // Calendar progress only controls schedule wording, never nominee status or
+  // certification. Keep the whole election day pending, including in Hawaii.
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Pacific/Honolulu",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(asOf);
+  const primaryScheduled = !!triage && !triage.primaryHeld && triage.primaryDate >= today;
+  const runoffScheduled = !!triage?.runoffPending && !!triage.runoffDate && triage.runoffDate >= today;
   const nextEvent = triage
-    ? triage.runoffPending
+    ? runoffScheduled
       ? triage.runoffDate ?? null
-      : triage.primaryHeld
-        ? null
-        : triage.primaryDate
+      : primaryScheduled
+        ? triage.primaryDate
+        : null
     : null;
 
   // FEC filings are never a matchup basis; without state-authority coverage
@@ -177,22 +188,22 @@ export function deriveMatchup(
   const ballotLanes = lanes.filter((lane) => !lane.isWriteIn);
 
   if (ballotLanes.length === 0) {
-    if (triage?.runoffPending) {
+    if (runoffScheduled) {
       return {
         status: "pending_runoff",
         lanes,
         pendingParties,
         nextEvent,
-        statusLabel: `Matchup forms after the ${triage.runoffDate} runoff.`,
+        statusLabel: `Runoff scheduled for ${triage.runoffDate}; nominee records pending.`,
       };
     }
-    if (triage && !triage.primaryHeld) {
+    if (primaryScheduled) {
       return {
         status: "pending_primary",
         lanes,
         pendingParties,
         nextEvent,
-        statusLabel: `Matchup forms after the ${triage.primaryDate} primary.`,
+        statusLabel: `Primary scheduled for ${triage.primaryDate}; nominee records pending.`,
       };
     }
     return {
@@ -201,7 +212,7 @@ export function deriveMatchup(
       pendingParties,
       nextEvent,
       statusLabel: pendingParties.length
-        ? "Primary concluded but the state source has not yet reported nominees."
+        ? "This site has no nominee records from the state source yet."
         : "No general-election records from the state source yet.",
     };
   }
@@ -212,8 +223,10 @@ export function deriveMatchup(
       lanes,
       pendingParties,
       nextEvent,
-      statusLabel: triage?.runoffPending
+      statusLabel: runoffScheduled
         ? `Partially formed; one or more nominations wait on the ${triage.runoffDate} runoff.`
+        : triage?.runoffPending
+          ? "Partially formed; this site is still awaiting state-source runoff nominee records."
         : `Partially formed; still awaiting ${pendingParties.join(", ")} nomination${pendingParties.length > 1 ? "s" : ""}.`,
     };
   }
