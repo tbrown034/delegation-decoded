@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { secretMatches } from "@/lib/secure-compare";
 
 // Routes that accept user input keep the per-request nonce CSP and must
 // render dynamically (a cached page would carry a stale nonce). Everything
@@ -27,18 +28,7 @@ function compact(policy: string): string {
 // page's notFound() ran. The proxy answers 404 up front instead: with no key
 // configured, or a key that does not match, an admin path does not exist.
 async function adminKeyMatches(candidate: string | null) {
-  const expected = process.env.ASK_ADMIN_KEY;
-  if (!expected || !candidate) return false;
-  const encoder = new TextEncoder();
-  const [a, b] = await Promise.all([
-    crypto.subtle.digest("SHA-256", encoder.encode(candidate)),
-    crypto.subtle.digest("SHA-256", encoder.encode(expected)),
-  ]);
-  const left = new Uint8Array(a);
-  const right = new Uint8Array(b);
-  let diff = 0;
-  for (let i = 0; i < left.length; i += 1) diff |= left[i] ^ right[i];
-  return diff === 0;
+  return secretMatches(candidate, process.env.ASK_ADMIN_KEY);
 }
 
 export async function proxy(request: NextRequest) {
