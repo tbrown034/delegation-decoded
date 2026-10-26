@@ -1,4 +1,5 @@
-# Runs every day at 6 AM UTC (midnight CT / 1 AM ET)
+# Runs every day at 6 AM UTC. During daylight time that is 1 AM CT / 2 AM
+# ET; once DST ends in early November it is midnight CT / 1 AM ET.
 # Ingests members, bills, votes, 2026 candidates, and PTR disclosures — the
 # data that changes daily when Congress is in session. Also regenerates the
 # activity feed and runs the health gate after ingestion.
@@ -174,6 +175,18 @@ jobs:
         run: npx tsx scripts/health-check.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      # Clear the whole site's cache so readers see tonight's data without
+      # waiting out the footer-driven 86400-second route revalidate window.
+      # Only runs after a non-crit health check; a crit run leaves the old
+      # cache in place rather than publishing a known-bad state immediately.
+      - name: Revalidate site cache
+        if: success()
+        run: |
+          curl -sf -X POST "https://delegationdecoded.org/api/revalidate" \
+            -H "x-revalidate-secret: ${REVALIDATE_SECRET}"
+        env:
+          REVALIDATE_SECRET: ${{ secrets.REVALIDATE_SECRET }}
 
       # A job-timeout reports as cancelled, not failed, so failure() alone
       # would let the 75-minute ceiling pass silently.
