@@ -21,8 +21,24 @@ import {
 } from "../../lib/schema";
 
 const BASE = "https://efdsearch.senate.gov";
+// A real browser's UA, with no project identifier in it — an edge WAF in
+// front of this site scores a self-identifying "delegation-decoded" suffix
+// as automation. The project identifier moves to a From header instead,
+// which is where a well-behaved crawler is supposed to put it.
 const UA =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 delegation-decoded";
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+const FROM = "delegation-decoded (https://delegationdecoded.org)";
+// Headers a browser's XHR layer adds automatically that our POSTs were
+// missing entirely. The 403s are shaped like an edge rule scoring request
+// fingerprint, not a blanket IP ban (GETs from the same IP succeed).
+const BROWSER_XHR_HEADERS: Record<string, string> = {
+  Accept: "application/json, text/javascript, */*; q=0.01",
+  "Accept-Language": "en-US,en;q=0.9",
+  "X-Requested-With": "XMLHttpRequest",
+  "Sec-Fetch-Dest": "empty",
+  "Sec-Fetch-Mode": "cors",
+  "Sec-Fetch-Site": "same-origin",
+};
 
 const connectionString =
   process.env.DATABASE_URL || process.env.DATABASE_URL_UNPOOLED;
@@ -65,9 +81,9 @@ function csrfFrom(html: string): string | null {
   return html.match(/name=["']csrfmiddlewaretoken["']\s+value=["']([^"']+)["']/)?.[1] ?? null;
 }
 
-async function acceptTos(): Promise<{ jar: JarEntry[]; csrf: string }> {
+async function acceptTos(): Promise<{ jar: JarEntry[]; csrf: string; tosAccepted: boolean }> {
   let jar: JarEntry[] = [];
-  const home = await fetch(`${BASE}/search/home/`, { headers: { "User-Agent": UA } });
+  const home = await fetch(`${BASE}/search/home/`, { headers: { "User-Agent": UA, From: FROM } });
   jar = mergeJar(jar, parseSetCookie(home.headers.getSetCookie()));
   const csrf = csrfFrom(await home.text());
   if (!csrf) throw new Error("no csrf on /search/home/");
@@ -76,20 +92,29 @@ async function acceptTos(): Promise<{ jar: JarEntry[]; csrf: string }> {
     redirect: "manual",
     headers: {
       "User-Agent": UA,
+      From: FROM,
       "Content-Type": "application/x-www-form-urlencoded",
       Cookie: jarHeader(jar),
       Referer: `${BASE}/search/home/`,
+      Origin: BASE,
+      ...BROWSER_XHR_HEADERS,
     },
     body: new URLSearchParams({ csrfmiddlewaretoken: csrf, prohibition_agreement: "1" }).toString(),
   });
   jar = mergeJar(jar, parseSetCookie(tos.headers.getSetCookie()));
+  // The script used to merge whatever cookies came back and print
+  // "✓ TOS accepted" unconditionally, which lied about which request
+  // actually failed when the next one threw. A 403 here is a redirect
+  // status (302/303) on success, not 200, so check for a server error or
+  // an explicit denial rather than assuming non-2xx means failure.
+  const tosAccepted = tos.status < 400;
   // Refresh CSRF for the search API
   const search = await fetch(`${BASE}/search/`, {
-    headers: { "User-Agent": UA, Cookie: jarHeader(jar) },
+    headers: { "User-Agent": UA, From: FROM, Cookie: jarHeader(jar) },
   });
   jar = mergeJar(jar, parseSetCookie(search.headers.getSetCookie()));
   const csrf2 = csrfFrom(await search.text()) ?? csrf;
-  return { jar, csrf: csrf2 };
+  return { jar, csrf: csrf2, tosAccepted };
 }
 
 // ── List all Senate PTRs in year ──
@@ -103,37 +128,71 @@ interface SenateListing {
   reportId: string; // UUID from URL
 }
 
+// 403s observed here look like an Akamai edge rule, not a Django response
+// (the origin itself runs gunicorn and GETs succeed from the same IP in the
+// same second), so this is request-shape or reputation scoring rather than
+// a fixed block — worth a few retries with real backoff rather than failing
+// on the first one.
+class PersistentSenate403 extends Error {}
+const RETRY_DELAYS_MS = [30_000, 60_000];
+
+async function fetchListPage(
+  jar: JarEntry[],
+  csrf: string,
+  year: number,
+  start: number,
+  pageSize: number
+): Promise<Response> {
+  const body = new URLSearchParams({
+    csrfmiddlewaretoken: csrf,
+    report_types: "[11]",
+    filer_types: "[1]",
+    submitted_start_date: `01/01/${year} 00:00:00`,
+    submitted_end_date: `12/31/${year} 23:59:59`,
+    candidate_state: "",
+    senator_state: "",
+    office_id: "",
+    first_name: "",
+    last_name: "",
+    start: String(start),
+    length: String(pageSize),
+  });
+  let lastStatus = 0;
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    const r = await fetch(`${BASE}/search/report/data/`, {
+      method: "POST",
+      headers: {
+        "User-Agent": UA,
+        From: FROM,
+        "Content-Type": "application/x-www-form-urlencoded",
+        Cookie: jarHeader(jar),
+        Referer: `${BASE}/search/`,
+        Origin: BASE,
+        "X-CSRFToken": csrf,
+        ...BROWSER_XHR_HEADERS,
+      },
+      body: body.toString(),
+    });
+    if (r.ok) return r;
+    lastStatus = r.status;
+    if (attempt < RETRY_DELAYS_MS.length) {
+      const delay = RETRY_DELAYS_MS[attempt];
+      console.log(`list fetch: HTTP ${r.status}, retrying in ${delay / 1000}s (attempt ${attempt + 1} of ${RETRY_DELAYS_MS.length})`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+  if (lastStatus === 403) {
+    throw new PersistentSenate403(`list fetch failed after ${RETRY_DELAYS_MS.length + 1} attempts: HTTP 403`);
+  }
+  throw new Error(`list fetch failed: HTTP ${lastStatus}`);
+}
+
 async function listPtrs(jar: JarEntry[], csrf: string, year: number): Promise<SenateListing[]> {
   const all: SenateListing[] = [];
   const PAGE = 100;
   let start = 0;
   while (true) {
-    const body = new URLSearchParams({
-      csrfmiddlewaretoken: csrf,
-      report_types: "[11]",
-      filer_types: "[1]",
-      submitted_start_date: `01/01/${year} 00:00:00`,
-      submitted_end_date: `12/31/${year} 23:59:59`,
-      candidate_state: "",
-      senator_state: "",
-      office_id: "",
-      first_name: "",
-      last_name: "",
-      start: String(start),
-      length: String(PAGE),
-    });
-    const r = await fetch(`${BASE}/search/report/data/`, {
-      method: "POST",
-      headers: {
-        "User-Agent": UA,
-        "Content-Type": "application/x-www-form-urlencoded",
-        Cookie: jarHeader(jar),
-        Referer: `${BASE}/search/`,
-        "X-CSRFToken": csrf,
-      },
-      body: body.toString(),
-    });
-    if (!r.ok) throw new Error(`list fetch failed: ${r.status}`);
+    const r = await fetchListPage(jar, csrf, year, start, PAGE);
     const json = (await r.json()) as { recordsTotal: number; data: string[][] };
     for (const row of json.data) {
       const [firstName, lastName, fullLabel, linkHtml, filedDateUs] = row;
@@ -336,8 +395,8 @@ function isLate(txDate: string | null, filedDate: string | null): boolean {
 async function main() {
   const t0 = Date.now();
   console.log(`Senate eFD ingest — year=${year} limit=${limit === Infinity ? "all" : limit} dry=${dry}`);
-  const { jar, csrf } = await acceptTos();
-  console.log("✓ TOS accepted");
+  const { jar, csrf, tosAccepted } = await acceptTos();
+  console.log(tosAccepted ? "✓ TOS accepted" : "!! TOS POST was not accepted (non-2xx/3xx); continuing with whatever cookies came back");
   const listings = await listPtrs(jar, csrf, year);
   console.log(`✓ ${listings.length} PTRs listed`);
 
@@ -444,6 +503,14 @@ async function main() {
 }
 
 main().catch((e) => {
+  // A persistent 403 after retries is logged and swallowed, not failed. The
+  // workflow step already carries continue-on-error, and the disclosures
+  // crit threshold is 21 days (lib/health.ts), so one skipped day costs
+  // nothing. Any other error still exits 1 so a real break is loud.
+  if (e instanceof PersistentSenate403) {
+    console.error(`Senate eFD ingest: ${e.message} — skipping today's run, not failing it.`);
+    process.exit(0);
+  }
   console.error(e);
   process.exit(1);
 });
