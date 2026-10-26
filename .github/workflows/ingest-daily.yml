@@ -180,10 +180,17 @@ jobs:
       # waiting out the footer-driven 86400-second route revalidate window.
       # Only runs after a non-crit health check; a crit run leaves the old
       # cache in place rather than publishing a known-bad state immediately.
+      # continue-on-error: this step must never fail the job on its own —
+      # REVALIDATE_SECRET isn't set in GitHub or Vercel yet, so the first
+      # run after merge gets a 401, and any transient 500 or redeploy
+      # window afterward would do the same. A failed revalidate costs a
+      # day of staleness, not an "Open issue on failure" and a skipped
+      # recovery close on an otherwise-clean ingest.
       - name: Revalidate site cache
         if: success()
+        continue-on-error: true
         run: |
-          curl -sf -X POST "https://delegationdecoded.org/api/revalidate" \
+          curl -sS -f --max-time 30 -X POST "https://delegationdecoded.org/api/revalidate" \
             -H "x-revalidate-secret: ${REVALIDATE_SECRET}"
         env:
           REVALIDATE_SECRET: ${{ secrets.REVALIDATE_SECRET }}
