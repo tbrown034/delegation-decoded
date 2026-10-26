@@ -39,18 +39,18 @@ permissions:
 
 jobs:
   ingest:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
@@ -176,7 +176,7 @@ jobs:
       # or an old one more than 48 hours stale) opens a fresh issue.
       - name: Open issue on failure
         if: ${{ failure() || cancelled() }}
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           JOB_STATUS: ${{ job.status }}
         with:
@@ -222,7 +222,7 @@ jobs:
       # open issue means "broken right now," not "broke once in the past."
       - name: Close failure issue on recovery
         if: ${{ success() }}
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const run = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
