@@ -89,6 +89,39 @@ const WASHINGTON_SOURCE_ID = "state-wa";
 
 type Database = ReturnType<typeof drizzle>;
 
+const SOURCE_ID_BY_STATE: Record<string, string> = {
+  IN: INDIANA_SOURCE_ID,
+  DE: DELAWARE_SOURCE_ID,
+  FL: FLORIDA_SOURCE_ID,
+  RI: RHODE_ISLAND_SOURCE_ID,
+  NE: NEBRASKA_SOURCE_ID,
+  MI: MICHIGAN_SOURCE_ID,
+  WA: WASHINGTON_SOURCE_ID,
+};
+
+// Tiered backoff so a dead source stops re-running daily forever, while a
+// source that only just started failing gets retried again tomorrow. Keyed
+// off days-since-last-success rather than a dedicated failure counter, since
+// election_sources already tracks last_success_at.
+function nextCheckAfterFailure(lastSuccessAt: Date | null, now: Date): Date {
+  const daysSinceSuccess = lastSuccessAt
+    ? (now.getTime() - lastSuccessAt.getTime()) / (24 * 60 * 60 * 1000)
+    : Infinity;
+  const backoffDays = daysSinceSuccess >= 7 ? 7 : daysSinceSuccess >= 3 ? 3 : 1;
+  return new Date(now.getTime() + backoffDays * 24 * 60 * 60 * 1000);
+}
+
+async function runAdapter(state: string, db: Database): Promise<number> {
+  if (state === "IN") return ingestIndiana(db);
+  if (state === "DE") return ingestDelaware(db);
+  if (state === "FL") return ingestFlorida(db);
+  if (state === "RI") return ingestRhodeIsland(db);
+  if (state === "NE") return ingestNebraska(db);
+  if (state === "MI") return ingestMichigan(db);
+  if (state === "WA") return ingestWashington(db);
+  throw new Error(`No adapter registered for state ${state}`);
+}
+
 function partyCode(party: string) {
   const normalized = party.toLowerCase();
   if (normalized.includes("democrat")) return "D";
@@ -2943,18 +2976,22 @@ async function main() {
     // every adapter state runs unless one was requested explicitly.
     const states = REQUESTED_STATE ? [REQUESTED_STATE] : ADAPTER_STATES;
     let count = 0;
+    const failures: string[] = [];
     for (const state of states) {
-      if (state === "IN") count += await ingestIndiana({} as Database);
-      if (state === "DE") count += await ingestDelaware({} as Database);
-      if (state === "FL") count += await ingestFlorida({} as Database);
-      if (state === "RI") count += await ingestRhodeIsland({} as Database);
-      if (state === "NE") count += await ingestNebraska({} as Database);
-      if (state === "MI") count += await ingestMichigan({} as Database);
-      if (state === "WA") count += await ingestWashington({} as Database);
+      try {
+        count += await runAdapter(state, {} as Database);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        console.error(`Dry run: ${state} failed: ${message}`);
+        failures.push(`${state}: ${message}`);
+      }
     }
     console.log(
       `Dry run complete. Parsed ${count} records across ${states.join(", ")}; no database or Blob writes.`
     );
+    if (failures.length > 0) {
+      console.log(`${failures.length} of ${states.length} states failed: ${failures.join("; ")}`);
+    }
     return;
   }
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
@@ -2976,20 +3013,57 @@ async function main() {
     .returning();
   try {
     let records = 0;
+    const failures: { state: string; message: string }[] = [];
+    // Each state runs in its own try/catch so one dead source (a 404, a
+    // changed filename) cannot take the other six down with it. Previously
+    // one throw here aborted the whole loop and every state after the
+    // failing one was skipped for the day, every day, since the failing
+    // state's next_check_at never advanced.
     for (const state of states) {
-      if (state === "IN") records += await ingestIndiana(db);
-      if (state === "DE") records += await ingestDelaware(db);
-      if (state === "FL") records += await ingestFlorida(db);
-      if (state === "RI") records += await ingestRhodeIsland(db);
-      if (state === "NE") records += await ingestNebraska(db);
-      if (state === "MI") records += await ingestMichigan(db);
-      if (state === "WA") records += await ingestWashington(db);
+      try {
+        records += await runAdapter(state, db);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown election ingest error";
+        console.error(`Election ingest: ${state} failed: ${message}`);
+        failures.push({ state, message });
+
+        const sourceId = SOURCE_ID_BY_STATE[state];
+        if (sourceId) {
+          const now = new Date();
+          const [source] = await db
+            .select({ lastSuccessAt: electionSources.lastSuccessAt })
+            .from(electionSources)
+            .where(eq(electionSources.sourceId, sourceId));
+          await db
+            .update(electionSources)
+            .set({
+              lastCheckedAt: now,
+              nextCheckAt: nextCheckAfterFailure(source?.lastSuccessAt ?? null, now),
+              updatedAt: now,
+            })
+            .where(eq(electionSources.sourceId, sourceId));
+        }
+      }
     }
+
+    const errorMessage =
+      failures.length > 0
+        ? `${failures.length} of ${states.length} states failed: ${failures
+            .map((f) => `${f.state}: ${f.message}`)
+            .join("; ")}`.slice(0, 1000)
+        : null;
+    // A partial failure still counts as a successful run: the states that
+    // worked wrote real records, and the health gate's 72-hour elections
+    // threshold is about overall staleness, not any one state. The failed
+    // states are visible in errorMessage and in their own next_check_at.
     await db
       .update(syncLog)
-      .set({ status: "success", completedAt: new Date(), recordsCount: records })
+      .set({ status: "success", completedAt: new Date(), recordsCount: records, errorMessage })
       .where(sql`id = ${run.id}`);
     console.log(`Election ingest complete. Processed ${records} records.`);
+    if (failures.length > 0) {
+      console.log(errorMessage);
+    }
   } catch (error) {
     await db
       .update(syncLog)
