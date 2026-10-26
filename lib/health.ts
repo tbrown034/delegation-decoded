@@ -583,6 +583,33 @@ export async function buildHealthReport(): Promise<HealthReport> {
     });
   }
 
+  // State election sources — a partial failure (some states ran, some
+  // didn't) still writes status 'success' on the elections sync_log row,
+  // since the states that worked wrote real records and the 72-hour
+  // staleness threshold above is about overall freshness, not any one
+  // state. That status choice means a dead source can otherwise go
+  // invisible: no crit, no failed-run count, nothing. A non-null
+  // error_message on the latest run is the only place that surfaces, so
+  // surface it here as a warn regardless of status.
+  const electionsResult = await db.execute(sql`
+    SELECT status, error_message, started_at
+    FROM sync_log
+    WHERE source = 'state_election_authorities'
+    ORDER BY id DESC
+    LIMIT 1
+  `);
+  const electionsRow = electionsResult.rows[0] as
+    | { status: string; error_message: string | null; started_at: string }
+    | undefined;
+  if (electionsRow?.error_message) {
+    checks.push({
+      id: "elections-partial-failure",
+      level: "warn",
+      title: "One or more election sources failed on the latest run",
+      detail: electionsRow.error_message,
+    });
+  }
+
   // Paused sources: surface the pause itself, and keep their old failures
   // out of the alarms below — a deliberate pause is not an incident.
   const activeFailures = recentFailures.filter(

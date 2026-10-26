@@ -33,6 +33,7 @@ import { parseWashingtonPrimaryCandidateHtml } from "../scripts/lib/washington-e
 import { parseXlsxRows } from "../scripts/lib/xlsx-rows";
 import { isBlockedAddress } from "../scripts/lib/safe-fetch";
 import { stateAuthorityCoverageNote } from "../lib/elections/types";
+import { determineElectionRunStatus } from "../lib/elections/run-status";
 import {
   classifyCmsFamily,
   evidenceContentHash,
@@ -1049,4 +1050,33 @@ test("prior-service structured fields publish only when their words are in the q
   assert.equal(wordsAppearIn("Made in America Office (MIAO), Office of Management and Budget", "In 2020, Don jumped into his next mission, serving in government"), false);
   assert.equal(wordsAppearIn("Senator", "In the Senate, he continues to serve Nebraskans"), false);
   assert.equal(wordsAppearIn("", "anything"), false);
+});
+
+test("determineElectionRunStatus fails the run when every state failed", () => {
+  const failures = [
+    { state: "IN", message: "Source returned HTTP 404" },
+    { state: "FL", message: "Florida federal candidate record failed validation" },
+    { state: "NE", message: "Nebraska official source page title changed" },
+  ];
+  const outcome = determineElectionRunStatus(failures, 3);
+  assert.equal(outcome.status, "failed");
+  assert.match(outcome.errorMessage ?? "", /3 of 3 states failed/);
+  assert.match(outcome.errorMessage ?? "", /IN: Source returned HTTP 404/);
+});
+
+test("determineElectionRunStatus reports success with a non-null errorMessage on a partial failure", () => {
+  const failures = [
+    { state: "IN", message: "Source returned HTTP 404" },
+    { state: "FL", message: "Florida federal candidate record failed validation" },
+    { state: "NE", message: "Nebraska official source page title changed" },
+  ];
+  const outcome = determineElectionRunStatus(failures, 7);
+  assert.equal(outcome.status, "success");
+  assert.match(outcome.errorMessage ?? "", /3 of 7 states failed/);
+});
+
+test("determineElectionRunStatus reports success with a null errorMessage when nothing failed", () => {
+  const outcome = determineElectionRunStatus([], 7);
+  assert.equal(outcome.status, "success");
+  assert.equal(outcome.errorMessage, null);
 });

@@ -71,6 +71,7 @@ import {
   type MichiganCandidate,
 } from "../lib/michigan-election-parser";
 import { parseWashingtonPrimaryCandidateHtml } from "../lib/washington-election-parser";
+import { determineElectionRunStatus } from "../../lib/elections/run-status";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const BACKFILL = process.argv.includes("--backfill");
@@ -3046,23 +3047,26 @@ async function main() {
       }
     }
 
-    const errorMessage =
-      failures.length > 0
-        ? `${failures.length} of ${states.length} states failed: ${failures
-            .map((f) => `${f.state}: ${f.message}`)
-            .join("; ")}`.slice(0, 1000)
-        : null;
-    // A partial failure still counts as a successful run: the states that
-    // worked wrote real records, and the health gate's 72-hour elections
-    // threshold is about overall staleness, not any one state. The failed
-    // states are visible in errorMessage and in their own next_check_at.
+    const { status, errorMessage } = determineElectionRunStatus(failures, states.length);
     await db
       .update(syncLog)
-      .set({ status: "success", completedAt: new Date(), recordsCount: records, errorMessage })
+      .set({
+        status,
+        completedAt: new Date(),
+        recordsCount: records,
+        errorMessage,
+      })
       .where(sql`id = ${run.id}`);
-    console.log(`Election ingest complete. Processed ${records} records.`);
+    console.log(
+      status === "failed"
+        ? `Election ingest failed. All ${states.length} states failed.`
+        : `Election ingest complete. Processed ${records} records.`
+    );
     if (failures.length > 0) {
       console.log(errorMessage);
+    }
+    if (status === "failed") {
+      process.exitCode = 1;
     }
   } catch (error) {
     await db
