@@ -43,6 +43,9 @@ export type RaceCandidateResult = {
   sourceKind: "state_election_authority" | "fec_form_2";
   sourceName: string;
   sourceUrl: string;
+  // ISO timestamp of the state source's last check, or null for an
+  // FEC-only race with no election_sources row behind it.
+  lastCheckedAt: string | null;
   certifiedThrough: string | null;
   nextExpectedEvent: string | null;
   coverageNote?: string;

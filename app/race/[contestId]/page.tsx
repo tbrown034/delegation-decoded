@@ -78,6 +78,16 @@ export default async function RacePage({ params }: Props) {
         <a href={race.sourceUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-xs font-medium text-neutral-800 underline decoration-neutral-300 underline-offset-2">
           {race.sourceName}
         </a>
+        {race.lastCheckedAt && (
+          <p className="mt-2 text-xs text-neutral-500">
+            Last verified{" "}
+            {new Date(race.lastCheckedAt).toLocaleDateString("en-US", {
+              month: "long",
+              day: "numeric",
+              year: "numeric",
+            })}
+          </p>
+        )}
       </div>
 
       {/* Scoped records assistant — kept above the fold, same surface the

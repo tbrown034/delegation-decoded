@@ -133,7 +133,7 @@ async function getStateAuthorityRace(
     SELECT c.contest_id, c.title, c.state_code, c.office, c.district,
            c.senate_class, c.election_type, c.coverage_status,
            c.certified_through, c.next_expected_event,
-           s.authority_name, s.source_url, s.source_kind
+           s.authority_name, s.source_url, s.source_kind, s.last_checked_at
     FROM election_contests c
     JOIN election_sources s ON s.source_id = c.primary_source_id
     WHERE c.election_cycle = ${electionYear}
@@ -161,6 +161,7 @@ async function getStateAuthorityRace(
         next_expected_event: string | null;
         authority_name: string;
         source_url: string;
+        last_checked_at: string | null;
       }
     | undefined;
   if (!contest || contest.coverage_status === "fec_only") return null;
@@ -225,6 +226,9 @@ async function getStateAuthorityRace(
     sourceKind: "state_election_authority" as const,
     sourceName: contest.authority_name,
     sourceUrl: contest.source_url,
+    lastCheckedAt: contest.last_checked_at
+      ? new Date(contest.last_checked_at).toISOString()
+      : null,
     certifiedThrough: contest.certified_through,
     nextExpectedEvent: contest.next_expected_event,
     coverageNote: stateAuthorityCoverageNote(contest.coverage_status, candidates),
@@ -382,6 +386,9 @@ async function getFecRace(
     sourceKind: "fec_form_2",
     sourceName: "Federal Election Commission",
     sourceUrl: fecCandidateUrl(stateCode, office, district),
+    // No state election_sources row backs an FEC-only race, so there is
+    // nothing to date here — the page falls back to its own messaging.
+    lastCheckedAt: null,
     certifiedThrough: null,
     nextExpectedEvent: null,
     coverageNote: exactFecAttributionAvailable
